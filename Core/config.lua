@@ -1,4 +1,8 @@
-local Title = "SpecterX"
-local SubTitle = "By Specter"
+local Config = {
+  Title = "SpecterX",
+  SubTitle = "By Specter",
 
-local Icon = 94800455817009
+  Icon = 94800455817009
+}
+
+return Config
