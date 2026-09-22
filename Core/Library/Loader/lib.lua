@@ -28,8 +28,9 @@ local function LoadRequire(url, retries)
 end
 
 local libraly = LoadRequire("Core/Library/library.lua")
-if libraly.Window then
-    libraly.Window:Destroy()
+local Window = libraly.Window
+if Window then
+    Window:Destroy()
 end
 
 local loader = LoadRequire("Core/Library/Loader/Main/loading.lua")
@@ -41,4 +42,7 @@ repeat
     task.wait()
 until not game:GetService("CoreGui"):FindFirstChild("SpecterXLoading")
 
+libraly:MakeWindow({
+    Title = "Test"
+})
 return libraly
