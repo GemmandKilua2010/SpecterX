@@ -81,12 +81,38 @@ end
 -- BUILD
 -- =================================================
 
-local function ParseIcon(icon)
-    if type(icon) == "number" then
-        return icon
+local IconFormat = {
+    NUMBER = "number",
+    RBX = "rbx",
+}
+
+local function ParseIcon(icon, returnType)
+    returnType = returnType or IconFormat.NUMBER
+
+    if icon == nil then
+        return nil
     end
 
-    return tonumber(icon) or tonumber(tostring(icon):match("%d+"))
+    local id
+    if type(icon) == "number" then
+        id = icon
+    else
+        local str = tostring(icon)
+        id = tonumber(str) or tonumber(str:match("%d+"))
+    end
+
+    if not id then
+        return nil
+    end
+
+    if returnType == IconFormat.RBX then
+        return "rbxassetid://" .. tostring(id)
+    elseif returnType == IconFormat.NUMBER then
+        return id
+    end
+
+    warn(("[ParseIcon] returnType desconhecido: %s"):format(tostring(returnType)))
+    return id
 end
 
 -- =================================================
@@ -100,9 +126,10 @@ end
 
 local Base = {
     Library = lib,
+    
     Title = ("%s | %s"):format(tostring(GetConfig("Title")), tostring(GetGame(game.PlaceId))),
     SubTitle = tostring(GetConfig("SubTitle")),
-    Image = ParseIcon(GetConfig("Icon")),
+    Icon = ParseIcon(GetConfig("Icon"), "rbx"),
 }
 
 setmetatable(Base, {
