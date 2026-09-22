@@ -42,7 +42,4 @@ repeat
     task.wait()
 until not game:GetService("CoreGui"):FindFirstChild("SpecterXLoading")
 
-libraly:MakeWindow({
-    Title = "Test"
-})
 return libraly
