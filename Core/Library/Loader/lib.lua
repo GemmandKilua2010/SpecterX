@@ -34,6 +34,8 @@ end
 local loader = LoadRequire("https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/Core/Library/Loader/Main/loading.lua")
 local paste = LoadRequire("https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/Core/Library/Loader/Main/paste.lua")
 
+loader:Run()
+
 repeat
     task.wait()
 until not game:GetService("CoreGui"):FindFirstChild("SpecterXLoading")
