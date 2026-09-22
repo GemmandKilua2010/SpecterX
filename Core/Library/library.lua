@@ -1849,7 +1849,9 @@ function redzlib:MakeWindow(Configs)
 		end
 		
 		SetProps(Button, Configs.Button)
-		Button.Activated:Connect(Window:Visible())
+		Button.Activated:Connect(function()
+		    Window:Visible()
+		end)
 		
 		return {
 			Stroke = Stroke,
