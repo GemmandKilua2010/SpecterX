@@ -124,15 +124,27 @@ if type(lib) ~= "table" then
     error("[SpecterX] Falha crítica: não foi possível carregar a Library. Abortando.", 0)
 end
 
+local Image = ParseIcon(GetConfig("Icon"), "rbx")
 local Base = {
     Library = lib,
     
     Title = ("%s | %s"):format(tostring(GetConfig("Title")), tostring(GetGame(game.PlaceId))),
     SubTitle = tostring(GetConfig("SubTitle")),
+    
     Icon = {
-        Image = ParseIcon(GetConfig("Icon"), "rbx"),
+        Image = Image,
         Transparency = 0,
         Corner = 5
+    },
+
+    DiscordInvite = {
+        Name = tostring(GetConfig("Title"),
+        Desc = "Entre no nosso Discord e acompanhe todas as atualizações do SpecterX.",
+        
+        Logo = Image,
+        Invite = "Em Breve!",
+
+        RPC = false
     }
 }
 
