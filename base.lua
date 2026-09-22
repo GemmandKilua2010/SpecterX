@@ -129,7 +129,11 @@ local Base = {
     
     Title = ("%s | %s"):format(tostring(GetConfig("Title")), tostring(GetGame(game.PlaceId))),
     SubTitle = tostring(GetConfig("SubTitle")),
-    Icon = ParseIcon(GetConfig("Icon"), "rbx"),
+    Icon = {
+        Image = ParseIcon(GetConfig("Icon"), "rbx"),
+        Transparency = 0,
+        Corner = 5
+    }
 }
 
 setmetatable(Base, {
