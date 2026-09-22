@@ -138,7 +138,7 @@ local Base = {
     },
 
     DiscordInvite = {
-        Name = tostring(GetConfig("Title"),
+        Name = tostring(GetConfig("Title")),
         Desc = "Entre no nosso Discord e acompanhe todas as atualizações do SpecterX.",
         
         Logo = Image,
