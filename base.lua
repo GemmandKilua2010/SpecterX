@@ -93,10 +93,13 @@ end
 -- BASE
 -- =================================================
 
+local lib = LoadRequire("https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/Core/Library/library.lua")
 local Base = {
+    Library = lib
+    
     Title = ("%s | %s"):format(tostring(GetConfig("Title")), tostring(GetGame(game.PlaceId))),
     SubTitle = tostring(GetConfig("SubTitle")),
-    Image = ParseIcon(GetConfig("Icon")),
+    Image = ParseIcon(GetConfig("Icon"))
 }
 
 return Base
