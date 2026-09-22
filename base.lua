@@ -95,7 +95,7 @@ end
 
 local lib = LoadRequire("https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/Core/Library/library.lua")
 local Base = {
-    Library = lib
+    Library = lib,
     
     Title = ("%s | %s"):format(tostring(GetConfig("Title")), tostring(GetGame(game.PlaceId))),
     SubTitle = tostring(GetConfig("SubTitle")),
