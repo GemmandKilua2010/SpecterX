@@ -93,13 +93,20 @@ end
 -- BASE
 -- =================================================
 
-local lib = LoadRequire("https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/Core/Library/library.lua")
+local lib = LoadRequire("Core/Library/library.lua")
+if type(lib) ~= "table" then
+    error("[SpecterX] Falha crítica: não foi possível carregar a Library. Abortando.", 0)
+end
+
 local Base = {
     Library = lib,
-    
     Title = ("%s | %s"):format(tostring(GetConfig("Title")), tostring(GetGame(game.PlaceId))),
     SubTitle = tostring(GetConfig("SubTitle")),
-    Image = ParseIcon(GetConfig("Icon"))
+    Image = ParseIcon(GetConfig("Icon")),
 }
+
+setmetatable(Base, {
+    __index = lib,
+})
 
 return Base
