@@ -15,7 +15,7 @@ local function LoadRequire(url, retries)
 
     for attempt = 1, retries do
         local ok, result = pcall(function()
-            local source = game:HttpGet(url)
+            local source = game:HttpGet(BASE_URL .. url)
             local chunk, compileError = loadstring(source)
 
             if not chunk then
@@ -57,8 +57,8 @@ end
 -- REQUIRE
 -- =================================================
 
-local Games = LoadRequire(BASE_URL .. "Games/games.lua")
-local Configs = BuildLookup(LoadRequire(BASE_URL .. "Core/config.lua"))
+local Games = LoadRequire("Games/games.lua")
+local Configs = BuildLookup(LoadRequire("Core/config.lua"))
 
 local function GetGame(placeId)
     if type(Games) ~= "table" then
