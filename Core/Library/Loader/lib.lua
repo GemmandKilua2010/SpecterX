@@ -1,10 +1,11 @@
+local BASE_URL = "https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/"
 local function LoadRequire(url, retries)
     retries = retries or 3
     local lastError
 
     for attempt = 1, retries do
         local ok, result = pcall(function()
-            local source = game:HttpGet(url)
+            local source = game:HttpGet(BASE_URL .. url)
             local chunk, compileError = loadstring(source)
 
             if not chunk then
@@ -26,13 +27,13 @@ local function LoadRequire(url, retries)
     return nil
 end
 
-local libraly = LoadRequire("https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/Core/Library/library.lua")
+local libraly = LoadRequire("Core/Library/library.lua")
 if libraly.Window then
     libraly.Window:Destroy()
 end
 
-local loader = LoadRequire("https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/Core/Library/Loader/Main/loading.lua")
-local paste = LoadRequire("https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/Core/Library/Loader/Main/paste.lua")
+local loader = LoadRequire("Core/Library/Loader/Main/loading.lua")
+local paste = LoadRequire("Core/Library/Loader/Main/paste.lua")
 
 loader:Run()
 
