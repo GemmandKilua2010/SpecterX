@@ -2138,7 +2138,7 @@ function redzlib:MakeWindow(Configs)
 		end
 		function Tab:AddParagraph(Configs)
 			local PName = Configs[1] or Configs.Title or "Paragraph"
-			local PDesc = Configs[2] or Configs.Text or ""
+			local PDesc = Configs[2] or Configs.Text or Configs.Desc or Configs.Description or ""
 			
 			local Frame, LabelFunc = ButtonFrame(Container, PName, PDesc, UDim2.new(1, -20))
 			
