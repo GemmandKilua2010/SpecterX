@@ -34,12 +34,6 @@ if Window then
 end
 
 local loader = LoadRequire("Core/Library/Loader/Main/loading.lua")
-local paste = LoadRequire("Core/Library/Loader/Main/paste.lua")
-
 loader:Run()
-
-repeat
-    task.wait()
-until not game:GetService("CoreGui"):FindFirstChild("SpecterXLoading")
 
 return libraly
