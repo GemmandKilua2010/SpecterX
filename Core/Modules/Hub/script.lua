@@ -48,16 +48,16 @@ end
 
 local function BuildLookup(tbl)
     local lookup = {}
+    if type(tbl) ~= "table" then
+        return lookup
+    end
 
-    if type(tbl) == "table" then
-        for key, value in pairs(tbl) do
-            lookup[tostring(key):lower()] = value
-        end
+    for key, value in pairs(tbl) do
+        lookup[tostring(key):lower()] = value
     end
 
     return lookup
 end
-
 
 local Configs = BuildLookup(LoadRequire("Core/config.lua"))
 local function ParseConfig(value)
@@ -70,10 +70,16 @@ local function ParseConfig(value)
     for key, value in pairs(value) do
         if type(value) == "table" then
             result[key] = ParseConfig(value)
-        elseif type(value) == "number" and tostring(key):lower():find("image")
-            or type(value) == "number" and tostring(key):lower():find("logo")
-            or type(value) == "number" and tostring(key):lower():find("icon") then
-            result[key] = "rbxassetid://" .. tostring(value)
+        elseif type(value) == "number" then
+            local keyName = tostring(key):lower()
+
+            if keyName:find("image", 1, true)
+                or keyName:find("logo", 1, true)
+                or keyName:find("icon", 1, true) then
+                result[key] = "rbxassetid://" .. tostring(value)
+            else
+                result[key] = value
+            end
         else
             result[key] = value
         end
@@ -89,14 +95,14 @@ function Main:GetConfig(name)
     local value = Configs[key]
 
     if value == nil then
-        value = DEFAULTS[name]
+        value = DEFAULTS[key] or DEFAULTS[name]
     end
 
     return ParseConfig(value)
 end
 
 function Main:LoadRequire(url, retries)
-    LoadRequire(url, retries)
+    return LoadRequire(url, retries)
 end
 
 return Main
