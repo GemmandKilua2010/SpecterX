@@ -81,15 +81,37 @@ local function GetGame(placeId)
     return Games[placeId] or Games[tostring(placeId)] or "Universal"
 end
 
+local function ParseConfig(value)
+    if type(value) ~= "table" then
+        return value
+    end
+
+    local result = {}
+
+    for key, value in pairs(value) do
+        if type(value) == "table" then
+            result[key] = ParseConfig(value)
+        elseif type(value) == "number" and tostring(key):lower():find("image")
+            or type(value) == "number" and tostring(key):lower():find("logo")
+            or type(value) == "number" and tostring(key):lower():find("icon") then
+            result[key] = "rbxassetid://" .. tostring(value)
+        else
+            result[key] = value
+        end
+    end
+
+    return result
+end
+
 local function GetConfig(name)
     local key = tostring(name):lower()
     local value = Configs[key]
 
-    if value ~= nil then
-        return value
+    if value == nil then
+        value = DEFAULTS[name]
     end
 
-    return DEFAULTS[name]
+    return ParseConfig(value)
 end
 
 -- =================================================
