@@ -2,7 +2,20 @@ local BASE_URL = "https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/re
 local DEFAULTS = {
     Title = "SpecterX",
     SubTitle = "By Specter",
-    Icon = 94800455817009,
+
+    Icon = {
+        Image = 94800455817009,
+        Transparency = 0,
+        Corner = 5
+    },
+
+    DiscordInvite = {
+        Name = "SpecterX",
+        Desc = "Entre no nosso Discord e acompanhe todas as atualizações do SpecterX.",
+        Logo = 94800455817009,
+        Invite = "Em Breve!",
+        RPC = false
+    }
 }
 
 -- =================================================
@@ -69,54 +82,18 @@ local function GetGame(placeId)
 end
 
 local function GetConfig(name)
-    local value = Configs[tostring(name):lower()]
-    if value == nil then
-        return DEFAULTS[name]
-    end 
+    local key = tostring(name):lower()
+    local value = Configs[key]
 
-    return value
+    if value ~= nil then
+        return value
+    end
+
+    return DEFAULTS[name]
 end
 
 -- =================================================
 -- BUILD
--- =================================================
-
-local IconFormat = {
-    NUMBER = "number",
-    RBX = "rbx",
-}
-
-local function ParseIcon(icon, returnType)
-    returnType = returnType or IconFormat.NUMBER
-
-    if icon == nil then
-        return nil
-    end
-
-    local id
-    if type(icon) == "number" then
-        id = icon
-    else
-        local str = tostring(icon)
-        id = tonumber(str) or tonumber(str:match("%d+"))
-    end
-
-    if not id then
-        return nil
-    end
-
-    if returnType == IconFormat.RBX then
-        return "rbxassetid://" .. tostring(id)
-    elseif returnType == IconFormat.NUMBER then
-        return id
-    end
-
-    warn(("[ParseIcon] returnType desconhecido: %s"):format(tostring(returnType)))
-    return id
-end
-
--- =================================================
--- BASE
 -- =================================================
 
 local lib = LoadRequire("Core/Library/library.lua")
@@ -124,32 +101,18 @@ if type(lib) ~= "table" then
     error("[SpecterX] Falha crítica: não foi possível carregar a Library. Abortando.", 0)
 end
 
-local Image = ParseIcon(GetConfig("Icon"), "rbx")
 local Base = {
     Library = lib,
-    
+
     Title = ("%s | %s"):format(tostring(GetConfig("Title")), tostring(GetGame(game.PlaceId))),
     SubTitle = tostring(GetConfig("SubTitle")),
-    
-    Icon = {
-        Image = Image,
-        Transparency = 0,
-        Corner = 5
-    },
 
-    DiscordInvite = {
-        Name = tostring(GetConfig("Title")),
-        Desc = "Entre no nosso Discord e acompanhe todas as atualizações do SpecterX.",
-        
-        Logo = Image,
-        Invite = "Em Breve!",
-
-        RPC = false
-    }
+    Icon = GetConfig("Icon"),
+    DiscordInvite = GetConfig("DiscordInvite")
 }
 
 setmetatable(Base, {
-    __index = lib,
+    __index = lib
 })
 
 return Base
