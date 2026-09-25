@@ -133,8 +133,19 @@ local Base = {
     DiscordInvite = GetConfig("DiscordInvite")
 }
 
+-- =================================================
+-- ADDONS
+-- =================================================
+
+function Base:GetConfig(name)
+    return GetConfig(name)
+end
+
+-- =================================================
+-- RETURN
+-- =================================================
+
 setmetatable(Base, {
     __index = lib
 })
-
 return Base
