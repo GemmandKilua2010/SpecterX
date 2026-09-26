@@ -33,8 +33,6 @@ if Window then
     Window:Destroy()
 end
 
-LoadRequire("Core/Library/Loader/storage.lua")
-
 local loader = LoadRequire("Core/Modules/Hub/loading.lua")
 loader:Run()
 
