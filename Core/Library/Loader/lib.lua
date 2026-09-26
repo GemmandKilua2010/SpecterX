@@ -23,7 +23,7 @@ local function LoadRequire(url, retries)
         task.wait(0.5 * attempt)
     end
 
-    warn(("[SpecterX] Falha ao carregar %s: %s"):format(url, tostring(lastError)))
+    warn(("Falha ao carregar %s: %s"):format(url, tostring(lastError)))
     return nil
 end
 
@@ -33,7 +33,7 @@ if Window then
     Window:Destroy()
 end
 
-local loader = LoadRequire("Core/Library/Loader/Main/loading.lua")
+local loader = LoadRequire("Core/Modules/Hub/loading.lua")
 loader:Run()
 
 return libraly
