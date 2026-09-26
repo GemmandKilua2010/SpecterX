@@ -1,78 +1,19 @@
 local BASE_URL = "https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/"
-local DEFAULTS = {
-    Title = "SpecterX",
-    SubTitle = "By Specter",
-
-    Icon = {
-        Image = 94800455817009,
-        Transparency = 0,
-        Corner = 5
-    },
-
-    DiscordInvite = {
-        Name = "SpecterX",
-        Desc = "Entre no nosso Discord e acompanhe todas as atualizações do SpecterX.",
-        Logo = 94800455817009,
-        Invite = "Em Breve!",
-        RPC = false
-    }
-}
-
--- =================================================
--- LOADER
--- =================================================
-
-local function LoadRequire(url, retries)
-    retries = retries or 3
-    local lastError
-
-    for attempt = 1, retries do
-        local ok, result = pcall(function()
-            local source = game:HttpGet(BASE_URL .. url)
-            local chunk, compileError = loadstring(source)
-
-            if not chunk then
-                error(compileError, 0)
-            end
-
-            return chunk()
-        end)
-
-        if ok then
-            return result
-        end
-
-        lastError = result
-        task.wait(0.5 * attempt)
-    end
-
-    warn(("[SpecterX] Falha ao carregar %s: %s"):format(url, tostring(lastError)))
-    return nil
-end
-
--- =================================================
--- HELPERS
--- =================================================
-
-local function BuildLookup(tbl)
-    local lookup = {}
-
-    if type(tbl) == "table" then
-        for key, value in pairs(tbl) do
-            lookup[tostring(key):lower()] = value
-        end
-    end
-
-    return lookup
-end
+local Hub = loadstring(game:HttpGet(BASE_URL .. "Core/Modules/Hub/script.lua"))()
 
 -- =================================================
 -- REQUIRE
 -- =================================================
 
-local Games = LoadRequire("Games/games.lua")
-local Configs = BuildLookup(LoadRequire("Core/config.lua"))
+local function LoadRequire(url, retries)
+    return Hub:LoadRequire(url, retries)
+end
 
+local function GetConfig(name)
+    return Hub:GetConfig(name)
+end
+
+local Games = LoadRequire("Games/games.lua")
 local function GetGame(placeId)
     if type(Games) ~= "table" then
         return "Universal"
@@ -81,46 +22,13 @@ local function GetGame(placeId)
     return Games[placeId] or Games[tostring(placeId)] or "Universal"
 end
 
-local function ParseConfig(value)
-    if type(value) ~= "table" then
-        return value
-    end
-
-    local result = {}
-
-    for key, value in pairs(value) do
-        if type(value) == "table" then
-            result[key] = ParseConfig(value)
-        elseif type(value) == "number" and tostring(key):lower():find("image")
-            or type(value) == "number" and tostring(key):lower():find("logo")
-            or type(value) == "number" and tostring(key):lower():find("icon") then
-            result[key] = "rbxassetid://" .. tostring(value)
-        else
-            result[key] = value
-        end
-    end
-
-    return result
-end
-
-local function GetConfig(name)
-    local key = tostring(name):lower()
-    local value = Configs[key]
-
-    if value == nil then
-        value = DEFAULTS[name]
-    end
-
-    return ParseConfig(value)
-end
-
 -- =================================================
 -- BUILD
 -- =================================================
 
 local lib = LoadRequire("Core/Library/library.lua")
 if type(lib) ~= "table" then
-    error("[SpecterX] Falha crítica: não foi possível carregar a Library. Abortando.", 0)
+    error("Falha crítica: não foi possível carregar a Library. Abortando.",0)
 end
 
 local Base = {
@@ -139,6 +47,10 @@ local Base = {
 
 function Base:GetConfig(name)
     return GetConfig(name)
+end
+
+function Base:LoadRequire(url, retries)
+    return LoadRequire(url, retries)
 end
 
 -- =================================================
