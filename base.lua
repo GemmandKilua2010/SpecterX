@@ -59,6 +59,19 @@ function Base:LoadRequire(url, retries)
     return LoadRequire(url, retries)
 end
 
+local RNG = Random.new()
+local Characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+local CharCount = #Characters
+
+function Base:GenerateName(Length)
+    local Parts = table.create(Length)
+    for i = 1, Length do
+        local Position = RNG:NextInteger(1, CharCount)
+        Parts[i] = Characters:sub(Position, Position)
+    end
+    return table.concat(Parts)
+end
+
 -- =================================================
 -- RETURN
 -- =================================================
