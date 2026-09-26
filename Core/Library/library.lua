@@ -1703,7 +1703,13 @@ function redzlib:MakeWindow(Configs)
 	function Window:IsMinimize()
 		return Minimized
 	end
-
+	
+	function Window:OnOpenChanged(Callback)
+	    return MainFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+	        Callback(MainFrame.Visible)
+	    end)
+	end
+	
 	function Window:CloseBtn()
 		local Dialog = Window:Dialog({
 			Title = "Fechar",
