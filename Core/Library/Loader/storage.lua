@@ -1,17 +1,26 @@
 local HttpService = game:GetService("HttpService")
-local Root = "SpecterX"
 
--- ================================================= 
--- FUNÇÕES
--- ================================================= 
+local BASE_URL = "https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/"
+local Hub = loadstring(game:HttpGet(BASE_URL .. "Core/Modules/Hub/script.lua"))()
 
-local function EnsureFileSystemSupport()
-    local required = {"isfolder", "makefolder", "isfile", "writefile", "readfile"}
-    for _, fn in ipairs(required) do
-        if not (getgenv and getgenv()[fn] or _G[fn] or rawget(_G, fn)) and not (type(_G[fn]) == "function") then
-        end
+local Root = Hub:GetConfig("Title")
+
+-- =================================================
+-- REQUIRE
+-- =================================================
+
+local Games = Hub:LoadRequire("Games/games.lua")
+local function GetGame(placeId)
+    if type(Games) ~= "table" then
+        return "Universal"
     end
+
+    return Games[placeId] or Games[tostring(placeId)] or "Universal"
 end
+
+-- =================================================
+-- FUNÇÕES
+-- =================================================
 
 local function Path(...)
     return Root .. "/" .. table.concat({...}, "/")
@@ -22,6 +31,7 @@ local function CreateFolder(...)
     if not isfolder(Folder) then
         makefolder(Folder)
     end
+
     return Folder
 end
 
@@ -30,6 +40,7 @@ local function CreateFile(Content, ...)
     if not isfile(File) then
         writefile(File, Content or "")
     end
+
     return File
 end
 
@@ -56,9 +67,8 @@ end
 local function LoadConfig(defaultConfig, ...)
     local File = Path(...)
     if isfile(File) then
-        local content = readfile(File)
-        local ok, decoded = pcall(Decode, content)
-        if ok and type(decoded) == "table" then
+        local decoded = Decode(readfile(File))
+        if type(decoded) == "table" then
             return decoded
         end
     end
@@ -72,15 +82,18 @@ local function SaveConfig(config, ...)
     writefile(File, Encode(config))
 end
 
--- ================================================= 
+-- =================================================
+-- GAME
+-- =================================================
+
+local GameName = GetGame(game.PlaceId)
+
+-- =================================================
 -- FOLDERS
--- ================================================= 
+-- =================================================
 
 CreateFolder("Library")
-CreateFolder("Games")
-
--- ================================================= 
--- SUB FOLDERS
--- ================================================= 
-
 CreateFolder("Library", "Assets")
+
+CreateFolder("Games")
+CreateFolder("Games", GameName)
