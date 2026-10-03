@@ -60,7 +60,6 @@ local function AddDictionary(Loaded)
 end
 
 AddDictionary(Fetch("Core/translation.lua"))
-
 if Game then
     AddDictionary(Fetch("Games/" .. Game .. "/translation.lua", 2))
 end

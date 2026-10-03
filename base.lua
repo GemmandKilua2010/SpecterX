@@ -26,7 +26,9 @@ if type(Games) ~= "table" then
     Games = {}
 end
 
-local UseLoader = ... ~= false
+local UseLoader = ...
+UseLoader = UseLoader == nil and Config("LoadingScreen") or UseLoader
+
 if UseLoader then
     local Loader = Load("Core/Modules/Loader/script.lua")
     if type(Loader) == "table" and type(Loader.Run) == "function" then
