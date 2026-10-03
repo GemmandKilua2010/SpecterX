@@ -1,71 +1,56 @@
+--// Services
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TextService = game:GetService("TextService")
+
+--// Context
+local Context = ...
+Context = type(Context) == "table" and Context or {}
+local Hub = Context.Hub
+local Environment = Context.Environment or (not Hub and Context)
+local Title = type(Hub) == "table" and type(Hub.GetTitle) == "function" and Hub:GetTitle() or "Script"
+local RuntimeName = tostring(Title) .. "_Notifications"
+
+local function T(Key, Params)
+    if type(Hub) == "table" and type(Hub.Translate) == "function" then
+        return Hub:Translate(Key, nil, Params)
+    end
+    return tostring(Key)
+end
+
+local function ConsoleWarn(Key, Params)
+    if type(Hub) == "table" and type(Hub.Warn) == "function" then
+        return Hub:Warn(Key, Params)
+    end
+    warn(("[%s] %s"):format(tostring(Title), T(Key, Params)))
+end
+
+local function ConsoleError(Key, Params, Level)
+    if type(Hub) == "table" and type(Hub.Error) == "function" then
+        return Hub:Error(Key, Params, Level)
+    end
+    error(("[%s] %s"):format(tostring(Title), T(Key, Params)), tonumber(Level) or 2)
+end
+
+
+--// Notification
 local Notify = {}
 local Controller = {}
 Controller.__index = Controller
-local Config = {
-    Width = 320,
-    MinWidth = 220,
-    MaxGrowWidth = 460,
-    AutoGrow = true,
-    GrowMaxLines = 3,
-    MaxTitleLength = 120,
-    MaxTextLength = 500,
-    Padding = 14,
-    Gap = 6,
-    IconSize = 32,
-    TitleSize = 15,
-    TextSize = 13,
-    ProgressHeight = 3,
-    DefaultTitle = "Title",
-    DefaultDescription = "Description",
-    Duration = 3,
-    MaxNotification = 5,
-    QueueLimit = 40,
-    QueueOverflow = "DropOldest",
-    NewestOnTop = true,
-    PreventDuplicates = false,
-    Priority = 0,
-    DisplayTime = true,
-    CloseBtn = true,
-    PauseOnHover = false,
-    Clickable = false,
-    Shadow = true,
-    RichText = false,
-    Theme = "Dark",
-    Position = "BottomRight",
-    Margin = Vector2.new(14, 36),
-    Animation = "SlideFade",
-    AnimationTime = 0.3,
-    CloseAnimationTime = 0.22,
-    CornerRadius = UDim.new(0, 10),
-    CloseIcon = "rbxassetid://10747384394",
-    CloseIconSize = 14,
-    TitleFont = Enum.Font.GothamBold,
-    TextFont = Enum.Font.Gotham,
-    DisplayOrder = 1000,
-    Responsive = true,
-    CompactBreakpoint = 640,
-    MobileMargin = Vector2.new(10, 10),
-    MobileCenter = true,
-    TouchCloseSize = 32,
-    TypeColors = {
-        Info = Color3.fromRGB(88, 160, 255),
-        Success = Color3.fromRGB(66, 211, 135),
-        Warning = Color3.fromRGB(255, 187, 66),
-        Error = Color3.fromRGB(255, 95, 109),
-    },
-    TypeGlyphs = {},
-    TypeIcons = {
-        Info = "rbxassetid://10723415903",
-        Success = "rbxassetid://10709790298",
-        Warning = "rbxassetid://10709753149",
-        Error = "rbxassetid://10747383819",
-    },
-}
+local Config = type(Hub) == "table" and type(Hub.GetConfig) == "function" and Hub:GetConfig("Notification") or nil
+if type(Config) ~= "table" then
+    return ConsoleError("Console.NotificationConfigMissing", nil, 0)
+end
+
+Config.DefaultTitle = T(Config.DefaultTitle or "Title")
+Config.DefaultDescription = T(Config.DefaultDescription or "Description")
+
+local ThemeConfig = type(Config.Themes) == "table" and Config.Themes or {}
+Config.Themes = nil
+
+--// Config Aliases
 local configAliases = {
     defaultduration = "duration",
     animationstyle = "animation",
@@ -80,6 +65,7 @@ local configKeys = {}
 for key in pairs(Config) do
     configKeys[key:lower()] = key
 end
+--// Helpers
 local function new(class, parent, props)
     local obj = Instance.new(class)
     for k, v in pairs(props) do obj[k] = v end
@@ -105,7 +91,7 @@ end
 local function safe(fn, ...)
     if type(fn) ~= "function" then return end
     local ok, err = pcall(fn, ...)
-    if not ok then warn("[NotificationSystem]", err) end
+    if not ok then ConsoleWarn("Console.NotificationCallbackFailed", {Error = err}) end
 end
 local function remove(list, value)
     local i = table.find(list, value)
@@ -177,6 +163,7 @@ local function themeKey(key)
     key = tostring(key):lower()
     return themeKeys[key] or themeAliases[key]
 end
+--// Themes
 local function normalizeTheme(value)
     local result = {}
     for k, v in pairs(value) do
@@ -199,14 +186,30 @@ local function makeTheme(background, stroke, title, text, accent)
         CloseButtonHover = title,
     }
 end
-local Themes = {
-    Dark = makeTheme(Color3.fromRGB(24, 24, 29), Color3.fromRGB(72, 72, 84), Color3.fromRGB(255, 255, 255), Color3.fromRGB(176, 176, 190), Color3.fromRGB(122, 122, 255)),
-    Light = makeTheme(Color3.fromRGB(247, 247, 250), Color3.fromRGB(205, 205, 216), Color3.fromRGB(24, 24, 30), Color3.fromRGB(88, 88, 100), Color3.fromRGB(82, 92, 255)),
-    Blue = makeTheme(Color3.fromRGB(20, 28, 42), Color3.fromRGB(55, 86, 130), Color3.fromRGB(240, 247, 255), Color3.fromRGB(170, 192, 220), Color3.fromRGB(68, 149, 255)),
-    Purple = makeTheme(Color3.fromRGB(30, 23, 41), Color3.fromRGB(91, 61, 118), Color3.fromRGB(252, 244, 255), Color3.fromRGB(196, 176, 210), Color3.fromRGB(173, 103, 255)),
-    Red = makeTheme(Color3.fromRGB(40, 24, 27), Color3.fromRGB(122, 59, 67), Color3.fromRGB(255, 244, 245), Color3.fromRGB(214, 180, 185), Color3.fromRGB(255, 91, 106)),
-    Green = makeTheme(Color3.fromRGB(21, 36, 30), Color3.fromRGB(56, 107, 82), Color3.fromRGB(241, 255, 248), Color3.fromRGB(176, 212, 194), Color3.fromRGB(69, 211, 139)),
-}
+local Themes = {}
+
+for Name, Value in pairs(ThemeConfig) do
+    if type(Name) == "string" and type(Value) == "table" then
+        Themes[Name] = makeTheme(
+            Value.Background,
+            Value.Stroke,
+            Value.Title,
+            Value.Text,
+            Value.Accent
+        )
+    end
+end
+
+if not next(Themes) then
+    Themes.Dark = makeTheme(
+        Color3.fromRGB(24, 24, 29),
+        Color3.fromRGB(72, 72, 84),
+        Color3.fromRGB(255, 255, 255),
+        Color3.fromRGB(176, 176, 190),
+        Color3.fromRGB(122, 122, 255)
+    )
+end
+
 local function themeName(value)
     if type(value) ~= "string" then return nil end
     if Themes[value] then return value end
@@ -215,24 +218,26 @@ local function themeName(value)
         if name:lower() == lower then return name end
     end
 end
+
+local DefaultThemeName = themeName(Config.Theme) or next(Themes)
+Config.Theme = DefaultThemeName
+
 local function buildTheme(input, defaultBase)
     local lowered = indexOf(input)
-    local baseName = themeName(lowered.base) or themeName(defaultBase) or "Dark"
+    local baseName = themeName(lowered.base) or themeName(defaultBase) or DefaultThemeName
     local normalized = normalizeTheme(input)
     if normalized.Accent and not normalized.Progress then
         normalized.Progress = normalized.Accent
     end
-    return merge(Themes[baseName], normalized)
+    return merge(Themes[baseName] or {}, normalized)
 end
+
 local function currentTheme(s)
-    return s.ThemeData or Themes[s.ThemeName or Config.Theme] or Themes.Dark
+    return s.ThemeData or Themes[s.ThemeName or Config.Theme] or Themes[DefaultThemeName]
 end
-local env = type(getgenv) == "function" and getgenv() or _G
-local runtime = env.__NotificationSystemRuntime
-if type(runtime) ~= "table" then
-    runtime = {Active = {}, Queue = {}, Sequence = 0}
-    env.__NotificationSystemRuntime = runtime
-end
+local runtime = type(Hub) == "table" and type(Hub.GetRuntime) == "function"
+    and Hub:GetRuntime("Notification")
+    or {Active = {}, Queue = {}, Sequence = 0}
 runtime.Active = runtime.Active or {}
 runtime.Queue = runtime.Queue or {}
 runtime.Sequence = tonumber(runtime.Sequence) or 0
@@ -280,6 +285,7 @@ local function normalize(...)
         Icon = select(offset + 4, ...),
     }
 end
+--// Layout
 local function viewportSize()
     local camera = workspace.CurrentCamera
     return camera and camera.ViewportSize or Vector2.new(1280, 720)
@@ -379,15 +385,20 @@ local function animFlags()
     return slide, fade, scale, style ~= "none"
 end
 local function parentForGui()
-    if type(gethui) == "function" then
-        local ok, parent = pcall(gethui)
-        if ok and typeof(parent) == "Instance" then return parent end
+    if type(Environment) == "table" and type(Environment.GetUIParent) == "function" then
+        local ok, parent = pcall(Environment.GetUIParent, Environment)
+        if ok and typeof(parent) == "Instance" then
+            return parent
+        end
     end
+
+
     local ok = pcall(function()
         local test = Instance.new("Folder")
         test.Parent = CoreGui
         test:Destroy()
     end)
+
     return ok and CoreGui or playerGui
 end
 local function updateContainer()
@@ -447,7 +458,7 @@ local function getContainer()
     if not parent then return false end
     local primaryGui, primaryContainer, primaryLayout
     for _, child in ipairs(parent:GetChildren()) do
-        if child:IsA("ScreenGui") and child.Name == "NotificationSystemGui" then
+        if child:IsA("ScreenGui") and child.Name == RuntimeName then
             local childContainer = child:FindFirstChild("Container")
             local childLayout = childContainer and childContainer:FindFirstChildOfClass("UIListLayout")
             if childContainer and childLayout then
@@ -468,7 +479,7 @@ local function getContainer()
         gui, container, layout = primaryGui, primaryContainer, primaryLayout
     else
         gui = new("ScreenGui", parent, {
-            Name = "NotificationSystemGui",
+            Name = RuntimeName,
             ResetOnSpawn = false,
             IgnoreGuiInset = true,
             DisplayOrder = Config.DisplayOrder,
@@ -1109,9 +1120,14 @@ Notify.Info = typed("Info")
 Notify.Success = typed("Success")
 Notify.Warning = typed("Warning")
 Notify.Error = typed("Error")
+--// API
 function Notify:RegisterTheme(name, value)
-    assert(type(name) == "string" and name ~= "", "Theme name inválido")
-    assert(type(value) == "table", "Theme deve ser uma tabela")
+    if type(name) ~= "string" or name == "" then
+        ConsoleError("Console.InvalidThemeName", nil, 2)
+    end
+    if type(value) ~= "table" then
+        ConsoleError("Console.InvalidThemeValue", nil, 2)
+    end
     Themes[name] = buildTheme(value, "Dark")
     for _, c in ipairs(active) do
         if c._state.ThemeName == name or (not c._state.ThemeName and not c._state.ThemeData and Config.Theme == name) then

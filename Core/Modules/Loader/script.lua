@@ -1,55 +1,66 @@
+--// Services
 local TweenService = game:GetService("TweenService")
-local Lighting     = game:GetService("Lighting")
-local CoreGui      = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
+local CoreGui = game:GetService("CoreGui")
 
-local Hub = loadstring(game:HttpGet("https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/Core/Modules/Hub/script.lua"))()
-local Genv = Hub:GetGenv()
+--// Context
+local Context = ...
+Context = type(Context) == "table" and Context or {}
+
+local Hub = Context.Hub
+if type(Hub) ~= "table" then
+    return nil
+end
+
+--// Config
+local Environment = Hub:GetEnvironment()
+local UIParent = Environment:GetUIParent() or CoreGui
+local Runtime = Hub:GetRuntime("Loader")
+local Title = Hub:GetConfig("Title")
+local SubTitle = Hub:GetConfig("SubTitle")
+local LoaderConfig = Hub:GetConfig("Loader") or {}
+local Theme = type(LoaderConfig.Theme) == "table" and LoaderConfig.Theme or {}
+
+local function T(Key, Params)
+    return Hub:Translate(Key, nil, Params)
+end
 
 local function GenerateName(...)
     return Hub:GenerateName(...)
 end
 
-Genv.Loading = Genv.Loading or {
-    Name = GenerateName(12),
-}
-
-local Title    = Hub:GetConfig("Title")
-local SubTitle = Hub:GetConfig("SubTitle")
-
-local DEFAULT_STEPS = {
-    {("Connecting to %s..."):format(Title), 15},
-    {"Loading modules...", 30},
-    {"Initializing components...", 50},
-    {"Preparing interface...", 70},
-    {"Optimizing system...", 85},
-    {"Finalizing...", 100},
-}
+Runtime.Name = Runtime.Name or (tostring(Title) .. "_Loader_" .. GenerateName(6))
 
 local DEFAULTS = {
-    Time          = 4.3,
-    Steps         = DEFAULT_STEPS,
-    Music         = "rbxassetid://0",
-    MusicVolume   = 0.5,
-    MusicLooped   = true,
-    Blur          = true,
-    BlurSize      = 18,
-    BlurInTime    = 0.35,
-    BlurFadeTime  = 0.45,
-    MusicFadeTime = 1.2,
-    GuiFadeTime   = 0.45,
-    Title         = Title,
-    Subtitle      = SubTitle,
+    Time = LoaderConfig.Time or 4.3,
+    Steps = LoaderConfig.Steps or {},
+    Music = LoaderConfig.Music or "rbxassetid://0",
+    MusicVolume = LoaderConfig.MusicVolume or 0.5,
+    MusicLooped = LoaderConfig.MusicLooped ~= false,
+    Blur = LoaderConfig.Blur ~= false,
+    BlurSize = LoaderConfig.BlurSize or 18,
+    BlurInTime = LoaderConfig.BlurInTime or 0.35,
+    BlurFadeTime = LoaderConfig.BlurFadeTime or 0.45,
+    MusicFadeTime = LoaderConfig.MusicFadeTime or 1.2,
+    GuiFadeTime = LoaderConfig.GuiFadeTime or 0.45,
+    ScaleMin = LoaderConfig.ScaleMin or 0.55,
+    Size = LoaderConfig.Size or Vector2.new(725, 380),
+    Title = Title,
+    Subtitle = SubTitle
 }
 
+--// Fade
 local FADE_PROPS = {
     TextLabel = "TextTransparency",
     UIStroke  = "Transparency",
     Frame     = "BackgroundTransparency",
 }
 
-local FONT_FAMILY = "rbxasset://fonts/families/GothamSSm.json"
+--// Font
+local FONT_FAMILY = LoaderConfig.FontFamily or "rbxasset://fonts/families/GothamSSm.json"
 local FontCache = {}
 
+--// Helpers
 local function New(Class, Props, Parent)
     local Obj = Instance.new(Class)
 
@@ -101,8 +112,9 @@ local function Tween(Obj, Time, Props, Style, Direction)
     return T
 end
 
+--// Cleanup
 local function Cleanup()
-    local State = Genv.Loading
+    local State = Runtime
 
     if State.Conn then
         State.Conn:Disconnect()
@@ -119,6 +131,7 @@ local function Cleanup()
     end
 end
 
+--// Loader
 local Loader = {}
 Loader.__index = Loader
 
@@ -131,8 +144,9 @@ function Loader:SaveSettings(Config)
 end
 
 function Loader:Run(RawConfig)
-    local Cfg   = Merge(RawConfig)
-    local State = Genv.Loading
+    local Cfg = Merge(RawConfig)
+    local State = Runtime
+    local ActiveTheme = type(Cfg.Theme) == "table" and Cfg.Theme or Theme
 
     Cleanup()
 
@@ -142,14 +156,14 @@ function Loader:Run(RawConfig)
         ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
         ResetOnSpawn = false,
-    }, CoreGui)
+    }, UIParent)
 
     State.Gui = ScreenGui
 
     local Blur
     if Cfg.Blur then
         Blur = New("BlurEffect", {
-            Name = GenerateName(12),
+            Name = tostring(Title) .. "_LoaderBlur_" .. GenerateName(6),
             Size = 0,
         }, Lighting)
 
@@ -158,29 +172,26 @@ function Loader:Run(RawConfig)
     end
 
     local Window = New("Frame", {
-        Name = "Window",
+        Name = tostring(Title) .. "_LoaderWindow",
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.fromScale(0.5, 0.5),
-        Size = UDim2.fromOffset(725, 380),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        BackgroundTransparency = 0.02,
+        Size = UDim2.fromOffset(Cfg.Size.X, Cfg.Size.Y),
+        BackgroundColor3 = ActiveTheme.Window or Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = LoaderConfig.WindowTransparency or 0.02,
         BorderSizePixel = 0,
         ClipsDescendants = true,
     }, ScreenGui)
 
-    New("UICorner", {CornerRadius = UDim.new(0, 28)}, Window)
+    New("UICorner", {CornerRadius = LoaderConfig.CornerRadius or UDim.new(0, 28)}, Window)
 
     New("UIGradient", {
         Rotation = 135,
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(12, 12, 12)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0)),
-        }),
+        Color = ActiveTheme.Gradient or ColorSequence.new(Color3.fromRGB(12, 12, 12), Color3.fromRGB(0, 0, 0)),
     }, Window)
 
     New("UIStroke", {
-        Transparency = 0.25,
-        Color = Color3.fromRGB(66, 66, 66),
+        Transparency = LoaderConfig.StrokeTransparency or 0.25,
+        Color = ActiveTheme.Stroke or Color3.fromRGB(66, 66, 66),
     }, Window)
 
     local UIScale = New("UIScale", {}, Window)
@@ -189,7 +200,7 @@ function Loader:Run(RawConfig)
     if Camera then
         local function UpdateScale()
             local Viewport = Camera.ViewportSize
-            UIScale.Scale = math.clamp(math.min(Viewport.X / 725, Viewport.Y / 380, 1), 0.55, 1)
+            UIScale.Scale = math.clamp(math.min(Viewport.X / Cfg.Size.X, Viewport.Y / Cfg.Size.Y, 1), Cfg.ScaleMin, 1)
         end
 
         UpdateScale()
@@ -201,8 +212,8 @@ function Loader:Run(RawConfig)
         AnchorPoint = Vector2.new(0.5, 0),
         Size = UDim2.new(0.7, 0, 0, 2),
         Position = UDim2.fromScale(0.5, 0),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        BackgroundTransparency = 0.15,
+        BackgroundColor3 = ActiveTheme.Highlight or Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = LoaderConfig.HighlightTransparency or 0.15,
         BorderSizePixel = 0,
     }, Window)
 
@@ -225,7 +236,7 @@ function Loader:Run(RawConfig)
         Text = Cfg.Title,
         TextSize = 48,
         FontFace = MakeFont(Enum.FontWeight.Bold),
-        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextColor3 = ActiveTheme.Title or Color3.fromRGB(255, 255, 255),
     }, Window)
 
     New("TextLabel", {
@@ -237,7 +248,7 @@ function Loader:Run(RawConfig)
         Text = Cfg.Subtitle,
         TextSize = 17,
         FontFace = MakeFont(Enum.FontWeight.Medium),
-        TextColor3 = Color3.fromRGB(146, 146, 146),
+        TextColor3 = ActiveTheme.Subtitle or Color3.fromRGB(146, 146, 146),
     }, Window)
 
     local Status = New("TextLabel", {
@@ -250,7 +261,7 @@ function Loader:Run(RawConfig)
         TextSize = 14,
         TextXAlignment = Enum.TextXAlignment.Left,
         FontFace = MakeFont(Enum.FontWeight.Regular),
-        TextColor3 = Color3.fromRGB(176, 176, 176),
+        TextColor3 = ActiveTheme.Status or Color3.fromRGB(176, 176, 176),
     }, Window)
 
     local Percentage = New("TextLabel", {
@@ -263,7 +274,7 @@ function Loader:Run(RawConfig)
         TextSize = 14,
         TextXAlignment = Enum.TextXAlignment.Right,
         FontFace = MakeFont(Enum.FontWeight.Bold),
-        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextColor3 = ActiveTheme.Percentage or Color3.fromRGB(255, 255, 255),
     }, Window)
 
     local ProgressBackground = New("Frame", {
@@ -271,7 +282,7 @@ function Loader:Run(RawConfig)
         AnchorPoint = Vector2.new(0.5, 0.5),
         Size = UDim2.fromOffset(550, 8),
         Position = UDim2.fromScale(0.5, 0.82),
-        BackgroundColor3 = Color3.fromRGB(36, 36, 36),
+        BackgroundColor3 = ActiveTheme.ProgressBackground or Color3.fromRGB(36, 36, 36),
         BorderSizePixel = 0,
     }, Window)
 
@@ -280,42 +291,38 @@ function Loader:Run(RawConfig)
     local Progress = New("Frame", {
         Name = "Progress",
         Size = UDim2.fromScale(0, 1),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundColor3 = ActiveTheme.Highlight or Color3.fromRGB(255, 255, 255),
         BorderSizePixel = 0,
     }, ProgressBackground)
 
     New("UICorner", {CornerRadius = UDim.new(1, 0)}, Progress)
 
     New("UIGradient", {
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(191, 191, 191)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(191, 191, 191)),
-        }),
+        Color = ActiveTheme.Progress or ColorSequence.new(Color3.fromRGB(191, 191, 191), Color3.fromRGB(255, 255, 255)),
     }, Progress)
 
     New("TextLabel", {
         Name = "Footer",
         AnchorPoint = Vector2.new(0.5, 1),
-        Size = UDim2.fromOffset(725, 20),
+        Size = UDim2.fromOffset(Cfg.Size.X, 20),
         Position = UDim2.new(0.5, 0, 1, -18),
         BackgroundTransparency = 1,
-        Text = "LOADING SYSTEM",
+        Text = LoaderConfig.Footer or T("Loader.Footer"),
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Center,
         TextYAlignment = Enum.TextYAlignment.Center,
         FontFace = MakeFont(Enum.FontWeight.Bold),
-        TextColor3 = Color3.fromRGB(81, 81, 81),
+        TextColor3 = ActiveTheme.Footer or Color3.fromRGB(81, 81, 81),
     }, Window)
 
     local Music
     if Cfg.Music and Cfg.Music ~= "" and Cfg.Music ~= "rbxassetid://0" then
         Music = New("Sound", {
-            Name = GenerateName(12),
+            Name = tostring(Title) .. "_LoaderMusic_" .. GenerateName(6),
             SoundId = Cfg.Music,
             Volume = Cfg.MusicVolume,
             Looped = Cfg.MusicLooped,
-        }, CoreGui)
+        }, UIParent)
 
         State.Music = Music
         Music:Play()
@@ -352,7 +359,6 @@ function Loader:Run(RawConfig)
                 local Alpha
 
                 repeat
-                    -- abortado: Run() foi chamado de novo e destruiu esta GUI
                     if not ScreenGui.Parent then return end
 
                     Alpha = math.min((os.clock() - Start) / StepTime, 1)
@@ -367,7 +373,7 @@ function Loader:Run(RawConfig)
         if not ScreenGui.Parent then return end
 
         UpdateLoading(100)
-        Status.Text = "Finalizing..."
+        Status.Text = T("Loader.Finalizing")
         task.wait(0.3)
 
         if Blur then
@@ -415,12 +421,6 @@ function Loader:Run(RawConfig)
 
         ScreenGui:Destroy()
     end)
-end
-
-local Config = ...
-if typeof(Config) == "table" then
-    Loader.new():Run(Config)
-    return
 end
 
 return Loader.new()

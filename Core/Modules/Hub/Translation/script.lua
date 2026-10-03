@@ -1,39 +1,31 @@
---// Game
+--// Context
+local Context = ...
+Context = type(Context) == "table" and Context or {}
 
-local BASE_URL = "https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/"
+--// Cache
 local Lower = string.lower
+local LoadRequire = Context.LoadRequire
 
+--// Require
 local function Fetch(Path, Retries)
-    Retries = Retries or 3
-
-    for Attempt = 1, Retries do
-        local Success, Body = pcall(game.HttpGet, game, BASE_URL .. Path)
-
-        if Success and type(Body) == "string" and Body ~= "" then
-            local Chunk = loadstring(Body)
-            if Chunk then
-                local Loaded, Result = pcall(Chunk)
-                if Loaded then
-                    return Result
-                end
-            end
-        end
-
-        if Attempt < Retries then
-            task.wait(0.5 * Attempt)
-        end
+    if type(LoadRequire) ~= "function" then
+        return nil
     end
 
-    return nil
+    return LoadRequire(Path, nil, Retries)
 end
 
-local Games = Fetch("Games/games.lua")
+--// Games
+local Games = Context.Games
+if type(Games) ~= "table" then
+    Games = Fetch("Games/games.lua")
+end
+
 local Game = type(Games) == "table" and (Games[game.PlaceId] or Games[game.GameId])
 
 --// Translation
-
-local Translation = {}
 local Dictionaries = {}
+local Translation = {}
 
 local function AddDictionary(Loaded)
     if type(Loaded) ~= "table" then
@@ -59,18 +51,45 @@ local function AddDictionary(Loaded)
     end
 end
 
-AddDictionary(Fetch("Core/translation.lua"))
+local function Interpolate(Text, Params)
+    if type(Text) ~= "string" or type(Params) ~= "table" then
+        return Text
+    end
+
+    return (Text:gsub("{([%w_]+)}", function(Key)
+        local Value = Params[Key]
+        if Value == nil then
+            return "{" .. Key .. "}"
+        end
+        return tostring(Value)
+    end))
+end
+
+AddDictionary(Fetch(Context.TranslationPath or "Core/translation.lua"))
 if Game then
     AddDictionary(Fetch("Games/" .. Game .. "/translation.lua", 2))
 end
 
-function Translation:Translate(Text, Language)
-    if type(Text) ~= "string" or type(Language) ~= "string" then
+function Translation:Translate(Text, Language, Params)
+    if type(Text) ~= "string" then
         return Text
     end
 
-    local Dictionary = Dictionaries[Lower(Language)]
-    return Dictionary and Dictionary[Lower(Text)] or Text
+    local LanguageKey = type(Language) == "string" and Lower(Language) or "us"
+    local Key = Lower(Text)
+    local Dictionary = Dictionaries[LanguageKey]
+    local DefaultDictionary = Dictionaries.us
+    local Result = Dictionary and Dictionary[Key]
+
+    if Result == nil and DefaultDictionary then
+        Result = DefaultDictionary[Key]
+    end
+
+    return Interpolate(Result or Text, Params)
+end
+
+function Translation:HasLanguage(Language)
+    return type(Language) == "string" and Dictionaries[Lower(Language)] ~= nil
 end
 
 return Translation
