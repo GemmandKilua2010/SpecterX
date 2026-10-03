@@ -20,7 +20,7 @@ Genv.State.Loading = true
 local Load = function(...) return Hub:LoadRequire(...) end
 local Config = function(...) return Hub:GetConfig(...) end
 
-local Notify = Load("Core/Modules/Hub/Notify/script.lua")
+local Notify = Load("Core/Modules/Hub/Notification/script.lua")
 if type(Notify) ~= "table" then
 	Notify = {}
 end
