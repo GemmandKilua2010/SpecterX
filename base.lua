@@ -86,7 +86,7 @@ function Base:Genv()
     return Genv
 end
 
-for Name, Value in Notify do
+for Name, Value in pairs(Notify) do
 	if type(Value) == "function" then
 		Base[Name] = function(...)
 			if ... == Base then
