@@ -20,6 +20,11 @@ Genv.State.Loading = true
 local Load = function(...) return Hub:LoadRequire(...) end
 local Config = function(...) return Hub:GetConfig(...) end
 
+local Notify = Load("Core/Modules/Hub/Notify/script.lua")
+if type(Notify) ~= "table" then
+	Notify = {}
+end
+
 local Games = Load("Games/games.lua")
 if type(Games) ~= "table" then
     Games = {}
@@ -79,6 +84,18 @@ end
 
 function Base:Genv()
     return Genv
+end
+
+for Name, Value in Notify do
+	if type(Value) == "function" then
+		Base[Name] = function(...)
+			if ... == Base then
+				return Value(Notify, select(2, ...))
+			end
+
+			return Value(Notify, ...)
+		end
+	end
 end
 
 --// Return
