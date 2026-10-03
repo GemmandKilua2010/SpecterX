@@ -5,7 +5,6 @@ local Hub = loadstring(game:HttpGet("https://raw.githubusercontent.com/GemmandKi
 --// Global
 
 local Genv = Hub:GetGenv()
-
 Genv.State = Genv.State or {}
 
 --// Loader

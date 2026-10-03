@@ -69,6 +69,8 @@ end
 local Configs = BuildLookup(LoadRequire("Core/config.lua"))
 local Translation = LoadRequire("Core/Modules/Hub/Translation/script.lua")
 
+local Notify = LoadRequire("Core/Modules/Hub/Notify/script.lua")
+
 local function ResolveConfig(Value, Language, Key)
     local ValueType = type(Value)
 
@@ -155,6 +157,19 @@ end
 
 function Main:Translate(Text, Language)
     return Translation:Translate(Text, Language or self:GetPlayerRegion())
+end
+
+--// Notify
+
+for Name, Value in Notify do
+	if type(Value) == "function" then
+		Main[Name] = function(...)
+			if ... == Main then
+				return Value(Notify, select(2, ...))
+			end
+			return Value(Notify, ...)
+		end
+	end
 end
 
 --// Return
