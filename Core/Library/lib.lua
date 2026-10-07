@@ -2649,6 +2649,7 @@ function Library:MakeWindow(Configs)
 	local SubTitleLabel = InsertTheme(Create("TextLabel", {
 		Size = UDim2.fromScale(0, 1),
 		AutomaticSize = "X",
+		AutoLocalize = false,
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(1, 5, 0.9),
 		Text = WMiniText,
