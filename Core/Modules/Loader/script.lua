@@ -1,62 +1,49 @@
+--// Services
+
 local TweenService = game:GetService("TweenService")
-local Lighting     = game:GetService("Lighting")
-local CoreGui      = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
+local CoreGui = game:GetService("CoreGui")
 
-local Hub = loadstring(game:HttpGet("https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/Core/Modules/Hub/script.lua"))()
-local Genv = Hub:GetGenv()
-
-local function GenerateName(...)
-    return Hub:GenerateName(...)
-end
-
-Genv.Loading = Genv.Loading or {
-    Name = GenerateName(12),
-}
-
-local Title    = Hub:GetConfig("Title")
-local SubTitle = Hub:GetConfig("SubTitle")
-
-local DEFAULT_STEPS = {
-    {("Connecting to %s..."):format(Title), 15},
-    {"Loading modules...", 30},
-    {"Initializing components...", 50},
-    {"Preparing interface...", 70},
-    {"Optimizing system...", 85},
-    {"Finalizing...", 100},
-}
-
-local DEFAULTS = {
-    Time          = 4.3,
-    Steps         = DEFAULT_STEPS,
-    Music         = "rbxassetid://0",
-    MusicVolume   = 0.5,
-    MusicLooped   = true,
-    Blur          = true,
-    BlurSize      = 18,
-    BlurInTime    = 0.35,
-    BlurFadeTime  = 0.45,
-    MusicFadeTime = 1.2,
-    GuiFadeTime   = 0.45,
-    Title         = Title,
-    Subtitle      = SubTitle,
-}
+--// Constants
 
 local FADE_PROPS = {
     TextLabel = "TextTransparency",
-    UIStroke  = "Transparency",
-    Frame     = "BackgroundTransparency",
+    UIStroke = "Transparency",
+    Frame = "BackgroundTransparency",
 }
 
 local FONT_FAMILY = "rbxasset://fonts/families/GothamSSm.json"
 local FontCache = {}
+local FallbackRNG = Random.new()
+local FallbackCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+local FallbackCharacterCount = #FallbackCharacters
+
+local function FallbackGenerateName(Length)
+    Length = math.clamp(math.floor(tonumber(Length) or 12), 1, 256)
+    local Parts = table.create(Length)
+
+    for Index = 1, Length do
+        local Position = FallbackRNG:NextInteger(1, FallbackCharacterCount)
+        Parts[Index] = FallbackCharacters:sub(Position, Position)
+    end
+
+    return table.concat(Parts)
+end
+
+local GenerateName = FallbackGenerateName
+
+--// Helpers
 
 local function New(Class, Props, Parent)
     local Obj = Instance.new(Class)
 
     for Prop, Value in next, Props do
-        Obj[Prop] = Value
+        if Prop ~= "Name" then
+            Obj[Prop] = Value
+        end
     end
 
+    Obj.Name = GenerateName(12)
     Obj.Parent = Parent
     return Obj
 end
@@ -72,52 +59,64 @@ local function MakeFont(Weight)
     return Cached
 end
 
-local function Merge(Config)
+local function Merge(Defaults, Config)
     Config = Config or {}
 
     local Final = {}
 
-    for K, V in next, DEFAULTS do
-        local Provided = Config[K]
-
-        if Provided == nil then
-            Final[K] = V
-        else
-            Final[K] = Provided
-        end
+    for Key, Value in next, Defaults do
+        local Provided = Config[Key]
+        Final[Key] = Provided == nil and Value or Provided
     end
 
     return Final
 end
 
 local function Tween(Obj, Time, Props, Style, Direction)
-    local T = TweenService:Create(
+    local Animation = TweenService:Create(
         Obj,
         TweenInfo.new(Time, Style or Enum.EasingStyle.Quad, Direction or Enum.EasingDirection.Out),
         Props
     )
 
-    T:Play()
-    return T
+    Animation:Play()
+    return Animation
 end
 
-local function Cleanup()
-    local State = Genv.Loading
+local function DestroyObject(Object)
+    if Object then
+        pcall(Object.Destroy, Object)
+    end
+end
+
+local function CleanupState(State)
+    if type(State) ~= "table" then
+        return
+    end
 
     if State.Conn then
         State.Conn:Disconnect()
         State.Conn = nil
     end
 
-    for _, Key in ipairs({"Gui", "Blur", "Music"}) do
-        local Obj = State[Key]
+    if State.CurrentCameraConnection then
+        State.CurrentCameraConnection:Disconnect()
+        State.CurrentCameraConnection = nil
+    end
 
-        if Obj then
-            Obj:Destroy()
+    for _, Key in ipairs({"Gui", "Blur", "Music"}) do
+        local Object = State[Key]
+
+        if Object then
+            DestroyObject(Object)
             State[Key] = nil
         end
     end
+
+    State.Running = false
 end
+
+--// Loader
 
 local Loader = {}
 Loader.__index = Loader
@@ -126,82 +125,270 @@ function Loader.new()
     return setmetatable({}, Loader)
 end
 
-function Loader:SaveSettings(Config)
-    self:Run(Config)
+function Loader:IsRunning()
+    return self._running == true
 end
 
-function Loader:Run(RawConfig)
-    local Cfg   = Merge(RawConfig)
+function Loader:_Complete()
+    if self._completed then
+        return
+    end
+
+    self._completed = true
+    self._running = false
+
+    local State = self._state
+    if State then
+        State.Running = false
+    end
+
+    local Done = self._done
+    self._done = nil
+
+    if Done then
+        Done:Fire()
+        task.defer(Done.Destroy, Done)
+    end
+end
+
+function Loader:_TryClose()
+    if not self._running
+        or self._closing
+        or not self._animationDone
+        or not self._finishRequested
+    then
+        return
+    end
+
+    self._closing = true
+
+    task.spawn(function()
+        local State = self._state
+        local ScreenGui = self._screenGui
+        local Window = self._window
+        local Blur = self._blur
+        local Music = self._music
+        local Cfg = self._config
+
+        if not ScreenGui or not ScreenGui.Parent then
+            self:_Complete()
+            return
+        end
+
+        if Blur and Blur.Parent then
+            Tween(Blur, Cfg.BlurFadeTime, {Size = 0}).Completed:Once(function()
+                if State and State.Blur == Blur then
+                    State.Blur = nil
+                end
+
+                DestroyObject(Blur)
+            end)
+        end
+
+        if Music and Music.Parent then
+            Tween(Music, Cfg.MusicFadeTime, {Volume = 0}).Completed:Once(function()
+                if State and State.Music == Music then
+                    State.Music = nil
+                end
+
+                Music:Stop()
+                DestroyObject(Music)
+            end)
+        end
+
+        local FadeInfo = TweenInfo.new(Cfg.GuiFadeTime)
+        local CloseTween = Tween(
+            Window,
+            Cfg.GuiFadeTime,
+            {BackgroundTransparency = 1},
+            Enum.EasingStyle.Quad,
+            Enum.EasingDirection.In
+        )
+
+        for _, Obj in ipairs(Window:GetDescendants()) do
+            local Prop = FADE_PROPS[Obj.ClassName]
+
+            if Prop then
+                TweenService:Create(Obj, FadeInfo, {[Prop] = 1}):Play()
+            end
+        end
+
+        CloseTween.Completed:Wait()
+
+        if State and State.Gui == ScreenGui then
+            if State.Conn then
+                State.Conn:Disconnect()
+                State.Conn = nil
+            end
+
+            if State.CurrentCameraConnection then
+                State.CurrentCameraConnection:Disconnect()
+                State.CurrentCameraConnection = nil
+            end
+
+            State.Gui = nil
+        end
+
+        DestroyObject(ScreenGui)
+        self:_Complete()
+    end)
+end
+
+function Loader:Run(Context, RawConfig)
+    if type(Context) ~= "table" or type(Context.Hub) ~= "table" then
+        return false, "Loader context is invalid."
+    end
+
+    if self._running then
+        self:Destroy()
+    end
+
+    local Hub = Context.Hub
+    local Genv = Context.Genv or Hub:GetGenv()
+
+    GenerateName = Context.GenerateName or function(Length)
+        return Hub:GenerateName(Length)
+    end
+
+    local Title = tostring(Context.Title or Hub:GetConfig("Title") or "Hub")
+    local SubTitle = tostring(Context.SubTitle or Hub:GetConfig("SubTitle") or "")
+    local Palette = type(Hub.GetThemeData) == "function" and Hub:GetThemeData() or nil
+    Palette = type(Palette) == "table" and Palette or {}
+
+    local DarkPalette = type(Hub.GetThemeData) == "function" and (Hub:GetThemeData("Darker") or Hub:GetThemeData("Dark")) or {}
+    local HubGradient = DarkPalette["Color Hub 1"] or ColorSequence.new(Color3.fromRGB(20, 20, 20))
+    local HubColor = DarkPalette["Color Hub 2"] or Color3.fromRGB(20, 20, 20)
+    local StrokeColor = DarkPalette["Color Stroke"] or Color3.fromRGB(66, 66, 66)
+    local AccentColor = Palette["Color Theme"] or Color3.fromRGB(255, 255, 255)
+    local TextColor = DarkPalette["Color Text"] or Color3.fromRGB(255, 255, 255)
+    local DarkTextColor = DarkPalette["Color Dark Text"] or Color3.fromRGB(146, 146, 146)
+
+    local function Translate(Text, Values)
+        local Result = type(Hub.Translate) == "function" and Hub:Translate(Text) or Text
+        if type(Values) == "table" and type(Hub.Format) == "function" then
+            Result = Hub:Format(Result, Values)
+        end
+        return Result
+    end
+
+    local Defaults = {
+        Time = 4.3,
+        Steps = {
+            {Translate("Connecting to {Title}...", {Title = Title}), 15},
+            {Translate("Loading modules..."), 30},
+            {Translate("Initializing components..."), 50},
+            {Translate("Preparing interface..."), 70},
+            {Translate("Optimizing system..."), 85},
+            {Translate("Finalizing..."), 100},
+        },
+        Music = "rbxassetid://0",
+        MusicVolume = 0.5,
+        MusicLooped = true,
+        Blur = true,
+        BlurSize = 18,
+        BlurInTime = 0.35,
+        BlurFadeTime = 0.45,
+        MusicFadeTime = 1.2,
+        GuiFadeTime = 0.45,
+        Title = Title,
+        Subtitle = SubTitle,
+    }
+
+    local Cfg = Merge(Defaults, RawConfig)
+
+    Genv.Loading = Genv.Loading or {}
     local State = Genv.Loading
 
-    Cleanup()
+    CleanupState(State)
+
+    State.Running = true
+
+    self._state = State
+    self._config = Cfg
+    self._running = true
+    self._completed = false
+    self._closing = false
+    self._animationDone = false
+    self._finishRequested = false
+    self._done = Instance.new("BindableEvent")
+    self._done.Name = GenerateName(12)
 
     local ScreenGui = New("ScreenGui", {
-        Name = State.Name,
         IgnoreGuiInset = true,
         ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
         ResetOnSpawn = false,
     }, CoreGui)
 
+    State.Name = ScreenGui.Name
     State.Gui = ScreenGui
+    self._screenGui = ScreenGui
 
     local Blur
     if Cfg.Blur then
         Blur = New("BlurEffect", {
-            Name = GenerateName(12),
             Size = 0,
         }, Lighting)
 
         State.Blur = Blur
+        self._blur = Blur
         Tween(Blur, Cfg.BlurInTime, {Size = Cfg.BlurSize})
     end
 
     local Window = New("Frame", {
-        Name = "Window",
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.fromScale(0.5, 0.5),
         Size = UDim2.fromOffset(725, 380),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundColor3 = HubColor,
         BackgroundTransparency = 0.02,
         BorderSizePixel = 0,
         ClipsDescendants = true,
     }, ScreenGui)
 
+    self._window = Window
+
     New("UICorner", {CornerRadius = UDim.new(0, 28)}, Window)
 
     New("UIGradient", {
         Rotation = 135,
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(12, 12, 12)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0)),
-        }),
+        Color = HubGradient,
     }, Window)
 
     New("UIStroke", {
         Transparency = 0.25,
-        Color = Color3.fromRGB(66, 66, 66),
+        Color = StrokeColor,
     }, Window)
 
     local UIScale = New("UIScale", {}, Window)
-    local Camera = workspace.CurrentCamera
 
-    if Camera then
-        local function UpdateScale()
-            local Viewport = Camera.ViewportSize
-            UIScale.Scale = math.clamp(math.min(Viewport.X / 725, Viewport.Y / 380, 1), 0.55, 1)
+    local function UpdateScale()
+        local Camera = workspace.CurrentCamera
+        local Viewport = Camera and Camera.ViewportSize or Vector2.new(1280, 720)
+        UIScale.Scale = math.clamp(math.min(Viewport.X / 725, Viewport.Y / 380, 1), 0.55, 1)
+    end
+
+    local function BindCamera()
+        if State.Conn then
+            State.Conn:Disconnect()
+            State.Conn = nil
+        end
+
+        local Camera = workspace.CurrentCamera
+        if Camera then
+            State.Conn = Camera:GetPropertyChangedSignal("ViewportSize"):Connect(UpdateScale)
         end
 
         UpdateScale()
-        State.Conn = Camera:GetPropertyChangedSignal("ViewportSize"):Connect(UpdateScale)
     end
 
+    State.CurrentCameraConnection = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(BindCamera)
+    BindCamera()
+
     local TopHighlight = New("Frame", {
-        Name = "TopHighlight",
         AnchorPoint = Vector2.new(0.5, 0),
         Size = UDim2.new(0.7, 0, 0, 2),
         Position = UDim2.fromScale(0.5, 0),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundColor3 = AccentColor,
         BackgroundTransparency = 0.15,
         BorderSizePixel = 0,
     }, Window)
@@ -217,7 +404,6 @@ function Loader:Run(RawConfig)
     }, TopHighlight)
 
     New("TextLabel", {
-        Name = "Title",
         AnchorPoint = Vector2.new(0.5, 0),
         Size = UDim2.fromOffset(500, 60),
         Position = UDim2.fromScale(0.49448, 0.04368),
@@ -225,11 +411,10 @@ function Loader:Run(RawConfig)
         Text = Cfg.Title,
         TextSize = 48,
         FontFace = MakeFont(Enum.FontWeight.Bold),
-        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextColor3 = TextColor,
     }, Window)
 
     New("TextLabel", {
-        Name = "Subtitle",
         AnchorPoint = Vector2.new(0.5, 0),
         Size = UDim2.fromOffset(400, 28),
         Position = UDim2.fromScale(0.49448, 0.17),
@@ -237,11 +422,10 @@ function Loader:Run(RawConfig)
         Text = Cfg.Subtitle,
         TextSize = 17,
         FontFace = MakeFont(Enum.FontWeight.Medium),
-        TextColor3 = Color3.fromRGB(146, 146, 146),
+        TextColor3 = DarkTextColor,
     }, Window)
 
     local Status = New("TextLabel", {
-        Name = "Status",
         AnchorPoint = Vector2.new(0, 0.5),
         Size = UDim2.fromOffset(350, 25),
         Position = UDim2.new(0, 88, 0.75632, 0),
@@ -250,11 +434,10 @@ function Loader:Run(RawConfig)
         TextSize = 14,
         TextXAlignment = Enum.TextXAlignment.Left,
         FontFace = MakeFont(Enum.FontWeight.Regular),
-        TextColor3 = Color3.fromRGB(176, 176, 176),
+        TextColor3 = DarkTextColor,
     }, Window)
 
     local Percentage = New("TextLabel", {
-        Name = "Percentage",
         AnchorPoint = Vector2.new(1, 0.5),
         Size = UDim2.fromOffset(50, 25),
         Position = UDim2.new(1, -88, 0.75632, 0),
@@ -263,61 +446,54 @@ function Loader:Run(RawConfig)
         TextSize = 14,
         TextXAlignment = Enum.TextXAlignment.Right,
         FontFace = MakeFont(Enum.FontWeight.Bold),
-        TextColor3 = Color3.fromRGB(255, 255, 255),
+        TextColor3 = TextColor,
     }, Window)
 
     local ProgressBackground = New("Frame", {
-        Name = "ProgressBackground",
         AnchorPoint = Vector2.new(0.5, 0.5),
         Size = UDim2.fromOffset(550, 8),
         Position = UDim2.fromScale(0.5, 0.82),
-        BackgroundColor3 = Color3.fromRGB(36, 36, 36),
+        BackgroundColor3 = StrokeColor,
         BorderSizePixel = 0,
     }, Window)
 
     New("UICorner", {CornerRadius = UDim.new(1, 0)}, ProgressBackground)
 
     local Progress = New("Frame", {
-        Name = "Progress",
         Size = UDim2.fromScale(0, 1),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundColor3 = AccentColor,
         BorderSizePixel = 0,
     }, ProgressBackground)
 
     New("UICorner", {CornerRadius = UDim.new(1, 0)}, Progress)
 
     New("UIGradient", {
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(191, 191, 191)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(191, 191, 191)),
-        }),
+        Color = ColorSequence.new(AccentColor),
     }, Progress)
 
     New("TextLabel", {
-        Name = "Footer",
         AnchorPoint = Vector2.new(0.5, 1),
         Size = UDim2.fromOffset(725, 20),
         Position = UDim2.new(0.5, 0, 1, -18),
         BackgroundTransparency = 1,
-        Text = "LOADING SYSTEM",
+        Text = Translate("LOADING SYSTEM"),
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Center,
         TextYAlignment = Enum.TextYAlignment.Center,
         FontFace = MakeFont(Enum.FontWeight.Bold),
-        TextColor3 = Color3.fromRGB(81, 81, 81),
+        TextColor3 = DarkTextColor,
     }, Window)
 
     local Music
     if Cfg.Music and Cfg.Music ~= "" and Cfg.Music ~= "rbxassetid://0" then
         Music = New("Sound", {
-            Name = GenerateName(12),
             SoundId = Cfg.Music,
             Volume = Cfg.MusicVolume,
             Looped = Cfg.MusicLooped,
         }, CoreGui)
 
         State.Music = Music
+        self._music = Music
         Music:Play()
     end
 
@@ -338,8 +514,11 @@ function Loader:Run(RawConfig)
         local Previous = 0
 
         for _, Step in ipairs(Cfg.Steps) do
-            local Message, Target = Step[1], Step[2]
+            if not self._running or not ScreenGui.Parent then
+                return
+            end
 
+            local Message, Target = Step[1], Step[2]
             Status.Text = Message
 
             local Difference = Target - Previous
@@ -352,8 +531,9 @@ function Loader:Run(RawConfig)
                 local Alpha
 
                 repeat
-                    -- abortado: Run() foi chamado de novo e destruiu esta GUI
-                    if not ScreenGui.Parent then return end
+                    if not self._running or not ScreenGui.Parent then
+                        return
+                    end
 
                     Alpha = math.min((os.clock() - Start) / StepTime, 1)
                     UpdateLoading(Previous + Difference * Alpha)
@@ -364,63 +544,51 @@ function Loader:Run(RawConfig)
             Previous = Target
         end
 
-        if not ScreenGui.Parent then return end
+        if not self._running or not ScreenGui.Parent then
+            return
+        end
 
         UpdateLoading(100)
-        Status.Text = "Finalizing..."
-        task.wait(0.3)
-
-        if Blur then
-            Tween(Blur, Cfg.BlurFadeTime, {Size = 0}).Completed:Once(function()
-                if State.Blur == Blur then
-                    State.Blur = nil
-                end
-
-                Blur:Destroy()
-            end)
-        end
-
-        if Music then
-            Tween(Music, Cfg.MusicFadeTime, {Volume = 0}).Completed:Once(function()
-                if State.Music == Music then
-                    State.Music = nil
-                end
-
-                Music:Stop()
-                Music:Destroy()
-            end)
-        end
-
-        local FadeInfo = TweenInfo.new(Cfg.GuiFadeTime)
-        local CloseTween = Tween(Window, Cfg.GuiFadeTime, {BackgroundTransparency = 1}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-
-        for _, Obj in ipairs(Window:GetDescendants()) do
-            local Prop = FADE_PROPS[Obj.ClassName]
-
-            if Prop then
-                TweenService:Create(Obj, FadeInfo, {[Prop] = 1}):Play()
-            end
-        end
-
-        CloseTween.Completed:Wait()
-
-        if State.Gui == ScreenGui then
-            if State.Conn then
-                State.Conn:Disconnect()
-                State.Conn = nil
-            end
-
-            State.Gui = nil
-        end
-
-        ScreenGui:Destroy()
+        self._animationDone = true
+        self:_TryClose()
     end)
+
+    return true
 end
 
-local Config = ...
-if typeof(Config) == "table" then
-    Loader.new():Run(Config)
-    return
+function Loader:Finish()
+    if not self._running then
+        return self
+    end
+
+    self._finishRequested = true
+    self:_TryClose()
+    return self
 end
+
+function Loader:Wait()
+    if not self._running then
+        return true
+    end
+
+    local Done = self._done
+    if Done then
+        Done.Event:Wait()
+    end
+
+    return true
+end
+
+function Loader:Destroy()
+    if not self._running and not self._state then
+        return
+    end
+
+    self._running = false
+    CleanupState(self._state)
+    self:_Complete()
+end
+
+--// Return
 
 return Loader.new()

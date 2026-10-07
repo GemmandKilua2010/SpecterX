@@ -1,8 +1,33 @@
 local TweenService = game:GetService("TweenService")
-local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local TextService = game:GetService("TextService")
+
+--// Context
+
+local Hub, RootConfig = ...
+
+--// Runtime
+
+local FallbackRNG = Random.new()
+local FallbackCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+local FallbackCharacterCount = #FallbackCharacters
+
+local function GenerateName(Length)
+    if type(Hub) == "table" and type(Hub.GenerateName) == "function" then
+        return Hub:GenerateName(Length)
+    end
+
+    Length = math.clamp(math.floor(tonumber(Length) or 12), 1, 256)
+    local Parts = table.create(Length)
+
+    for Index = 1, Length do
+        local Position = FallbackRNG:NextInteger(1, FallbackCharacterCount)
+        Parts[Index] = FallbackCharacters:sub(Position, Position)
+    end
+
+    return table.concat(Parts)
+end
 local Notify = {}
 local Controller = {}
 Controller.__index = Controller
@@ -20,7 +45,7 @@ local Config = {
     TitleSize = 15,
     TextSize = 13,
     ProgressHeight = 3,
-    DefaultTitle = "Title",
+    DefaultTitle = "Notification",
     DefaultDescription = "Description",
     Duration = 3,
     MaxNotification = 5,
@@ -35,7 +60,6 @@ local Config = {
     Clickable = false,
     Shadow = true,
     RichText = false,
-    Theme = "Dark",
     Position = "BottomRight",
     Margin = Vector2.new(14, 36),
     Animation = "SlideFade",
@@ -82,9 +106,24 @@ for key in pairs(Config) do
 end
 local function new(class, parent, props)
     local obj = Instance.new(class)
-    for k, v in pairs(props) do obj[k] = v end
+
+    for k, v in pairs(props) do
+        if k ~= "Name" then
+            obj[k] = v
+        end
+    end
+
+    obj.Name = GenerateName(12)
     obj.Parent = parent
     return obj
+end
+
+local function RandomizeTree(Root)
+    Root.Name = GenerateName(12)
+
+    for _, Descendant in ipairs(Root:GetDescendants()) do
+        Descendant.Name = GenerateName(12)
+    end
 end
 local function copy(t)
     local r = {}
@@ -105,7 +144,15 @@ end
 local function safe(fn, ...)
     if type(fn) ~= "function" then return end
     local ok, err = pcall(fn, ...)
-    if not ok then warn("[NotificationSystem]", err) end
+    if not ok then
+        if type(Hub) == "table" and type(Hub.Warn) == "function" then
+            Hub:Warn("Notification callback failed: {Error}", {
+                Error = tostring(err)
+            })
+        else
+            warn(tostring(err))
+        end
+    end
 end
 local function remove(list, value)
     local i = table.find(list, value)
@@ -154,94 +201,85 @@ local function clip(value, limit)
     end
     return value
 end
-local themeFields = {
-    "Background", "BackgroundTransparency", "Stroke", "StrokeTransparency",
-    "Title", "Text", "Accent", "Progress", "CloseButton", "CloseButtonHover",
+local Style = {
+    Background = Color3.fromRGB(24, 24, 29),
+    BackgroundTransparency = 0.02,
+    Stroke = Color3.fromRGB(72, 72, 84),
+    StrokeTransparency = 0.35,
+    Title = Color3.fromRGB(255, 255, 255),
+    Text = Color3.fromRGB(176, 176, 190),
+    Accent = Color3.fromRGB(122, 122, 255),
+    Progress = Color3.fromRGB(122, 122, 255),
+    CloseButton = Color3.fromRGB(176, 176, 190),
+    CloseButtonHover = Color3.fromRGB(255, 255, 255),
 }
-local themeKeys = {}
-for _, field in ipairs(themeFields) do
-    themeKeys[field:lower()] = field
+local function currentTheme()
+    return Style
 end
-local themeAliases = {
-    backgroundcolor = "Background",
-    backgroundtransp = "BackgroundTransparency",
-    strokecolor = "Stroke",
-    titlecolor = "Title",
-    textcolor = "Text",
-    accentcolor = "Accent",
-    progresscolor = "Progress",
-    closebuttoncolor = "CloseButton",
-    closebuttonhovercolor = "CloseButtonHover",
-}
-local function themeKey(key)
-    key = tostring(key):lower()
-    return themeKeys[key] or themeAliases[key]
-end
-local function normalizeTheme(value)
-    local result = {}
-    for k, v in pairs(value) do
-        local key = themeKey(k)
-        if key then result[key] = v end
+local function hubThemeColor(Palette)
+    local Data = Palette
+    if type(Data) ~= "table" and type(Hub) == "table" and type(Hub.GetThemeData) == "function" then
+        Data = Hub:GetThemeData()
     end
-    return result
+
+    local Color = type(Data) == "table" and Data["Color Theme"] or nil
+    return typeof(Color) == "Color3" and Color or Style.Progress
 end
-local function makeTheme(background, stroke, title, text, accent)
-    return {
-        Background = background,
-        BackgroundTransparency = 0.02,
-        Stroke = stroke,
-        StrokeTransparency = 0.35,
-        Title = title,
-        Text = text,
-        Accent = accent,
-        Progress = accent,
-        CloseButton = text,
-        CloseButtonHover = title,
-    }
+local runtime = {}
+
+if type(Hub) == "table" and type(Hub.GetGenv) == "function" then
+    local Genv = Hub:GetGenv()
+    Genv.Runtime = Genv.Runtime or {}
+    Genv.Runtime.Notification = Genv.Runtime.Notification or {}
+    runtime = Genv.Runtime.Notification
 end
-local Themes = {
-    Dark = makeTheme(Color3.fromRGB(24, 24, 29), Color3.fromRGB(72, 72, 84), Color3.fromRGB(255, 255, 255), Color3.fromRGB(176, 176, 190), Color3.fromRGB(122, 122, 255)),
-    Light = makeTheme(Color3.fromRGB(247, 247, 250), Color3.fromRGB(205, 205, 216), Color3.fromRGB(24, 24, 30), Color3.fromRGB(88, 88, 100), Color3.fromRGB(82, 92, 255)),
-    Blue = makeTheme(Color3.fromRGB(20, 28, 42), Color3.fromRGB(55, 86, 130), Color3.fromRGB(240, 247, 255), Color3.fromRGB(170, 192, 220), Color3.fromRGB(68, 149, 255)),
-    Purple = makeTheme(Color3.fromRGB(30, 23, 41), Color3.fromRGB(91, 61, 118), Color3.fromRGB(252, 244, 255), Color3.fromRGB(196, 176, 210), Color3.fromRGB(173, 103, 255)),
-    Red = makeTheme(Color3.fromRGB(40, 24, 27), Color3.fromRGB(122, 59, 67), Color3.fromRGB(255, 244, 245), Color3.fromRGB(214, 180, 185), Color3.fromRGB(255, 91, 106)),
-    Green = makeTheme(Color3.fromRGB(21, 36, 30), Color3.fromRGB(56, 107, 82), Color3.fromRGB(241, 255, 248), Color3.fromRGB(176, 212, 194), Color3.fromRGB(69, 211, 139)),
-}
-local function themeName(value)
-    if type(value) ~= "string" then return nil end
-    if Themes[value] then return value end
-    local lower = value:lower()
-    for name in pairs(Themes) do
-        if name:lower() == lower then return name end
+
+if type(runtime.Owner) == "table" and type(runtime.Owner.Destroy) == "function" then
+    pcall(runtime.Owner.Destroy, runtime.Owner)
+elseif typeof(runtime.Gui) == "Instance" or runtime.InputConnection or runtime.ThemeConnection or runtime.LanguageConnection then
+    for _, List in ipairs({runtime.Active or {}, runtime.Queue or {}}) do
+        for _, ControllerObject in ipairs(List) do
+            local State = type(ControllerObject) == "table" and ControllerObject._state
+            if type(State) == "table" then
+                if State.TimerTask then pcall(task.cancel, State.TimerTask) end
+                if State.ProgressTween then pcall(State.ProgressTween.Cancel, State.ProgressTween) end
+                for _, Connection in ipairs(State.Connections or {}) do
+                    pcall(Connection.Disconnect, Connection)
+                end
+                State.Status = "Closed"
+            end
+        end
+        table.clear(List)
     end
-end
-local function buildTheme(input, defaultBase)
-    local lowered = indexOf(input)
-    local baseName = themeName(lowered.base) or themeName(defaultBase) or "Dark"
-    local normalized = normalizeTheme(input)
-    if normalized.Accent and not normalized.Progress then
-        normalized.Progress = normalized.Accent
+
+    for _, Name in ipairs({"InputConnection", "ContainerConnection", "ThemeConnection", "LanguageConnection"}) do
+        local Connection = runtime[Name]
+        if Connection then pcall(Connection.Disconnect, Connection) end
+        runtime[Name] = nil
     end
-    return merge(Themes[baseName], normalized)
+
+    if typeof(runtime.Gui) == "Instance" then
+        pcall(runtime.Gui.Destroy, runtime.Gui)
+    end
+    runtime.Gui, runtime.Container, runtime.Layout, runtime.ProcessQueue = nil, nil, nil, nil
 end
-local function currentTheme(s)
-    return s.ThemeData or Themes[s.ThemeName or Config.Theme] or Themes.Dark
-end
-local env = type(getgenv) == "function" and getgenv() or _G
-local runtime = env.__NotificationSystemRuntime
-if type(runtime) ~= "table" then
-    runtime = {Active = {}, Queue = {}, Sequence = 0}
-    env.__NotificationSystemRuntime = runtime
-end
+
 runtime.Active = runtime.Active or {}
 runtime.Queue = runtime.Queue or {}
 runtime.Sequence = tonumber(runtime.Sequence) or 0
+
 local active, queue = runtime.Active, runtime.Queue
-local gui, container, layout
-local cameraConnection, workspaceConnection
+local gui = typeof(runtime.Gui) == "Instance" and runtime.Gui or nil
+local container = typeof(runtime.Container) == "Instance" and runtime.Container or nil
+local layout = typeof(runtime.Layout) == "Instance" and runtime.Layout or nil
+
+if gui and gui.Parent then
+    RandomizeTree(gui)
+end
+local cameraConnection, workspaceConnection, inputConnection
+local destroyed = false
+local closing = {}
 local relayoutQueued = false
-local player = Players.LocalPlayer
-local playerGui = player and (player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui", 10))
 local processQueue, closeState, onViewportChanged
 local TITLE_KEYS = {"title", "header", "name", "heading", "titulo", "título", "label"}
 local TEXT_KEYS = {"text", "desc", "description", "content", "message", "msg", "body", "subtitle", "descricao", "descrição", "texto", "mensagem"}
@@ -252,21 +290,29 @@ local function readText(data, map)
     local desc = get(map, TEXT_KEYS)
     if title == nil then title = data[1] end
     if desc == nil then desc = data[2] end
-    if title == nil then title = Config.DefaultTitle end
-    if desc == nil then desc = Config.DefaultDescription end
+    if title == nil then
+        title = type(Hub) == "table" and type(Hub.Translate) == "function"
+            and Hub:Translate(Config.DefaultTitle)
+            or Config.DefaultTitle
+    end
+    if desc == nil then
+        desc = type(Hub) == "table" and type(Hub.Translate) == "function"
+            and Hub:Translate(Config.DefaultDescription)
+            or Config.DefaultDescription
+    end
     return clip(tostring(title), Config.MaxTitleLength), clip(tostring(desc), Config.MaxTextLength)
 end
 local function readDuration(data, map)
     local raw = get(map, DURATION_KEYS)
     local value = raw ~= nil and tonumber(raw) or nil
-    if value == nil and type(data[3]) == "number" then value = data[3] end
+    if value == nil and type(data[4]) == "number" then value = data[4] end
     if value == nil or value < 0 then value = Config.Duration end
     if value == math.huge then return 0 end
     return value
 end
 local function readIcon(data, map)
     local icon = get(map, ICON_KEYS)
-    if icon == nil then icon = data[4] end
+    if icon == nil then icon = data[3] end
     return icon
 end
 local function normalize(...)
@@ -276,8 +322,8 @@ local function normalize(...)
     return {
         Title = title,
         Text = select(offset + 2, ...),
-        Duration = select(offset + 3, ...),
-        Icon = select(offset + 4, ...),
+        Icon = select(offset + 3, ...),
+        Duration = select(offset + 4, ...),
     }
 end
 local function viewportSize()
@@ -287,7 +333,7 @@ end
 local function isCompact()
     if not Config.Responsive then return false end
     if viewportSize().X < Config.CompactBreakpoint then return true end
-    return UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+    return UserInputService.PreferredInput == Enum.PreferredInput.Touch
 end
 local function isCentered()
     return Config.MobileCenter == true and isCompact()
@@ -378,17 +424,61 @@ local function animFlags()
     local scale = style == "scale"
     return slide, fade, scale, style ~= "none"
 end
-local function parentForGui()
-    if type(gethui) == "function" then
-        local ok, parent = pcall(gethui)
-        if ok and typeof(parent) == "Instance" then return parent end
+local function resolveGuiParent()
+    local RobloxGui
+
+    local Success, Result = pcall(CoreGui.FindFirstChild, CoreGui, "RobloxGui")
+    if Success then
+        RobloxGui = Result
     end
-    local ok = pcall(function()
-        local test = Instance.new("Folder")
-        test.Parent = CoreGui
-        test:Destroy()
-    end)
-    return ok and CoreGui or playerGui
+
+    if not RobloxGui then
+        Success, Result = pcall(CoreGui.WaitForChild, CoreGui, "RobloxGui", 1)
+        if Success then
+            RobloxGui = Result
+        end
+    end
+
+    return typeof(RobloxGui) == "Instance" and RobloxGui or CoreGui
+end
+local function parentForGui()
+    local LibraryRuntime
+
+    if type(Hub) == "table" and type(Hub.GetGenv) == "function" then
+        local Success, Genv = pcall(Hub.GetGenv, Hub)
+        if Success and type(Genv) == "table" then
+            Genv.Runtime = Genv.Runtime or {}
+            Genv.Runtime.Library = Genv.Runtime.Library or {}
+            LibraryRuntime = Genv.Runtime.Library
+        end
+    end
+
+    if LibraryRuntime then
+        local Shared = LibraryRuntime.GuiContainer
+        if typeof(Shared) == "Instance" and Shared:IsA("Folder") and Shared.Parent then
+            return Shared
+        end
+
+        local LibraryGui = LibraryRuntime.Gui
+        if typeof(LibraryGui) == "Instance" and LibraryGui.Parent then
+            LibraryRuntime.GuiContainer = LibraryGui.Parent
+            return LibraryGui.Parent
+        end
+
+        local TargetParent = resolveGuiParent()
+        local Success, Result = pcall(new, "Folder", TargetParent, {Archivable = false})
+
+        if (not Success or typeof(Result) ~= "Instance") and TargetParent ~= CoreGui then
+            Success, Result = pcall(new, "Folder", CoreGui, {Archivable = false})
+        end
+
+        if Success and typeof(Result) == "Instance" then
+            LibraryRuntime.GuiContainer = Result
+            return Result
+        end
+    end
+
+    return resolveGuiParent()
 end
 local function updateContainer()
     if not (container and gui and layout) then return end
@@ -429,7 +519,7 @@ local function bindQueue()
     end
     if container then
         runtime.ContainerConnection = container.ChildRemoved:Connect(function(child)
-            if child.Name == "Notification" then
+            if child:IsA("Frame") then
                 task.defer(function()
                     local fn = runtime.ProcessQueue
                     if fn then fn() end
@@ -439,52 +529,60 @@ local function bindQueue()
     end
 end
 local function getContainer()
+    if destroyed then return false end
     if gui and gui.Parent and container and container.Parent and layout and layout.Parent then
         if not runtime.ContainerConnection then bindQueue() end
         return true
     end
+
+    if gui then
+        pcall(gui.Destroy, gui)
+    end
+
+    gui = nil
+    container = nil
+    layout = nil
+
     local parent = parentForGui()
     if not parent then return false end
-    local primaryGui, primaryContainer, primaryLayout
-    for _, child in ipairs(parent:GetChildren()) do
-        if child:IsA("ScreenGui") and child.Name == "NotificationSystemGui" then
-            local childContainer = child:FindFirstChild("Container")
-            local childLayout = childContainer and childContainer:FindFirstChildOfClass("UIListLayout")
-            if childContainer and childLayout then
-                if not primaryGui then
-                    primaryGui, primaryContainer, primaryLayout = child, childContainer, childLayout
-                else
-                    for _, item in ipairs(childContainer:GetChildren()) do
-                        if item ~= childLayout then item.Parent = primaryContainer end
-                    end
-                    child:Destroy()
-                end
-            else
-                child:Destroy()
-            end
-        end
-    end
-    if primaryGui then
-        gui, container, layout = primaryGui, primaryContainer, primaryLayout
-    else
-        gui = new("ScreenGui", parent, {
-            Name = "NotificationSystemGui",
+
+    local Success, Result = pcall(new, "ScreenGui", parent, {
+        ResetOnSpawn = false,
+        IgnoreGuiInset = true,
+        DisplayOrder = Config.DisplayOrder,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    })
+
+    if (not Success or typeof(Result) ~= "Instance") and parent ~= CoreGui then
+        Success, Result = pcall(new, "ScreenGui", CoreGui, {
             ResetOnSpawn = false,
             IgnoreGuiInset = true,
             DisplayOrder = Config.DisplayOrder,
             ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
         })
-        container = new("Frame", gui, {
-            Name = "Container",
-            BackgroundTransparency = 1,
-            BorderSizePixel = 0,
-        })
-        layout = new("UIListLayout", container, {
-            FillDirection = Enum.FillDirection.Vertical,
-            SortOrder = Enum.SortOrder.LayoutOrder,
-        })
     end
-    pcall(function() gui.ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets end)
+
+    if not Success or typeof(Result) ~= "Instance" then return false end
+    gui = Result
+
+    container = new("Frame", gui, {
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+    })
+
+    layout = new("UIListLayout", container, {
+        FillDirection = Enum.FillDirection.Vertical,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    })
+
+    runtime.Gui = gui
+    runtime.Container = container
+    runtime.Layout = layout
+
+    pcall(function()
+        gui.ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets
+    end)
+
     bindQueue()
     updateContainer()
     bindCamera()
@@ -501,6 +599,14 @@ onViewportChanged = function()
         processQueue()
     end)
 end
+
+if runtime.InputConnection then
+    pcall(function() runtime.InputConnection:Disconnect() end)
+    runtime.InputConnection = nil
+end
+
+inputConnection = UserInputService:GetPropertyChangedSignal("PreferredInput"):Connect(onViewportChanged)
+runtime.InputConnection = inputConnection
 local function leftTime(s)
     if s.Duration <= 0 then return 0 end
     if s.StartedAt then return math.max(s.Remaining - (os.clock() - s.StartedAt), 0) end
@@ -548,7 +654,7 @@ end
 local function accentColors(s, t)
     local custom = s.Accent
     if not custom and s.Type then custom = Config.TypeColors[s.Type] end
-    return custom or t.Accent, s.ProgressColor or custom or t.Progress
+    return custom or t.Accent, s.ProgressColor or hubThemeColor()
 end
 local function applyTheme(s)
     local r = s.Refs
@@ -580,7 +686,6 @@ local function syncLabel(s, key, value, font, size, order)
     end
     if not current then
         current = new("TextLabel", r.Column, {
-            Name = key,
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             Size = UDim2.new(1, 0, 0, 0),
@@ -605,7 +710,6 @@ local function build(s)
     s.Refs = r
     s.Width = computeWidth(s)
     r.Slot = new("Frame", container, {
-        Name = "Notification",
         Size = UDim2.new(0, s.Width, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
@@ -613,14 +717,12 @@ local function build(s)
         LayoutOrder = Config.NewestOnTop and -s.Sequence or s.Sequence,
     })
     r.Holder = new("Frame", r.Slot, {
-        Name = "Holder",
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
     })
     r.Card = new("CanvasGroup", r.Holder, {
-        Name = "Card",
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BorderSizePixel = 0,
@@ -630,7 +732,6 @@ local function build(s)
     r.Stroke = new("UIStroke", r.Card, {Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border})
     if s.Options.Shadow then
         r.Shadow = new("Frame", r.Holder, {
-            Name = "Shadow",
             Position = UDim2.fromOffset(0, 3),
             BackgroundColor3 = Color3.new(0, 0, 0),
             BackgroundTransparency = 0.75,
@@ -646,7 +747,6 @@ local function build(s)
         table.insert(s.Connections, r.Card:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncShadow))
     end
     local body = new("Frame", r.Card, {
-        Name = "Body",
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
@@ -664,7 +764,6 @@ local function build(s)
         Padding = UDim.new(0, 10),
     })
     local row = new("Frame", body, {
-        Name = "Row",
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
@@ -677,7 +776,6 @@ local function build(s)
     if s.IconKind then
         new("UISizeConstraint", row, {MinSize = Vector2.new(0, Config.IconSize)})
         r.Bubble = new("Frame", row, {
-            Name = "Icon",
             Size = UDim2.fromOffset(Config.IconSize, Config.IconSize),
             BorderSizePixel = 0,
             BackgroundTransparency = s.IconKind == "Custom" and 1 or 0.82,
@@ -708,7 +806,6 @@ local function build(s)
         end
     end
     r.Column = new("Frame", row, {
-        Name = "Content",
         Position = UDim2.fromOffset(leftOffset, 0),
         Size = UDim2.new(1, -(leftOffset + rightReserve), 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
@@ -724,7 +821,6 @@ local function build(s)
     syncLabel(s, "Text", s.Text, Config.TextFont, Config.TextSize, 2)
     if s.Options.DisplayTime and s.Duration > 0 then
         r.Track = new("Frame", body, {
-            Name = "Progress",
             Size = UDim2.new(1, 0, 0, Config.ProgressHeight),
             BackgroundTransparency = 0.88,
             BorderSizePixel = 0,
@@ -733,7 +829,6 @@ local function build(s)
         })
         new("UICorner", r.Track, {CornerRadius = UDim.new(1, 0)})
         r.Fill = new("Frame", r.Track, {
-            Name = "Fill",
             Size = UDim2.fromScale(math.clamp(leftTime(s) / s.Duration, 0, 1), 1),
             BorderSizePixel = 0,
         })
@@ -742,7 +837,6 @@ local function build(s)
     if s.Options.CloseBtn then
         local inset = 8 - (closeBtnSize - 24) / 2
         local close = new("ImageButton", r.Card, {
-            Name = "Close",
             AnchorPoint = Vector2.new(1, 0),
             Position = UDim2.new(1, -inset, 0, inset),
             Size = UDim2.fromOffset(closeBtnSize, closeBtnSize),
@@ -807,7 +901,8 @@ local function refreshContent(s)
     relayoutState(s)
 end
 closeState = function(s, animated)
-    if not s or s.Status == "Closed" or s.Status == "Closing" then return false end
+    if destroyed or not s or s.Status == "Closed" or s.Status == "Closing" then return false end
+    closing[s] = true
     local wasActive = s.Status == "Active"
     s.Remaining, s.StartedAt, s.Status = leftTime(s), nil, "Closing"
     stopRuntime(s)
@@ -817,6 +912,9 @@ closeState = function(s, animated)
     local function finish()
         if finished or s.Status == "Closed" then return end
         finished = true
+        cancelTask(s.CloseTask)
+        s.CloseTask = nil
+        closing[s] = nil
         cleanup(s)
         s.Status = "Closed"
         safe(s.OnClose, s.Controller)
@@ -856,7 +954,7 @@ closeState = function(s, animated)
             collapse:Play()
         end)
         main:Play()
-        task.delay(time + 0.6, finish)
+        s.CloseTask = task.delay(time + 0.6, finish)
     else
         finish()
     end
@@ -900,14 +998,14 @@ local function visibleCount()
     local count = 0
     if not container then return count end
     for _, child in ipairs(container:GetChildren()) do
-        if child:IsA("Frame") and child.Name == "Notification" then
+        if child:IsA("Frame") then
             count += 1
         end
     end
     return count
 end
 processQueue = function()
-    if #queue == 0 or not getContainer() then return end
+    if destroyed or #queue == 0 or not getContainer() then return end
     local limit = maxVisible()
     while visibleCount() < limit and #queue > 0 do
         local c = table.remove(queue, 1)
@@ -943,13 +1041,6 @@ local function createController(data, map)
     if clickable == nil then
         clickable = type(onClick) == "function" or Config.Clickable
     end
-    local themeInput = get(map, {"theme"})
-    local themeNameValue, themeData
-    if type(themeInput) == "table" then
-        themeData = buildTheme(themeInput, Config.Theme)
-    else
-        themeNameValue = themeName(themeInput)
-    end
     runtime.Sequence += 1
     local s = {
         Data = data,
@@ -962,8 +1053,6 @@ local function createController(data, map)
         IconInput = iconInput,
         Icon = icon,
         IconKind = iconKind,
-        ThemeName = themeNameValue,
-        ThemeData = themeData,
         Accent = typeof(accent) == "Color3" and accent or nil,
         ProgressColor = typeof(progressColor) == "Color3" and progressColor or nil,
         OnClick = onClick,
@@ -1047,23 +1136,10 @@ function Controller:SetIcon(value)
     end
     return self
 end
-function Controller:SetTheme(value)
-    local s = self._state
-    if not alive(s) then return self end
-    if type(value) == "table" then
-        s.ThemeData, s.ThemeName = buildTheme(value, Config.Theme), nil
-    else
-        local n = themeName(value)
-        if not n then return self end
-        s.ThemeName, s.ThemeData = n, nil
-        s.Data.Theme = n
-    end
-    applyTheme(s)
-    return self
-end
 function Controller:GetStatus() return self._state and self._state.Status or "Closed" end
 function Controller:GetRemainingTime() return self._state and leftTime(self._state) or 0 end
 function Notify.Notify(...)
+    if destroyed then return nil end
     local data = normalize(...)
     local map = indexOf(data)
     local title, desc = readText(data, map)
@@ -1109,76 +1185,22 @@ Notify.Info = typed("Info")
 Notify.Success = typed("Success")
 Notify.Warning = typed("Warning")
 Notify.Error = typed("Error")
-function Notify:RegisterTheme(name, value)
-    assert(type(name) == "string" and name ~= "", "Theme name inválido")
-    assert(type(value) == "table", "Theme deve ser uma tabela")
-    Themes[name] = buildTheme(value, "Dark")
-    for _, c in ipairs(active) do
-        if c._state.ThemeName == name or (not c._state.ThemeName and not c._state.ThemeData and Config.Theme == name) then
-            applyTheme(c._state)
-        end
-    end
-    return Themes[name]
-end
-function Notify:RemoveTheme(name)
-    local n = themeName(name)
-    if not n or n == "Dark" then return false end
-    Themes[n] = nil
-    if Config.Theme == n then Config.Theme = "Dark" end
-    for _, c in ipairs(active) do applyTheme(c._state) end
-    return true
-end
-function Notify:SetTheme(name)
-    if type(name) == "table" then
-        Themes.Custom = buildTheme(name, "Dark")
-        name = "Custom"
-    end
-    local n = themeName(name)
-    if not n then return false end
-    Config.Theme = n
-    for _, c in ipairs(active) do applyTheme(c._state) end
-    return true
-end
-function Notify:GetTheme() return Config.Theme end
-function Notify:GetThemeList()
-    local list = {}
-    for name in pairs(Themes) do list[#list + 1] = name end
-    table.sort(list)
-    return list
-end
 function Notify:GetActiveCount() return #active end
 function Notify:GetQueueCount() return #queue end
 function Notify:GetConfig() return copy(Config) end
 function Notify:Configure(values)
     if type(values) ~= "table" then return self end
-    local themeValues = {}
-    local newTheme
     for k, v in pairs(values) do
         local lower = tostring(k):lower()
-        if lower == "theme" then
-            if type(v) == "table" then
-                Themes.Custom = buildTheme(v, "Dark")
-                newTheme = "Custom"
+        local configKey = configKeys[configAliases[lower] or lower]
+        if configKey then
+            if type(Config[configKey]) == "table" and type(v) == "table" then
+                Config[configKey] = merge(Config[configKey], v)
             else
-                newTheme = themeName(v)
-            end
-        else
-            local configKey = configKeys[configAliases[lower] or lower]
-            if configKey then
-                if type(Config[configKey]) == "table" and type(v) == "table" then
-                    Config[configKey] = merge(Config[configKey], v)
-                else
-                    Config[configKey] = v
-                end
-            else
-                local key = themeKey(k)
-                if key then themeValues[key] = v end
+                Config[configKey] = v
             end
         end
     end
-    if newTheme then Config.Theme = newTheme end
-    local theme = Themes[Config.Theme]
-    for k, v in pairs(themeValues) do theme[k] = v end
     if gui then updateContainer() end
     for _, c in ipairs(active) do rebuild(c._state) end
     processQueue()
@@ -1203,7 +1225,16 @@ function Notify:Clear()
 end
 function Notify:ClearAll() return self:Clear() end
 function Notify:Destroy()
+    if destroyed then return self end
+    destroyed = true
     self:Clear()
+    for State in pairs(closing) do
+        State.Status = "Closed"
+        cancelTask(State.CloseTask)
+        State.CloseTask = nil
+        cleanup(State)
+        closing[State] = nil
+    end
     if cameraConnection then
         cameraConnection:Disconnect()
         cameraConnection = nil
@@ -1212,15 +1243,91 @@ function Notify:Destroy()
         workspaceConnection:Disconnect()
         workspaceConnection = nil
     end
+    if inputConnection then
+        inputConnection:Disconnect()
+        if runtime.InputConnection == inputConnection then
+            runtime.InputConnection = nil
+        end
+        inputConnection = nil
+    end
     if runtime.ContainerConnection then
         pcall(function() runtime.ContainerConnection:Disconnect() end)
         runtime.ContainerConnection = nil
     end
+    if runtime.ThemeConnection then
+        pcall(function() runtime.ThemeConnection:Disconnect() end)
+        runtime.ThemeConnection = nil
+    end
+    if runtime.LanguageConnection then
+        pcall(function() runtime.LanguageConnection:Disconnect() end)
+        runtime.LanguageConnection = nil
+    end
     if runtime.ProcessQueue == processQueue then runtime.ProcessQueue = nil end
+    if runtime.Owner == self then runtime.Owner = nil end
+
+    if runtime.Gui == gui then
+        runtime.Gui = nil
+        runtime.Container = nil
+        runtime.Layout = nil
+    end
+
     if gui then gui:Destroy() end
     gui, container, layout = nil, nil, nil
     return self
 end
+if type(Hub) == "table" and type(Hub.OnThemeChanged) == "function" then
+    if runtime.ThemeConnection then
+        pcall(function() runtime.ThemeConnection:Disconnect() end)
+        runtime.ThemeConnection = nil
+    end
+
+    runtime.ThemeConnection = Hub:OnThemeChanged(function(_, Palette)
+        local Color = hubThemeColor(Palette)
+        for _, ControllerObject in ipairs(active) do
+            local State = ControllerObject._state
+            if alive(State) and State.Refs and State.Refs.Fill and not State.ProgressColor then
+                State.Refs.Fill.BackgroundColor3 = Color
+            end
+        end
+    end)
+end
+
+if type(Hub) == "table" and type(Hub.OnLanguageChanged) == "function" and type(Hub.Translate) == "function" then
+    if runtime.LanguageConnection then
+        pcall(function() runtime.LanguageConnection:Disconnect() end)
+        runtime.LanguageConnection = nil
+    end
+
+    runtime.LanguageConnection = Hub:OnLanguageChanged(function()
+        for _, List in ipairs({active, queue}) do
+            for _, ControllerObject in ipairs(List) do
+                local State = ControllerObject._state
+
+                if alive(State) then
+                    local NewTitle = clip(tostring(Hub:Translate(State.Title)), Config.MaxTitleLength)
+                    local NewText = clip(tostring(Hub:Translate(State.Text)), Config.MaxTextLength)
+
+                    if NewTitle ~= State.Title or NewText ~= State.Text then
+                        State.Title = NewTitle
+                        State.Text = NewText
+
+                        if State.Data then
+                            State.Data.Title = NewTitle
+                            State.Data.Text = NewText
+                        end
+
+                        if State.Refs then
+                            refreshContent(State)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+runtime.Owner = Notify
+
 setmetatable(Notify, {
     __call = function(_, ...)
         return Notify.Notify(...)
