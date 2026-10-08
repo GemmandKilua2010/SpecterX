@@ -425,11 +425,10 @@ if type(Icons) == "table" and type(Notify.Notify) == "function" then
     Base:Notify({
         Title = Config("Title"),
         Description = Hub:Format(
-            Hub:Translate("All set! {Title} loaded successfully. Thanks for using it!"),
+            Hub:Translate("{Title} is ready. Enjoy your experience!"),
             {Title = Title}
         ),
-        Time = 3,
-        Type = "Success"
+        Time = 3
     })
 end
 
