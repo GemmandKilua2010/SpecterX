@@ -29,7 +29,7 @@ local Hub = HubChunk(ConfigData, BaseUrl)
 local Genv = Hub:GetGenv()
 Genv.State = Genv.State or {}
 
-local Addons = Hub:LoadRequire("Core/Modules/Hub/Addon/script.lua", nil, nil, Hub, ConfigData, BaseUrl)
+local Addons = Hub:LoadRequire("Core/Modules/Hub/Addon/script.lua", nil, nil, Hub, ConfigData)
 Addons = type(Addons) == "table" and Addons or {}
 
 --// Preferences

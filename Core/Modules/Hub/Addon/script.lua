@@ -1,4 +1,4 @@
-local Hub, Config, BaseUrl = ...
+local Hub, Config = ...
 
 local Addons = {
     Themes = {},
@@ -6,9 +6,48 @@ local Addons = {
     Sounds = {}
 }
 
-if type(Hub) ~= "table" or type(Config) ~= "table" or type(BaseUrl) ~= "string" then
+if type(Hub) ~= "table" or type(Config) ~= "table" then
     return Addons
 end
+
+local Templates = {
+    theme = [=[--[[
+PT-BR: Troque "return {}" pelo exemplo para criar um tema.
+EN: Replace "return {}" with the example to create a theme.
+ES: Sustituye "return {}" por el ejemplo para crear un tema.
+
+Exemplo / Example / Ejemplo:
+return {
+    MyTheme = { Base = "Dark", ["Color Theme"] = Color3.fromRGB(40, 170, 255) }
+}
+]]
+return {}
+]=],
+    language = [=[--[[
+PT-BR: Troque "return {}" pelo exemplo para mudar traduções (BR = português).
+EN: Replace "return {}" with the example to change translations (BR = Portuguese).
+ES: Sustituye "return {}" por el ejemplo para cambiar traducciones (BR = portugués).
+
+Exemplo / Example / Ejemplo:
+return {
+    BR = { Name = "Português (Brasil)", Translations = { ["Settings"] = "Ajustes" } }
+}
+]]
+return {}
+]=],
+    sound = [=[--[[
+PT-BR: Troque "return {}" pelo exemplo e use o ID de um áudio permitido.
+EN: Replace "return {}" with the example and use an allowed audio ID.
+ES: Sustituye "return {}" por el ejemplo y usa un ID de audio permitido.
+
+Exemplo / Example / Ejemplo:
+return {
+    { Name = "MySound", Id = 1234567890 }
+}
+]]
+return {}
+]=]
+}
 
 local function Warn(Message)
     if type(Hub.Warn) == "function" then
@@ -49,12 +88,7 @@ local function Load(Name)
             return nil
         end
 
-        local Success, Template = pcall(game.HttpGet, game, BaseUrl .. Path)
-        if not Success or type(Template) ~= "string" or Template == "" or not Hub:Compile(Template) then
-            Template = "return {}\\n"
-        end
-
-        local Written, Error = Hub:CreateFile(Path, Template)
+        local Written, Error = Hub:CreateFile(Path, Templates[Name])
         if not Written then
             Warn("Could not create " .. Path .. ": " .. tostring(Error))
             return nil
