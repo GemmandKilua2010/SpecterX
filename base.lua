@@ -29,6 +29,9 @@ local Hub = HubChunk(ConfigData, BaseUrl)
 local Genv = Hub:GetGenv()
 Genv.State = Genv.State or {}
 
+local Addons = Hub:LoadRequire("Core/Modules/Hub/Addon/script.lua", nil, nil, Hub, ConfigData, BaseUrl)
+Addons = type(Addons) == "table" and Addons or {}
+
 --// Preferences
 
 local LibraryConfig = type(ConfigData.Library) == "table" and ConfigData.Library or {}
@@ -176,6 +179,7 @@ end
 
 local Base = {
     Library = Lib,
+    Addons = Addons,
 
     Title = ("%s | %s"):format(Title, tostring(Hub:GetGame())),
     SubTitle = tostring(Config("SubTitle") or ""),

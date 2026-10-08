@@ -723,6 +723,14 @@ function Main:Translate(Text, Language)
     return Translation:Translate(Text, Language or self:GetLanguage())
 end
 
+function Main:RegisterTranslations(Dictionaries)
+    if type(Translation.AddDictionary) ~= "function" then
+        return false
+    end
+
+    return Translation:AddDictionary(Dictionaries)
+end
+
 --// Console
 
 function Main:Console(Level, Message, Values)

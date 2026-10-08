@@ -128,6 +128,15 @@ if Game then
     AddDictionary(Fetch("Games/" .. Game .. "/translation.lua", 2))
 end
 
+function Translation:AddDictionary(Data)
+    if type(Data) ~= "table" then
+        return false
+    end
+
+    AddDictionary(Data)
+    return true
+end
+
 function Translation:GetGames()
     return Games
 end
