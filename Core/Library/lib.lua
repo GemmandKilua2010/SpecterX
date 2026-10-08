@@ -1575,369 +1575,400 @@ local function CreateCodeElement(Parent, Configs)
 	local OnChange = type(Configs.OnChange) == "function" and Configs.OnChange or nil
 	local CanExecute = Configs.Execute == true
 	local CanCopy = Configs.Copy ~= false
-	local FontSize = math.clamp(math.floor(tonumber(Configs.CodeSize) or 12), 9, 22)
+	local FontSize = math.clamp(math.floor(tonumber(Configs.CodeSize) or 13), 9, 22)
 	local Height = math.clamp(math.floor(tonumber(Configs.Height) or 150), 90, 420)
+
+	local Colors = {
+		Background = Color3.fromRGB(22, 24, 27),
+		Tabs = Color3.fromRGB(19, 21, 24),
+		Breadcrumb = Color3.fromRGB(22, 24, 27),
+		Border = Color3.fromRGB(42, 45, 50),
+		Text = Color3.fromRGB(212, 212, 212),
+		Muted = Color3.fromRGB(122, 128, 137),
+		Blue = Color3.fromRGB(72, 166, 218),
+		Hover = Color3.fromRGB(42, 46, 52),
+		ActiveLine = Color3.fromRGB(31, 34, 39),
+		Modified = Color3.fromRGB(225, 176, 104),
+		Footer = Color3.fromRGB(24, 26, 30),
+	}
+
+	local Syntax = {
+		Keyword = "#C586C0",
+		String = "#98C379",
+		Number = "#B5CEA8",
+		Builtin = "#4FC1FF",
+		Comment = "#6A9955",
+	}
+
+	local Keywords = {}
+	for Word in ("and break continue do else elseif end export false for function if in local nil not or repeat return then true type typeof until while"):gmatch("%S+") do
+		Keywords[Word] = true
+	end
+
+	local Builtins = {}
+	for Word in ("assert error getmetatable ipairs next pairs pcall print rawequal rawget rawlen rawset require select setmetatable tonumber tostring type typeof unpack warn xpcall bit32 buffer coroutine debug math os string table task utf8 Vector2 Vector3 Vector2int16 Vector3int16 CFrame Color3 BrickColor UDim UDim2 Rect Region3 Ray Enum Instance game workspace script shared _G self tick time DateTime Random TweenInfo ColorSequence NumberSequence NumberRange"):gmatch("%S+") do
+		Builtins[Word] = true
+	end
 
 	local Editable = false
 	local Focused = false
 	local Destroyed = false
 	local Silent = false
-
-	local HeaderHeight, FooterHeight = 26, 20
-	local White, Black = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
-	local ModifiedColor = Color3.fromRGB(255, 176, 64)
-
 	local Code = {}
+	local HeaderHeight, PathHeight, FooterHeight = 34, 22, 22
+	local Font = Enum.Font.Code
+	local LineSpacing = 1.2
+	local LineHeight = TextService:GetTextSize("Ag", FontSize, Font, Vector2.new(100000, 100000)).Y * LineSpacing
+	local CodeWidth = 44
+	local LastWidth = 0
+	local ContentHeight = LineHeight
+	local LineCount = 1
+	local CursorRow, CursorColumn
+	local LastRendered
+	local Queued = false
+	local Cache = {}
+	local CacheSize = 0
 
-	local function Animate(Object, Time, Properties)
-		TweenService:Create(Object, TweenInfo.new(Time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), Properties):Play()
+	local function Element(Class, Target, Properties)
+		local Object = Instance.new(Class)
+		if Object:IsA("GuiObject") then
+			Object.BorderSizePixel = 0
+		end
+		for Key, Value in pairs(Properties or {}) do
+			Object[Key] = Value
+		end
+		Object.Parent = Target
+		return Object
 	end
 
-	local Holder = InsertTheme(Create("Frame", Parent, {
-		Size = UDim2.new(1, 0, 0, Height),
-		BackgroundColor3 = Theme["Color Hub 2"],
-		ClipsDescendants = true,
-	}), "Frame")
-	Make("Corner", Holder, UDim.new(0, 3))
-	Make("Stroke", Holder, {Transparency = 0.3})
-
-	local HolderStroke = Holder:FindFirstChildOfClass("UIStroke")
-	local StrokeColor = HolderStroke and HolderStroke.Color
-	local StrokeTransparency = HolderStroke and HolderStroke.Transparency
-
-	local AccentBar = Create("Frame", Holder, {
-		Size = UDim2.new(0, 2, 1, 0),
-		BackgroundColor3 = Theme["Color Theme"],
-		BorderSizePixel = 0,
-		ZIndex = 10,
-	})
-
-	local Lines = {}
-	local function Line(Position, Size)
-		local Frame = Create("Frame", Holder, {
-			Position = Position,
+	local function Label(Target, Text, Size, Position, Color, Alignment)
+		return Element("TextLabel", Target, {
+			BackgroundTransparency = 1,
+			Text = Text,
 			Size = Size,
-			BackgroundColor3 = Theme["Color Dark Text"],
-			BackgroundTransparency = 0.78,
-			BorderSizePixel = 0,
-			ZIndex = 6,
+			Position = Position,
+			TextColor3 = Color or Colors.Text,
+			TextSize = FontSize,
+			Font = Font,
+			TextXAlignment = Alignment or Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Center,
+			TextTruncate = Enum.TextTruncate.AtEnd,
 		})
-		Lines[#Lines + 1] = Frame
-		return Frame
 	end
 
-	local Header = Create("Frame", Holder, {
+	local function Escape(Text)
+		return (Text:gsub("[&<>]", { ["&"] = "&amp;", ["<"] = "&lt;", [">"] = "&gt;" }))
+	end
+
+	local function Paint(Text, Color)
+		return '<font color="' .. Color .. '">' .. Escape(Text) .. '</font>'
+	end
+
+	local function HighlightLine(Text, State)
+		local Output = {}
+		local Position = 1
+		local Length = #Text
+		local NewState = State
+
+		while Position <= Length do
+			if NewState then
+				local Close = "]" .. NewState:sub(2) .. "]"
+				local Finish = Text:find(Close, Position, true)
+				if Finish then
+					local EndPosition = Finish + #Close
+					Output[#Output + 1] = Paint(Text:sub(Position, EndPosition - 1), NewState:sub(1, 1) == "c" and Syntax.Comment or Syntax.String)
+					Position = EndPosition
+					NewState = nil
+				else
+					Output[#Output + 1] = Paint(Text:sub(Position), NewState:sub(1, 1) == "c" and Syntax.Comment or Syntax.String)
+					break
+				end
+			else
+				local Char = Text:sub(Position, Position)
+				if Text:sub(Position, Position + 1) == "--" then
+					local Open, Finish, Equals = Text:find("^%-%-%[(=*)%[", Position)
+					if Open then
+						local Close = "]" .. Equals .. "]"
+						local Closing = Text:find(Close, Finish + 1, true)
+						local EndPosition = Closing and Closing + #Close - 1 or Length
+						Output[#Output + 1] = Paint(Text:sub(Position, EndPosition), Syntax.Comment)
+						Position = EndPosition + 1
+						if not Closing then NewState = "c" .. Equals end
+					else
+						Output[#Output + 1] = Paint(Text:sub(Position), Syntax.Comment)
+						break
+					end
+				elseif Char == "[" then
+					local Open, Finish, Equals = Text:find("^%[(=*)%[", Position)
+					if Open then
+						local Close = "]" .. Equals .. "]"
+						local Closing = Text:find(Close, Finish + 1, true)
+						local EndPosition = Closing and Closing + #Close - 1 or Length
+						Output[#Output + 1] = Paint(Text:sub(Position, EndPosition), Syntax.String)
+						Position = EndPosition + 1
+						if not Closing then NewState = "s" .. Equals end
+					else
+						Output[#Output + 1] = "["
+						Position += 1
+					end
+				elseif Char == '"' or Char == "'" or Char == "`" then
+					local EndPosition = Position + 1
+					while EndPosition <= Length do
+						local NextChar = Text:sub(EndPosition, EndPosition)
+						if NextChar == "\\" then
+							EndPosition += 2
+						elseif NextChar == Char then
+							EndPosition += 1
+							break
+						else
+							EndPosition += 1
+						end
+					end
+					Output[#Output + 1] = Paint(Text:sub(Position, math.min(EndPosition - 1, Length)), Syntax.String)
+					Position = EndPosition
+				elseif Char:match("[%a_]") then
+					local _, Finish = Text:find("^[%a_][%w_]*", Position)
+					local Word = Text:sub(Position, Finish)
+					Output[#Output + 1] = Keywords[Word] and Paint(Word, Syntax.Keyword)
+						or Builtins[Word] and Paint(Word, Syntax.Builtin)
+						or Escape(Word)
+					Position = Finish + 1
+				elseif Char:match("%d") then
+					local _, Finish = Text:find("^0[xX][%da-fA-F_]+", Position)
+					if not Finish then
+						_, Finish = Text:find("^%d[%w_%.]*", Position)
+					end
+					Finish = Finish or Position
+					Output[#Output + 1] = Paint(Text:sub(Position, Finish), Syntax.Number)
+					Position = Finish + 1
+				else
+					local _, Finish = Text:find("^[^%a%d_'\"`%-%[]+", Position)
+					Finish = Finish or Position
+					Output[#Output + 1] = Escape(Text:sub(Position, Finish))
+					Position = Finish + 1
+				end
+			end
+		end
+
+		return table.concat(Output), NewState
+	end
+
+	local Holder = Element("Frame", Parent, {
+		Name = "VSCodeEditor",
+		Size = UDim2.new(1, 0, 0, Height),
+		BackgroundColor3 = Colors.Background,
+		ClipsDescendants = true,
+	})
+	Element("UICorner", Holder, { CornerRadius = UDim.new(0, 3) })
+	Element("UIStroke", Holder, { Color = Colors.Border, Thickness = 1 })
+
+	local Header = Element("Frame", Holder, {
+		Name = "Tabs",
 		Size = UDim2.new(1, 0, 0, HeaderHeight),
-		BackgroundTransparency = 1,
+		BackgroundColor3 = Colors.Tabs,
 	})
 
-	local TitleLabel = InsertTheme(Create("TextLabel", Header, {
-		Size = UDim2.new(1, -20, 1, 0),
-		Position = UDim2.fromOffset(12, 0),
-		BackgroundTransparency = 1,
-		Text = TitleText,
-		TextColor3 = Theme["Color Text"],
-		TextSize = 12,
-		Font = Enum.Font.Code,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	}), "Text")
-
-	local Actions = Create("Frame", Header, {
+	local Actions = Element("Frame", Header, {
+		Name = "Actions",
+		Size = UDim2.fromOffset(0, 24),
 		AutomaticSize = Enum.AutomaticSize.X,
-		Size = UDim2.fromOffset(0, 18),
-		Position = UDim2.new(1, -6, 0.5, 0),
+		Position = UDim2.new(1, -8, 0.5, 0),
 		AnchorPoint = Vector2.new(1, 0.5),
 		BackgroundTransparency = 1,
-	}, {
-		Create("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			HorizontalAlignment = Enum.HorizontalAlignment.Right,
-			VerticalAlignment = Enum.VerticalAlignment.Center,
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 4),
-		})
+	})
+	Element("UIListLayout", Actions, {
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, 3),
+		SortOrder = Enum.SortOrder.LayoutOrder,
 	})
 
-	local function LayoutHeader()
-		if Destroyed then return end
-		TitleLabel.Size = UDim2.new(1, -(Actions.AbsoluteSize.X / UIScale + 12 + 10), 1, 0)
-	end
-	Actions:GetPropertyChangedSignal("AbsoluteSize"):Connect(LayoutHeader)
+	local Tab = Element("Frame", Header, {
+		Name = "ActiveTab",
+		Size = UDim2.new(1, -12, 1, 0),
+		BackgroundColor3 = Colors.Background,
+		ClipsDescendants = true,
+	})
 
-	local LanguageTag = InsertTheme(Create("TextLabel", Actions, {
-		AutomaticSize = Enum.AutomaticSize.X,
-		LayoutOrder = 0,
-		Size = UDim2.fromOffset(0, 16),
-		BackgroundTransparency = 1,
-		Text = string.upper(Language),
-		TextColor3 = Theme["Color Dark Text"],
-		TextSize = 9,
-		Font = Enum.Font.Code,
-		Visible = Language ~= "",
-	}), "DarkText")
-	Make("Corner", LanguageTag, UDim.new(0, 2))
-	Make("Stroke", LanguageTag, {Transparency = 0.65})
-	Create("UIPadding", LanguageTag, {
-		PaddingLeft = UDim.new(0, 5),
-		PaddingRight = UDim.new(0, 5),
+	local TabIcon = Label(Tab, "●", UDim2.fromOffset(18, HeaderHeight), UDim2.fromOffset(9, 0), Colors.Blue, Enum.TextXAlignment.Center)
+	TabIcon.TextSize = 17
+	local TabTitle = Label(Tab, TitleText, UDim2.new(1, -58, 1, 0), UDim2.fromOffset(32, 0))
+	TabTitle.TextTruncate = Enum.TextTruncate.AtEnd
+	local DirtyDot = Label(Tab, "●", UDim2.fromOffset(13, HeaderHeight), UDim2.new(1, -22, 0, 0), Colors.Modified, Enum.TextXAlignment.Center)
+	DirtyDot.TextSize = 12
+	DirtyDot.Visible = false
+
+	local Underline = Element("Frame", Header, {
+		Size = UDim2.new(1, 0, 0, 1),
+		Position = UDim2.new(0, 0, 1, -1),
+		BackgroundColor3 = Colors.Border,
 	})
 
 	local Buttons = {}
-	local ButtonOrder = 0
+	local Order = 0
 
-	local function RepaintButton(Entry, Instant)
-		local Highlighted = Entry.Primary or Entry.Active
-		local Color = Highlighted and Theme["Color Theme"] or Theme["Color Hub 2"]:Lerp(White, 0.05)
-
-		if Entry.Mode == "Hover" then
-			Color = Color:Lerp(White, 0.1)
-		elseif Entry.Mode == "Down" then
-			Color = Color:Lerp(Black, 0.2)
-		end
-
-		Entry.Label.TextColor3 = Highlighted and White or Theme["Color Text"]
-
-		if Instant then
-			Entry.Button.BackgroundColor3 = Color
-		else
-			Animate(Entry.Button, 0.1, {BackgroundColor3 = Color})
-		end
-	end
-
-	local function LabelFor(Entry)
-		if Entry.Key == "Edit" then
-			return Editable and "Done" or "Edit"
-		elseif Entry.Key == "Copy" and Entry.Flash then
-			return "Copied"
-		end
-		return Entry.Key
-	end
-
-	local function RelabelButton(Entry)
-		Entry.Label.Text = string.upper(tostring(TranslateText(LabelFor(Entry))))
-	end
-
-	local function ActionButton(Key, Primary)
-		ButtonOrder += 1
-
-		local Button = Create("TextButton", Actions, {
+	local function Action(Key)
+		Order += 1
+		local Button = Element("TextButton", Actions, {
+			Name = Key,
+			LayoutOrder = Order,
+			Size = UDim2.fromOffset(0, 24),
 			AutomaticSize = Enum.AutomaticSize.X,
-			LayoutOrder = ButtonOrder,
-			Size = UDim2.fromOffset(0, 18),
-			BackgroundColor3 = Theme["Color Hub 2"],
-			Text = "",
-			AutoButtonColor = false,
-		})
-		Make("Corner", Button, UDim.new(0, 2))
-		Make("Stroke", Button, {Transparency = Primary and 0.85 or 0.55})
-		Create("UIPadding", Button, {
-			PaddingLeft = UDim.new(0, 8),
-			PaddingRight = UDim.new(0, 8),
-		})
-
-		local Label = Create("TextLabel", Button, {
-			AutomaticSize = Enum.AutomaticSize.X,
-			Size = UDim2.new(0, 0, 1, 0),
 			BackgroundTransparency = 1,
-			Text = string.upper(tostring(TranslateText(Key))),
-			TextColor3 = Theme["Color Text"],
-			TextSize = 10,
+			TextColor3 = Colors.Muted,
 			Font = Enum.Font.Code,
+			TextSize = 11,
+			AutoButtonColor = false,
+			Text = "",
 		})
-
-		local Entry = {
-			Key = Key,
-			Button = Button,
-			Label = Label,
-			Primary = Primary == true,
-			Active = false,
-			Flash = false,
-			Mode = "Idle",
-		}
+		Element("UIPadding", Button, {
+			PaddingLeft = UDim.new(0, 6),
+			PaddingRight = UDim.new(0, 6),
+		})
+		local Entry = { Key = Key, Button = Button, Flash = false, Active = false }
 		Buttons[Key] = Entry
-		RepaintButton(Entry, true)
-
 		Button.MouseEnter:Connect(function()
-			Entry.Mode = "Hover"
-			RepaintButton(Entry)
+			Button.BackgroundColor3 = Colors.Hover
+			Button.BackgroundTransparency = 0
 		end)
 		Button.MouseLeave:Connect(function()
-			Entry.Mode = "Idle"
-			RepaintButton(Entry)
+			Button.BackgroundTransparency = 1
 		end)
-		Button.MouseButton1Down:Connect(function()
-			Entry.Mode = "Down"
-			RepaintButton(Entry)
-		end)
-		Button.MouseButton1Up:Connect(function()
-			Entry.Mode = "Hover"
-			RepaintButton(Entry)
-		end)
-		Button.InputEnded:Connect(function(InputObject)
-			if InputObject.UserInputType == Enum.UserInputType.Touch then
-				Entry.Mode = "Idle"
-				RepaintButton(Entry)
-			end
-		end)
-
 		return Entry
 	end
 
-	local ResetButton = EditAllowed and ActionButton("Reset") or nil
-	local CopyButton = ActionButton("Copy")
-	local EditButton = EditAllowed and ActionButton("Edit") or nil
-	local ExecuteButton = ActionButton("Execute", true)
+	local ResetButton = EditAllowed and Action("Reset") or nil
+	local CopyButton = Action("Copy")
+	local EditButton = EditAllowed and Action("Edit") or nil
+	local ExecuteButton = Action("Execute")
 
-	if ResetButton then ResetButton.Button.Visible = false end
-	CopyButton.Button.Visible = CanCopy
-	ExecuteButton.Button.Visible = CanExecute
+	local function RelabelButtons()
+		for _, Entry in pairs(Buttons) do
+			local Key = Entry.Key
+			if Key == "Edit" and Editable then Key = "Done" end
+			if Key == "Copy" and Entry.Flash then Key = "Copied" end
+			Entry.Button.Text = string.upper(tostring(TranslateText(Key)))
+			Entry.Button.TextColor3 = Entry.Active and Colors.Blue or Colors.Muted
+		end
+	end
 
-	Line(UDim2.fromOffset(0, HeaderHeight), UDim2.new(1, 0, 0, 1))
-	Line(UDim2.new(0, 0, 1, -(FooterHeight + 1)), UDim2.new(1, 0, 0, 1))
+	local function LayoutHeader()
+		if Destroyed then return end
+		local Scale = tonumber(UIScale) or 1
+		local ActionsWidth = Actions.AbsoluteSize.X / math.max(Scale, 0.01)
+		Tab.Size = UDim2.new(1, -math.ceil(ActionsWidth + 16), 1, 0)
+	end
 
-	local Editor = Create("Frame", Holder, {
-		Size = UDim2.new(1, 0, 1, -(HeaderHeight + FooterHeight + 2)),
-		Position = UDim2.fromOffset(0, HeaderHeight + 1),
-		BackgroundColor3 = Black,
-		BackgroundTransparency = 0.72,
-		BorderSizePixel = 0,
+	Actions:GetPropertyChangedSignal("AbsoluteSize"):Connect(LayoutHeader)
+
+	local Breadcrumb = Element("Frame", Holder, {
+		Name = "Breadcrumb",
+		Position = UDim2.fromOffset(0, HeaderHeight),
+		Size = UDim2.new(1, 0, 0, PathHeight),
+		BackgroundColor3 = Colors.Breadcrumb,
+	})
+
+	local PathIcon = Label(Breadcrumb, "●", UDim2.fromOffset(16, PathHeight), UDim2.fromOffset(15, 0), Colors.Blue, Enum.TextXAlignment.Center)
+	PathIcon.TextSize = 14
+	local PathTitle = Label(Breadcrumb, TitleText, UDim2.new(1, -55, 1, 0), UDim2.fromOffset(36, 0), Colors.Muted)
+	PathTitle.TextSize = 11
+
+	local Editor = Element("Frame", Holder, {
+		Name = "CodeArea",
+		Position = UDim2.fromOffset(0, HeaderHeight + PathHeight),
+		Size = UDim2.new(1, 0, 1, -(HeaderHeight + PathHeight + FooterHeight)),
+		BackgroundColor3 = Colors.Background,
 		ClipsDescendants = true,
 	})
 
-	local NumberWidth = 28
-
-	local Gutter = Create("Frame", Editor, {
-		Size = UDim2.new(0, NumberWidth, 1, 0),
-		BackgroundColor3 = Black,
-		BackgroundTransparency = 0.8,
-		BorderSizePixel = 0,
+	local Gutter = Element("Frame", Editor, {
+		Name = "Gutter",
+		Size = UDim2.new(0, CodeWidth, 1, 0),
+		BackgroundColor3 = Colors.Background,
 		ClipsDescendants = true,
 	})
-	local Divider = Create("Frame", Editor, {
-		Size = UDim2.new(0, 1, 1, 0),
-		Position = UDim2.fromOffset(NumberWidth, 0),
-		BackgroundColor3 = White,
-		BackgroundTransparency = 0.92,
-		BorderSizePixel = 0,
-	})
 
-	local Scroll = InsertTheme(Create("ScrollingFrame", Editor, {
-		Size = UDim2.new(1, -(NumberWidth + 1), 1, 0),
-		Position = UDim2.fromOffset(NumberWidth + 1, 0),
+	local Numbers = Label(Gutter, "1", UDim2.new(1, -10, 0, 20), UDim2.fromOffset(0, 8), Colors.Muted, Enum.TextXAlignment.Right)
+	Numbers.TextYAlignment = Enum.TextYAlignment.Top
+	Numbers.TextTruncate = Enum.TextTruncate.None
+	Numbers.LineHeight = LineSpacing
+
+	local Scroll = Element("ScrollingFrame", Editor, {
+		Name = "CodeScroll",
+		Position = UDim2.fromOffset(CodeWidth, 0),
+		Size = UDim2.new(1, -CodeWidth, 1, 0),
 		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ScrollBarThickness = 3,
-		ScrollBarImageTransparency = 0.25,
-		ScrollBarImageColor3 = Theme["Color Theme"],
-		ScrollingDirection = Enum.ScrollingDirection.XY,
 		CanvasSize = UDim2.new(),
-	}), "ScrollBar")
+		ScrollBarThickness = 3,
+		ScrollBarImageColor3 = Colors.Muted,
+		ScrollBarImageTransparency = 0.5,
+		ScrollingDirection = Enum.ScrollingDirection.XY,
+	})
 
-	local LineNumbers = InsertTheme(Create("TextLabel", Gutter, {
-		Position = UDim2.fromOffset(0, 5),
-		Size = UDim2.new(1, -8, 0, 20),
+	local Input = Element("TextBox", Scroll, {
+		Name = "Input",
+		Position = UDim2.fromOffset(10, 8),
+		Size = UDim2.fromOffset(150, 30),
 		BackgroundTransparency = 1,
-		TextColor3 = Theme["Color Dark Text"],
+		Text = Source,
+		TextEditable = false,
+		TextTransparency = 1,
+		TextColor3 = Colors.Text,
 		TextSize = FontSize,
-		Font = Enum.Font.Code,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextYAlignment = Enum.TextYAlignment.Top,
-		TextTransparency = 0.3,
-		LineHeight = 1.2,
-	}), "DarkText")
-
-	local Input = InsertTheme(Create("TextBox", Scroll, {
-		Position = UDim2.fromOffset(8, 5),
-		Size = UDim2.fromOffset(100, 20),
-		BackgroundTransparency = 1,
-		TextColor3 = Theme["Color Text"],
-		TextSize = FontSize,
-		Font = Enum.Font.Code,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Top,
-		ClearTextOnFocus = false,
+		Font = Font,
 		MultiLine = true,
 		TextWrapped = false,
-		Text = Source,
-		TextTransparency = 1,
-		LineHeight = 1.2,
-		ZIndex = 3,
-	}), "Text")
-	Input.TextEditable = false
-
-	local Highlight = InsertTheme(Create("TextLabel", Input, {
-		Position = UDim2.new(),
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		TextColor3 = Theme["Color Text"],
-		TextSize = FontSize,
-		Font = Enum.Font.Code,
+		ClearTextOnFocus = false,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
-		LineHeight = 1.2,
-		RichText = true,
-		TextWrapped = false,
-		ZIndex = 4,
-	}), "Text")
-
-	local LineHeight = TextService:GetTextSize("Ag", FontSize, Enum.Font.Code, Vector2.new(10000, 10000)).Y * 1.2
-
-	local ActiveLine = Create("Frame", Input, {
-		Size = UDim2.new(1, 12, 0, LineHeight),
-		Position = UDim2.fromOffset(-6, 0),
-		BackgroundColor3 = White,
-		BackgroundTransparency = 0.94,
-		BorderSizePixel = 0,
-		Visible = false,
-		ZIndex = 2,
+		LineHeight = LineSpacing,
+		ZIndex = 3,
 	})
 
-	local Caret = InsertTheme(Create("Frame", Input, {
+	local ActiveLine = Element("Frame", Input, {
+		Name = "ActiveLine",
+		Size = UDim2.new(1, 0, 0, LineHeight),
+		BackgroundColor3 = Colors.ActiveLine,
+		Visible = false,
+		ZIndex = 1,
+	})
+
+	local Highlight = Label(Input, "", UDim2.fromScale(1, 1), UDim2.new(), Colors.Text)
+	Highlight.Name = "SyntaxHighlight"
+	Highlight.TextXAlignment = Enum.TextXAlignment.Left
+	Highlight.TextYAlignment = Enum.TextYAlignment.Top
+	Highlight.TextWrapped = false
+	Highlight.TextTruncate = Enum.TextTruncate.None
+	Highlight.LineHeight = LineSpacing
+	Highlight.RichText = true
+	Highlight.ZIndex = 4
+
+	local Caret = Element("Frame", Input, {
+		Name = "Caret",
 		Size = UDim2.fromOffset(2, FontSize + 2),
-		BackgroundColor3 = Theme["Color Text"],
-		BorderSizePixel = 0,
+		BackgroundColor3 = Colors.Text,
 		Visible = false,
 		ZIndex = 5,
-	}), "Text")
-	local Blink = TweenService:Create(Caret, TweenInfo.new(0.5, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1, true), {BackgroundTransparency = 1})
+	})
+	local Blink = TweenService:Create(Caret, TweenInfo.new(0.55, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1, true), {
+		BackgroundTransparency = 1,
+	})
 
-	local Footer = Create("Frame", Holder, {
-		Size = UDim2.new(1, 0, 0, FooterHeight),
+	local Footer = Element("Frame", Holder, {
+		Name = "StatusBar",
 		Position = UDim2.new(0, 0, 1, -FooterHeight),
-		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, FooterHeight),
+		BackgroundColor3 = Colors.Footer,
 	})
-	local Dot = Create("Frame", Footer, {
-		Size = UDim2.fromOffset(5, 5),
-		Position = UDim2.new(0, 12, 0.5, 0),
-		AnchorPoint = Vector2.new(0, 0.5),
-		BackgroundColor3 = Theme["Color Dark Text"],
-		BorderSizePixel = 0,
+	Element("Frame", Footer, {
+		Size = UDim2.new(1, 0, 0, 1),
+		BackgroundColor3 = Colors.Border,
 	})
-
-	local Status = InsertTheme(Create("TextLabel", Footer, {
-		Size = UDim2.new(0.5, -22, 1, 0),
-		Position = UDim2.fromOffset(22, 0),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.Code,
-		TextSize = 10,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextColor3 = Theme["Color Dark Text"],
-	}), "DarkText")
-
-	local Info = InsertTheme(Create("TextLabel", Footer, {
-		Size = UDim2.new(0.5, -10, 1, 0),
-		Position = UDim2.fromScale(0.5, 0),
-		BackgroundTransparency = 1,
-		Font = Enum.Font.Code,
-		TextSize = 10,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextColor3 = Theme["Color Dark Text"],
-	}), "DarkText")
-
-	local Cache, CacheSize = {}, 0
-	local LastText, LastWidth, ContentHeight, LineCount
-	local CursorRow, CursorCol
+	local Status = Label(Footer, "", UDim2.new(0.52, -15, 1, 0), UDim2.fromOffset(13, 0), Colors.Muted)
+	Status.TextSize = 10
+	local Info = Label(Footer, "", UDim2.new(0.48, -12, 1, 0), UDim2.new(0.52, 0, 0, 0), Colors.Muted, Enum.TextXAlignment.Right)
+	Info.TextSize = 10
 
 	local function IsModified()
 		return Source ~= Baseline
@@ -1946,172 +1977,140 @@ local function CreateCodeElement(Parent, Configs)
 	local function UpdateStatus()
 		if Destroyed then return end
 		local Modified = IsModified()
-
-		local StatusText = tostring(TranslateText(Editable and "Editing" or "Read only"))
-		if Modified then
-			StatusText = StatusText .. "  ·  " .. tostring(TranslateText("Modified"))
-		end
-		Status.Text = string.upper(StatusText)
-
-		if Modified then
-			Dot.BackgroundColor3 = ModifiedColor
-		elseif Editable then
-			Dot.BackgroundColor3 = Theme["Color Theme"]
-		else
-			Dot.BackgroundColor3 = Theme["Color Dark Text"]
-		end
-
-		local Parts = {}
-		if CursorRow then
-			Parts[#Parts + 1] = "LN " .. CursorRow .. " COL " .. CursorCol
-		end
-		Parts[#Parts + 1] = string.upper((LineCount or 1) .. " " .. tostring(TranslateText("lines")))
-		Parts[#Parts + 1] = string.upper(#Source .. " " .. tostring(TranslateText("chars")))
-		Info.Text = table.concat(Parts, "  ·  ")
-
-		if ResetButton then
-			ResetButton.Button.Visible = Modified
-		end
+		DirtyDot.Visible = Modified
+		Status.Text = string.upper(tostring(TranslateText(Editable and "Editing" or "Read only"))) .. (Modified and "  •  " .. string.upper(tostring(TranslateText("Modified"))) or "")
+		local Position = CursorRow and ("Ln " .. CursorRow .. ", Col " .. CursorColumn .. "  •  ") or ""
+		Info.Text = Position .. string.upper(Language) .. "  •  " .. LineCount .. " lines"
+		if ResetButton then ResetButton.Button.Visible = Modified end
 	end
 
-	local function UpdateStroke()
-		if not HolderStroke then return end
-		if Editable and Focused then
-			Animate(HolderStroke, 0.15, {Color = Theme["Color Theme"], Transparency = 0.1})
-		else
-			Animate(HolderStroke, 0.15, {Color = StrokeColor, Transparency = StrokeTransparency})
-		end
+	local function Resize()
+		if Destroyed then return end
+		local Scale = tonumber(UIScale) or 1
+		local View = Scroll.AbsoluteSize / math.max(Scale, 0.01)
+		local Width = math.max(LastWidth + 22, View.X - 20, 1)
+		local BodyHeight = math.max(ContentHeight + 12, View.Y - 16, 1)
+		Input.Size = UDim2.fromOffset(Width, BodyHeight)
+		Scroll.CanvasSize = UDim2.fromOffset(Width + 20, BodyHeight + 16)
+		Numbers.Size = UDim2.new(1, -10, 0, BodyHeight + 16)
 	end
 
 	local function UpdateCaret()
 		if Destroyed then return end
 		Blink:Cancel()
+		local Cursor = Input.CursorPosition
+		local IsActive = Editable and Focused and Cursor > 0
+		local Selecting = Input.SelectionStart > 0 and Input.SelectionStart ~= Cursor
+		Caret.Visible = IsActive and not Selecting
+		ActiveLine.Visible = IsActive and not Selecting
 
-		local Active = Editable and Focused and Input.CursorPosition > 0
-		local Selecting = Input.SelectionStart ~= -1 and Input.SelectionStart ~= Input.CursorPosition
-
-		Caret.Visible = Active and not Selecting
-		ActiveLine.Visible = Active and not Selecting
-
-		if not Active then
-			CursorRow, CursorCol = nil, nil
+		if not IsActive then
+			CursorRow, CursorColumn = nil, nil
 			UpdateStatus()
 			return
 		end
 
-		local Before = Input.Text:sub(1, Input.CursorPosition - 1)
+		local Before = Input.Text:sub(1, Cursor - 1)
 		local _, Row = Before:gsub("\n", "")
-		local Column = Before:match("[^\n]*$") or ""
-		CursorRow, CursorCol = Row + 1, #Column + 1
+		local ColumnText = Before:match("[^\n]*$") or ""
+		CursorRow = Row + 1
+		CursorColumn = #ColumnText + 1
+		local X = TextService:GetTextSize(ColumnText, FontSize, Font, Vector2.new(100000, 100000)).X
+		local Y = Row * LineHeight
+		Caret.Position = UDim2.fromOffset(X, Y + (LineHeight - (FontSize + 2)) / 2)
+		ActiveLine.Position = UDim2.fromOffset(0, Y)
 		UpdateStatus()
 
-		local X = TextService:GetTextSize(Column, FontSize, Enum.Font.Code, Vector2.new(100000, 10000)).X
-		local Y = Row * LineHeight
-
-		Caret.Position = UDim2.fromOffset(X, Y + (LineHeight - (FontSize + 2)) / 2)
-		ActiveLine.Position = UDim2.fromOffset(-6, Y)
+		if Selecting then return end
+		local Scale = tonumber(UIScale) or 1
+		local View = Scroll.AbsoluteWindowSize / math.max(Scale, 0.01)
+		local Canvas = Scroll.CanvasPosition
+		local TargetX, TargetY = Canvas.X, Canvas.Y
+		if X + 22 > Canvas.X + View.X then
+			TargetX = X + 22 - View.X
+		elseif X + 10 < Canvas.X then
+			TargetX = X
+		end
+		if Y + LineHeight + 9 > Canvas.Y + View.Y then
+			TargetY = Y + LineHeight + 9 - View.Y
+		elseif Y + 8 < Canvas.Y then
+			TargetY = Y
+		end
+		Scroll.CanvasPosition = Vector2.new(math.max(TargetX, 0), math.max(TargetY, 0))
 		Caret.BackgroundTransparency = 0
-
-		local View = Scroll.AbsoluteSize / UIScale
-		local Position = Scroll.CanvasPosition
-		local NextX, NextY = Position.X, Position.Y
-		if X + 16 > NextX + View.X then NextX = X + 16 - View.X elseif X < NextX then NextX = X end
-		if Y + LineHeight + 10 > NextY + View.Y then NextY = Y + LineHeight + 10 - View.Y elseif Y < NextY then NextY = Y end
-		Scroll.CanvasPosition = Vector2.new(math.max(0, NextX), math.max(0, NextY))
-
-		if not Selecting then Blink:Play() end
-	end
-
-	local function Resize()
-		if Destroyed or not LastWidth then return end
-		local View = Scroll.AbsoluteSize / UIScale
-		local Width = math.max(LastWidth + 16, View.X - 16, 1)
-		local ContentH = math.max(ContentHeight + 6, View.Y - 10, 1)
-		Input.Position = UDim2.fromOffset(8, 5)
-		Input.Size = UDim2.fromOffset(Width, ContentH)
-		Scroll.CanvasSize = UDim2.fromOffset(Width + 16, ContentH + 10)
-		LineNumbers.Size = UDim2.new(1, -8, 0, ContentH)
+		Blink:Play()
 	end
 
 	local function Refresh()
 		if Destroyed then return end
-		Source = Input.Text
-
-		if LastText ~= Source then
-			LastText = Source
-			local Painted, Numbers, State, Width = {}, {}, nil, 0
-
-			for Row in (Source .. "\n"):gmatch("(.-)\n") do
-				local Key = (State or "") .. "\0" .. Row
+		if LastRendered ~= Source then
+			LastRendered = Source
+			local Painted = {}
+			local LineNumbers = {}
+			local State = nil
+			local Width = 0
+			for Line in (Source .. "\n"):gmatch("(.-)\n") do
+				local Key = (State or "") .. "\0" .. Line
 				local Entry = Cache[Key]
 				if not Entry then
-					local Rich, NextState = HighlightCode(Row, State)
-					Entry = {Rich, NextState, TextService:GetTextSize(Row, FontSize, Enum.Font.Code, Vector2.new(100000, 10000)).X}
+					local Text, NextState = HighlightLine(Line, State)
+					Entry = { Text, NextState, TextService:GetTextSize(Line, FontSize, Font, Vector2.new(100000, 100000)).X }
 					Cache[Key] = Entry
 					CacheSize += 1
 				end
+				LineNumbers[#LineNumbers + 1] = tostring(#LineNumbers + 1)
 				Painted[#Painted + 1] = Entry[1]
-				Numbers[#Numbers + 1] = tostring(#Numbers + 1)
-				State, Width = Entry[2], math.max(Width, Entry[3])
+				State = Entry[2]
+				Width = math.max(Width, Entry[3])
 			end
-
-			if CacheSize > 2000 then table.clear(Cache); CacheSize = 0 end
-
-			LineCount = #Numbers
+			if CacheSize > 1600 then
+				table.clear(Cache)
+				CacheSize = 0
+			end
+			LineCount = #LineNumbers
+			LastWidth = Width
+			ContentHeight = LineCount * LineHeight
 			Highlight.Text = table.concat(Painted, "\n")
-			LineNumbers.Text = table.concat(Numbers, "\n")
-			LastWidth, ContentHeight = Width, LineCount * LineHeight
-
-			NumberWidth = math.max(28, #tostring(LineCount) * FontSize * 0.62 + 14)
-			Gutter.Size = UDim2.new(0, NumberWidth, 1, 0)
-			Divider.Position = UDim2.fromOffset(NumberWidth, 0)
-			Scroll.Position = UDim2.fromOffset(NumberWidth + 1, 0)
-			Scroll.Size = UDim2.new(1, -(NumberWidth + 1), 1, 0)
+			Numbers.Text = table.concat(LineNumbers, "\n")
+			local NextWidth = math.max(44, #tostring(LineCount) * FontSize * 0.65 + 23)
+			if NextWidth ~= CodeWidth then
+				CodeWidth = NextWidth
+				Gutter.Size = UDim2.new(0, CodeWidth, 1, 0)
+				Scroll.Position = UDim2.fromOffset(CodeWidth, 0)
+				Scroll.Size = UDim2.new(1, -CodeWidth, 1, 0)
+			end
 		end
-
 		Resize()
 		UpdateCaret()
 	end
 
-	local RefreshQueued = false
 	local function QueueRefresh()
-		if RefreshQueued or Destroyed then return end
-		RefreshQueued = true
+		if Queued or Destroyed then return end
+		Queued = true
 		task.defer(function()
-			RefreshQueued = false
+			Queued = false
 			Refresh()
 		end)
 	end
 
-	local function ApplyTheme()
-		AccentBar.BackgroundColor3 = Theme["Color Theme"]
-		for _, Frame in ipairs(Lines) do
-			Frame.BackgroundColor3 = Theme["Color Dark Text"]
-		end
-		for _, Entry in pairs(Buttons) do
-			RepaintButton(Entry, true)
-		end
-		if HolderStroke and not (Editable and Focused) then
-			StrokeColor = HolderStroke.Color
-		end
-		UpdateStatus()
-	end
-
 	Scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-		LineNumbers.Position = UDim2.fromOffset(0, 5 - Scroll.CanvasPosition.Y)
+		Numbers.Position = UDim2.fromOffset(0, 8 - Scroll.CanvasPosition.Y)
 	end)
 	Scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(Resize)
 
 	Input:GetPropertyChangedSignal("Text"):Connect(function()
+		if Destroyed then return end
 		if Editable and Input.Text:find("\t", 1, true) then
-			local Position = Input.CursorPosition
-			local _, Count = Input.Text:sub(1, math.max(Position - 1, 0)):gsub("\t", "")
-			Input.Text = (Input.Text:gsub("\t", "    "))
-			Input.CursorPosition = Position + Count * 3
+			local Cursor = Input.CursorPosition
+			local Before = Cursor > 0 and Input.Text:sub(1, Cursor - 1) or ""
+			local _, Count = Before:gsub("\t", "")
+			Input.Text = Input.Text:gsub("\t", "    ")
+			if Cursor > 0 then Input.CursorPosition = Cursor + Count * 3 end
 			return
 		end
+		Source = Input.Text
 		if Editable and not Silent and OnChange then
-			task.spawn(OnChange, Input.Text)
+			task.spawn(OnChange, Source)
 		end
 		QueueRefresh()
 	end)
@@ -2121,41 +2120,15 @@ local function CreateCodeElement(Parent, Configs)
 	Input.Focused:Connect(function()
 		if not Editable then
 			Input:ReleaseFocus()
-			if EditAllowed then
-				Code:SetEditable(true)
-			end
+			if EditAllowed then Code:SetEditable(true) end
 			return
 		end
 		Focused = true
-		UpdateStroke()
 		UpdateCaret()
 	end)
 	Input.FocusLost:Connect(function()
 		Focused = false
-		UpdateStroke()
 		UpdateCaret()
-	end)
-
-	local ThemeConnection = Connection.ThemeChanged:Connect(function()
-		table.clear(Cache)
-		CacheSize, LastText = 0, nil
-		ApplyTheme()
-		QueueRefresh()
-	end)
-
-	local LanguageConnection = Connection.LanguageChanged:Connect(function()
-		for _, Entry in pairs(Buttons) do
-			RelabelButton(Entry)
-		end
-		Refresh()
-	end)
-
-	Holder.Destroying:Connect(function()
-		Destroyed = true
-		Blink:Cancel()
-		ThemeConnection:Disconnect()
-		LanguageConnection:Disconnect()
-		table.clear(Cache)
 	end)
 
 	function Code:SetCode(NewCode)
@@ -2179,14 +2152,14 @@ local function CreateCodeElement(Parent, Configs)
 	function Code:SetTitle(NewTitle)
 		if type(NewTitle) == "string" and NewTitle ~= "" then
 			TitleText = TranslateText(NewTitle)
-			TitleLabel.Text = TitleText
+			TabTitle.Text = TitleText
+			PathTitle.Text = TitleText
 		end
 	end
 
 	function Code:SetLanguage(NewLanguage)
 		Language = tostring(NewLanguage or "")
-		LanguageTag.Text = string.upper(Language)
-		LanguageTag.Visible = Language ~= ""
+		UpdateStatus()
 	end
 
 	function Code:SetHeight(NewHeight)
@@ -2198,20 +2171,12 @@ local function CreateCodeElement(Parent, Configs)
 	function Code:SetEditable(Value)
 		if Value == true and not EditAllowed then return false end
 		if Value == true and self.IsLocked and self:IsLocked() then return false end
-
 		Editable = Value == true
 		Input.TextEditable = Editable
-
+		if EditButton then EditButton.Active = Editable end
+		RelabelButtons()
 		if Editable then Input:CaptureFocus() else Input:ReleaseFocus() end
-
-		if EditButton then
-			EditButton.Active = Editable
-			RelabelButton(EditButton)
-			RepaintButton(EditButton)
-		end
-
-		UpdateStroke()
-		Refresh()
+		UpdateCaret()
 		return Editable
 	end
 
@@ -2229,12 +2194,11 @@ local function CreateCodeElement(Parent, Configs)
 
 	function Code:Reset()
 		if not EditAllowed then return false, "Editing is disabled." end
-
 		if self.IsLocked and self:IsLocked() then
 			self:NotifyLocked()
 			return false, "Locked"
 		end
-
+		Source = Baseline
 		Input.Text = Baseline
 		Refresh()
 		return true
@@ -2243,6 +2207,7 @@ local function CreateCodeElement(Parent, Configs)
 	function Code:SetExecuteEnabled(Value)
 		CanExecute = Value == true
 		ExecuteButton.Button.Visible = CanExecute
+		LayoutHeader()
 		return CanExecute
 	end
 
@@ -2255,29 +2220,22 @@ local function CreateCodeElement(Parent, Configs)
 			self:NotifyLocked()
 			return false, "Locked"
 		end
-
-		if not CanCopy then
-			return false, "Copy is disabled."
-		end
-
+		if not CanCopy then return false, "Copy is disabled." end
 		if type(Hub) ~= "table" or type(Hub.SetClipboard) ~= "function" then
 			ShowToastMessage("Clipboard API is unavailable.")
 			return false, "Clipboard API is unavailable."
 		end
-
 		local Success, Error = Hub:SetClipboard(Input.Text)
 		ShowToastMessage(Success and "Copied to Clipboard" or "Clipboard API is unavailable.")
-
 		if Success then
 			CopyButton.Flash = true
-			RelabelButton(CopyButton)
+			RelabelButtons()
 			task.delay(1.4, function()
 				if Destroyed then return end
 				CopyButton.Flash = false
-				RelabelButton(CopyButton)
+				RelabelButtons()
 			end)
 		end
-
 		return Success, Error
 	end
 
@@ -2286,30 +2244,19 @@ local function CreateCodeElement(Parent, Configs)
 			self:NotifyLocked()
 			return false, "Locked"
 		end
-
-		if not CanExecute then
-			return false, "Code execution is disabled."
-		end
-
+		if not CanExecute then return false, "Code execution is disabled." end
 		if type(Hub) ~= "table" or type(Hub.Execute) ~= "function" then
 			ShowToastMessage("Code execution API is unavailable.")
 			return false, "Code execution API is unavailable."
 		end
-
 		local Success, Result = Hub:Execute(Input.Text, TitleText)
 		if Success then
 			ShowToastMessage("Code executed successfully.")
 		else
 			local ErrorText = tostring(Result)
-			if #ErrorText > 120 then
-				ErrorText = ErrorText:sub(1, 117) .. "..."
-			end
-
-			ShowToastMessage("Code execution failed: {Error}", {
-				Error = ErrorText,
-			})
+			if #ErrorText > 120 then ErrorText = ErrorText:sub(1, 117) .. "..." end
+			ShowToastMessage("Code execution failed: {Error}", { Error = ErrorText })
 		end
-
 		return Success, Result
 	end
 
@@ -2324,29 +2271,48 @@ local function CreateCodeElement(Parent, Configs)
 	CopyButton.Button.Activated:Connect(function()
 		Code:Copy()
 	end)
-
 	ExecuteButton.Button.Activated:Connect(function()
 		Code:Execute()
 	end)
-
 	if ResetButton then
 		ResetButton.Button.Activated:Connect(function()
 			Code:Reset()
 		end)
 	end
-
-	ApplyLocked(Code, Holder, Configs, function(IsLocked)
-		if IsLocked then Code:SetEditable(false) end
-	end)
-
 	if EditButton then
 		EditButton.Button.Activated:Connect(function()
 			Code:SetEditable(not Editable)
 		end)
 	end
 
+	CopyButton.Button.Visible = CanCopy
+	ExecuteButton.Button.Visible = CanExecute
+	if ResetButton then ResetButton.Button.Visible = false end
+
+	local ThemeConnection = Connection.ThemeChanged:Connect(function()
+		UpdateStatus()
+	end)
+	local LanguageConnection = Connection.LanguageChanged:Connect(function()
+		RelabelButtons()
+		UpdateStatus()
+	end)
+
+	Holder.Destroying:Connect(function()
+		Destroyed = true
+		Blink:Cancel()
+		ThemeConnection:Disconnect()
+		LanguageConnection:Disconnect()
+		table.clear(Cache)
+	end)
+
+	ApplyLocked(Code, Holder, Configs, function(IsLocked)
+		if IsLocked then Code:SetEditable(false) end
+	end)
+
+	RelabelButtons()
 	LayoutHeader()
 	Refresh()
+
 	return Code, Holder
 end
 
