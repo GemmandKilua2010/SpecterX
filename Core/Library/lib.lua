@@ -922,15 +922,21 @@ local function GetStr(val)
     return val
 end
 
+local TweenInfoCache = {}
 local function CreateTween(Configs)
     local Instance = Configs[1] or Configs.Instance
     local Prop = Configs[2] or Configs.Prop
-    local NewVal = Configs[3] or Configs.NewVal
+    local NewVal = Configs[3]
+    if NewVal == nil then NewVal = Configs.NewVal end
     local Time = Configs[4] or Configs.Time or AnimationDefault
     local TweenWait = Configs[5] or Configs.wait or false
-    local TweenInfo = TweenInfo.new(Time, Enum.EasingStyle.Quint)
+    local Info = TweenInfoCache[Time]
+    if not Info then
+        Info = TweenInfo.new(Time, Enum.EasingStyle.Quint)
+        TweenInfoCache[Time] = Info
+    end
 
-    local Tween = TweenService:Create(Instance, TweenInfo, {[Prop] = NewVal})
+    local Tween = TweenService:Create(Instance, Info, {[Prop] = NewVal})
     Tween:Play()
     if TweenWait then
         Tween.Completed:Wait()
@@ -1051,6 +1057,33 @@ local function SaveJson(FileName, SaveData)
 	local Saved = Hub:CreateFile(FileName, Json)
 	return Saved == true
 end
+
+local SettingsSaveQueued = false
+local SettingsLastChange = 0
+local SettingsSaveDelay = 0.5
+local function FlushSettingsWhenIdle()
+    if not SettingsSaveQueued then return end
+    local Remaining = SettingsSaveDelay - (os.clock() - SettingsLastChange)
+    if Remaining > 0 then
+        task.delay(math.max(Remaining, 0.05), FlushSettingsWhenIdle)
+        return
+    end
+    SettingsSaveQueued = false
+    SaveJson(SettingsPath, Library.Save)
+end
+
+local function QueueSettingsSave()
+    SettingsLastChange = os.clock()
+    if SettingsSaveQueued then return end
+    SettingsSaveQueued = true
+    task.delay(SettingsSaveDelay, FlushSettingsWhenIdle)
+end
+
+ScreenGui.Destroying:Connect(function()
+    if not SettingsSaveQueued then return end
+    SettingsSaveQueued = false
+    SaveJson(SettingsPath, Library.Save)
+end)
 
 Library.Transparency = Library.Save.Transparency
 
@@ -1708,6 +1741,7 @@ function Library:GetLanguages()
 end
 
 function Library:SetLanguage(NewLanguage)
+    if NewLanguage == Library:GetLanguage() then return true, NewLanguage end
     if type(Hub) ~= "table" or type(Hub.SetLanguage) ~= "function" then
         return false
     end
@@ -1718,7 +1752,7 @@ function Library:SetLanguage(NewLanguage)
     end
 
     Library.Save.Language = Language
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
     Connection:FireConnection("LanguageChanged", Language)
     return true, Language
 end
@@ -1738,10 +1772,10 @@ function Library:GetTransparency()
 end
 
 function Library:SetTheme(NewTheme)
-	if not VerifyTheme(NewTheme) then return end
-	
+	if not VerifyTheme(NewTheme) then return false end
+	if Library.Save.Theme == NewTheme then return true end
 	Library.Save.Theme = NewTheme
-	SaveJson(SettingsPath, Library.Save)
+	QueueSettingsSave()
 	Theme = Library.Themes[NewTheme]
 
 	if type(Hub) == "table" and type(Hub.SetTheme) == "function" then
@@ -1809,7 +1843,7 @@ function Library:SetBackground(NewBackground, Preset)
     else
         Library.Save.BackgroundPreset = "Custom"
     end
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
 
     local Enabled = AssetId ~= ""
     local Image = ToAssetContentId(AssetId)
@@ -1835,7 +1869,7 @@ function Library:SetBackgroundImageTransparency(Value)
 
     Value = math.clamp(Value, 0, 100)
     Library.Save.BackgroundImageTransparency = Value
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
 
     for _, Val in ipairs(Library.Instances) do
         if Val.Type == "Main" then
@@ -1852,7 +1886,7 @@ end
 function Library:SetBackgroundScale(Value)
     local Name = NormalizeBackgroundScale(Value)
     Library.Save.BackgroundScale = Name
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
 
     for _, Val in ipairs(Library.Instances) do
         if Val.Type == "Main" then
@@ -1868,8 +1902,9 @@ end
 
 function Library:SetSoundEnabled(Value)
     if type(Value) ~= "boolean" then return false end
+    if Library.Save.SoundEnabled == Value then return true end
     Library.Save.SoundEnabled = Value
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
     return true
 end
 
@@ -1880,9 +1915,11 @@ end
 function Library:SetSoundVolume(Value)
     Value = tonumber(Value)
     if not Value then return false end
-    Library.Save.SoundVolume = math.clamp(Value, 0, 100)
+    Value = math.clamp(Value, 0, 100)
+    if Library.Save.SoundVolume == Value then return true end
+    Library.Save.SoundVolume = Value
     UISound.Volume = Library.Save.SoundVolume / 100
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
     return true
 end
 
@@ -1895,9 +1932,10 @@ function Library:SetSoundId(Value)
     if not AssetId or AssetId == "" then
         return false
     end
+    if tostring(Library.Save.SoundId) == tostring(AssetId) then return true end
     Library.Save.SoundId = AssetId
     UISound.SoundId = ToAssetContentId(AssetId)
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
     return true
 end
 
@@ -1915,8 +1953,9 @@ end
 
 function Library:SetDropdownSearchDefault(Value)
     if type(Value) ~= "boolean" then return false end
+    if Library.Save.DropdownSearch == Value then return true end
     Library.Save.DropdownSearch = Value
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
 
     for Dropdown, SetSearchEnabled in pairs(DropdownSearchListeners) do
         if type(SetSearchEnabled) == "function" then
@@ -1936,8 +1975,9 @@ end
 
 function Library:SetDropdownPrefixOnly(Value)
     if type(Value) ~= "boolean" then return false end
+    if Library.Save.DropdownPrefixOnly == Value then return true end
     Library.Save.DropdownPrefixOnly = Value
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
 
     for Dropdown, SetPrefixOnly in pairs(DropdownPrefixListeners) do
         if type(SetPrefixOnly) == "function" then
@@ -1957,8 +1997,9 @@ end
 
 function Library:SetDropdownCloseOnSelect(Value)
     if type(Value) ~= "boolean" then return false end
+    if Library.Save.DropdownCloseOnSelect == Value then return true end
     Library.Save.DropdownCloseOnSelect = Value
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
     return true
 end
 
@@ -1970,8 +2011,10 @@ function Library:SetDropdownMaxVisibleOptions(Value)
     Value = tonumber(Value)
     if not Value then return false end
 
-    Library.Save.DropdownMaxVisibleOptions = math.clamp(math.floor(Value + 0.5), 3, 12)
-    SaveJson(SettingsPath, Library.Save)
+    Value = math.clamp(math.floor(Value + 0.5), 3, 12)
+    if Library.Save.DropdownMaxVisibleOptions == Value then return true end
+    Library.Save.DropdownMaxVisibleOptions = Value
+    QueueSettingsSave()
 
     for Dropdown, UpdateSize in pairs(DropdownSizeListeners) do
         if type(UpdateSize) == "function" then
@@ -1986,9 +2029,11 @@ function Library:SetDropdownMaxVisibleOptions(Value)
 end
 
 function Library:SetTransparency(NewTransparency)
-    Library.Transparency = math.clamp(tonumber(NewTransparency) or Library.Save.Transparency or 3, 0, 100)
+    local Target = math.clamp(tonumber(NewTransparency) or Library.Save.Transparency or 3, 0, 100)
+    if Library.Transparency == Target then return end
+    Library.Transparency = Target
     Library.Save.Transparency = Library.Transparency
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
 
     local Transparency = Library.Transparency / 100
 
@@ -2017,9 +2062,11 @@ function Library:SetScrollThickness(Value)
     Value = tonumber(Value)
     if not Value then return false end
 
-    ScrollThickness = math.clamp(Value, 0, 12)
+    Value = math.clamp(Value, 0, 12)
+    if ScrollThickness == Value then return true end
+    ScrollThickness = Value
     Library.Save.ScrollThickness = ScrollThickness
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
 
     for _, Val in ipairs(Library.Instances) do
         if Val.Type == "ScrollBar" and Val.Instance:IsA("ScrollingFrame") then
@@ -2037,9 +2084,11 @@ function Library:SetScrollTransparency(Value)
     Value = tonumber(Value)
     if not Value then return false end
 
-    ScrollTransparency = math.clamp(Value / 100, 0, 1)
+    Value = math.clamp(Value / 100, 0, 1)
+    if ScrollTransparency == Value then return true end
+    ScrollTransparency = Value
     Library.Save.ScrollTransparency = ScrollTransparency
-    SaveJson(SettingsPath, Library.Save)
+    QueueSettingsSave()
 
     for _, Val in ipairs(Library.Instances) do
         if Val.Type == "ScrollBar" and Val.Instance:IsA("ScrollingFrame") then
@@ -2168,7 +2217,7 @@ function Library:MakeWindow(Configs)
 	end
 
 	if SaveDefaults then
-		SaveJson(SettingsPath, Library.Save)
+		QueueSettingsSave()
 	end
 
 	ResponsiveWidth, ResponsiveHeight = UISizeX, UISizeY
@@ -2405,7 +2454,7 @@ function Library:MakeWindow(Configs)
 		else
 			Library.Save.TabSize = MainScroll.Size.X.Offset
 		end
-		SaveJson(SettingsPath, Library.Save)
+		QueueSettingsSave()
 	end))
 
 	local function CanDragWindow(Input)
@@ -2595,11 +2644,12 @@ function Library:MakeWindow(Configs)
 		})
 		InsertTheme(Button, "Icon")
 
+		local ActiveButton = false
 		TrackConnection(Button.MouseEnter:Connect(function()
 			CreateTween({Button, "ImageTransparency", 0, AnimationTopBar})
 		end))
 		TrackConnection(Button.MouseLeave:Connect(function()
-			CreateTween({Button, "ImageTransparency", BaseTransparency, AnimationTopBar})
+			CreateTween({Button, "ImageTransparency", ActiveButton and 0 or BaseTransparency, AnimationTopBar})
 		end))
 
 		local Callback = ButtonConfig.Callback
@@ -2622,6 +2672,11 @@ function Library:MakeWindow(Configs)
 
 		function Controller:SetVisible(Value)
 			Button.Visible = Value ~= false
+		end
+
+		function Controller:SetActive(Value)
+			ActiveButton = Value == true
+			Button.ImageTransparency = ActiveButton and 0 or BaseTransparency
 		end
 
 		function Controller:SetSize(Value)
@@ -2796,11 +2851,13 @@ function Library:MakeWindow(Configs)
 			return false
 		end
 
-		RequestedMinimizedWidth = math.clamp(Width, 160, math.min(320, MaxWidth))
+		Width = math.clamp(Width, 160, math.min(320, MaxWidth))
+		if RequestedMinimizedWidth == Width then return true end
+		RequestedMinimizedWidth = Width
 		local TextWidth = TextService:GetTextSize(Title.Text, TopBarTitleTextSize, Enum.Font.GothamMedium, Vector2.new(1000, TopBarHeight)).X
 		MinimizedWidth = math.clamp(math.max(RequestedMinimizedWidth, TextWidth + 115), 160, math.min(320, MaxWidth))
 		Library.Save.MinimizedWidth = RequestedMinimizedWidth
-		SaveJson(SettingsPath, Library.Save)
+		QueueSettingsSave()
 
 		if Minimized then
 			MainFrame.Size = UDim2.fromOffset(MinimizedWidth, TopBarHeight)
@@ -2825,9 +2882,12 @@ function Library:MakeWindow(Configs)
 			return false
 		end
 
+		Width = math.clamp(Width, MinWidth, MaxWidth)
+		Height = math.clamp(Height, MinHeight, MaxHeight)
+		if MainFrame.Size.X.Offset == Width and MainFrame.Size.Y.Offset == Height then return true end
 		ApplyWindowSize(Width, Height)
 		Library.Save.UISize = {MainFrame.Size.X.Offset, MainFrame.Size.Y.Offset}
-		SaveJson(SettingsPath, Library.Save)
+		QueueSettingsSave()
 		return true
 	end
 
@@ -2841,9 +2901,11 @@ function Library:MakeWindow(Configs)
 			return false
 		end
 
+		Width = math.clamp(Width, MinTabSize, MaxTabSize)
+		if MainScroll.Size.X.Offset == Width then return true end
 		ApplyTabSize(Width)
 		Library.Save.TabSize = MainScroll.Size.X.Offset
-		SaveJson(SettingsPath, Library.Save)
+		QueueSettingsSave()
 		return true
 	end
 
@@ -2855,13 +2917,14 @@ function Library:MakeWindow(Configs)
 		if type(Value) ~= "boolean" then
 			return false
 		end
+		if Draggable == Value then return true end
 
 		Draggable = Value
 		if Value then
 			EnsureWindowDrag()
 		end
 		Library.Save.Draggable = Value
-		SaveJson(SettingsPath, Library.Save)
+		QueueSettingsSave()
 		return true
 	end
 
@@ -2873,6 +2936,7 @@ function Library:MakeWindow(Configs)
 		if type(Value) ~= "boolean" then
 			return false
 		end
+		if Resizable == Value then return true end
 
 		Resizable = Value
 		if not Value and ResizeState and ResizeState.Mode == "Window" then
@@ -2882,7 +2946,7 @@ function Library:MakeWindow(Configs)
 		ControlSize1.Interactable = Value
 		ControlSize1.Visible = Value and not Minimized
 		Library.Save.Resizable = Value
-		SaveJson(SettingsPath, Library.Save)
+		QueueSettingsSave()
 		return true
 	end
 
@@ -2894,6 +2958,7 @@ function Library:MakeWindow(Configs)
 		if type(Value) ~= "boolean" then
 			return false
 		end
+		if TabResizable == Value then return true end
 
 		TabResizable = Value
 		if not Value and ResizeState and ResizeState.Mode == "Tab" then
@@ -2903,7 +2968,7 @@ function Library:MakeWindow(Configs)
 		ControlSize2.Interactable = Value
 		ControlSize2.Visible = Value and not Minimized
 		Library.Save.TabResizable = Value
-		SaveJson(SettingsPath, Library.Save)
+		QueueSettingsSave()
 		return true
 	end
 
@@ -2955,7 +3020,7 @@ function Library:MakeWindow(Configs)
 			WindowKeybindControl:SetKeybind(Resolved)
 		end
 		Library.Save.Keybind = Resolved.Name
-		SaveJson(SettingsPath, Library.Save)
+		QueueSettingsSave()
 		return true
 	end
 
@@ -3137,17 +3202,22 @@ function Library:MakeWindow(Configs)
 	end
 	function Window:SelectTab(TabSelect)
 		if type(TabSelect) == "number" then
-			Library.Tabs[TabSelect].func:Enable()
-		else
-			for _,Tab in pairs(Library.Tabs) do
-				if Tab.Cont == TabSelect.Cont then
-					Tab.func:Enable()
-				end
+			TabSelect = Library.Tabs[TabSelect] and Library.Tabs[TabSelect].func
+		end
+		if type(TabSelect) ~= "table" or TabSelect._Destroyed then
+			return false
+		end
+		for _, Entry in ipairs(Library.Tabs) do
+			if Entry.func == TabSelect then
+				return TabSelect:Enable()
 			end
 		end
+		return false
 	end
-	
+
+
 	local ContainerList = {}
+	local ConfigTab
 	ScreenGui.Destroying:Connect(function()
 		for _, Container in ipairs(ContainerList) do Container:Destroy() end
 		table.clear(ContainerList)
@@ -3206,7 +3276,8 @@ function Library:MakeWindow(Configs)
 			TIcon = false
 		end
 		
-		local Container = InsertTheme(Create("ScrollingFrame", {
+		local Container = InsertTheme(Create("ScrollingFrame", Containers, {
+			Visible = false,
 			Size = UDim2.new(1, -6, 1, -8),
 			Position = UDim2.new(0, 0, 1, -4),
 			AnchorPoint = Vector2.new(0, 1),
@@ -3232,7 +3303,8 @@ function Library:MakeWindow(Configs)
 		OrderedParents[Container] = 0
 		table.insert(ContainerList, Container)
 		
-		if not FirstTab and not Hidden and not Configs.Locked then Container.Parent = Containers end
+		local InitiallySelected = not ActiveTab and not Hidden and not Configs.Locked
+		Container.Visible = InitiallySelected
 		
 		local Tab = {}
 		if Hidden then
@@ -3268,37 +3340,33 @@ function Library:MakeWindow(Configs)
 			ApplyLocked(Tab, TabSelect, Configs)
 		end
 
+		local TabVisible = true
+		local TabElements = {}
 		local function Tabs()
+			if Tab._Destroyed or not TabVisible then return false end
 			if Tab:IsLocked() then
 				Tab:NotifyLocked()
-				return
+				return false
 			end
+			if ActiveTab == Tab and Container.Visible then return true end
 
+			if ActiveTab and ActiveTab ~= Tab then
+				ActiveTab:Disable()
+			end
 			ActiveTab = Tab
-			if Container.Parent then return end
-			for _,Frame in pairs(ContainerList) do
-				if Frame:IsA("ScrollingFrame") and Frame ~= Container then
-					Frame.Parent = nil
-				end
-			end
-			Container.Parent = Containers
-			Container.Size = UDim2.new(1, 0, 1, 150)
-			for _, TabData in ipairs(Library.Tabs) do
-				if TabData.Cont ~= Container then
-					TabData.func:Disable()
-				end
-			end
-			CreateTween({Container, "Size", UDim2.new(1, 0, 1, 0), AnimationTabOpen})
+			Container.Visible = true
+			if ConfigButton then ConfigButton:SetActive(Tab == ConfigTab) end
 			if TabSelect then
 				CreateTween({LabelTitle, "TextTransparency", 0, AnimationTab})
 				CreateTween({LabelIcon, "ImageTransparency", 0, AnimationTab})
 				CreateTween({Selected, "Size", UDim2.new(0, TabIndicatorWidth, 0, TabIndicatorHeight), AnimationTab})
 				CreateTween({Selected, "BackgroundTransparency", 0, AnimationTab})
 			end
+			return true
 		end
 		if TabSelect then TabSelect.Activated:Connect(Tabs) end
 		
-		if not ActiveTab and not Hidden and not Configs.Locked then
+		if InitiallySelected then
 			ActiveTab = Tab
 		end
 
@@ -3307,7 +3375,8 @@ function Library:MakeWindow(Configs)
 		Tab.Cont = Container
 		
 		function Tab:Disable()
-			Container.Parent = nil
+			if Tab._Destroyed or not Container.Visible then return end
+			Container.Visible = false
 			if TabSelect then
 				CreateTween({LabelTitle, "TextTransparency", TabInactiveTransparency, AnimationTab})
 				CreateTween({LabelIcon, "ImageTransparency", TabInactiveTransparency, AnimationTab})
@@ -3316,13 +3385,33 @@ function Library:MakeWindow(Configs)
 			end
 		end
 		function Tab:Enable()
-			Tabs()
+			return Tabs()
 		end
 		function Tab:Visible(Bool)
-			if TabSelect then Funcs:ToggleVisible(TabSelect, Bool) end
-			Funcs:ToggleParent(Container, Bool, Containers)
+			if Tab._Destroyed then return end
+			if Bool == nil then Bool = not TabVisible end
+			TabVisible = Bool == true
+			if TabSelect then TabSelect.Visible = TabVisible end
+			if not TabVisible then
+				if ActiveTab == Tab then
+					Tab:Disable()
+					ActiveTab = nil
+					if ConfigButton then ConfigButton:SetActive(false) end
+					for _, Entry in ipairs(Library.Tabs) do
+						if Entry.func ~= Tab and Entry.func:Enable() then break end
+					end
+				end
+			elseif ActiveTab == Tab then
+				Container.Visible = true
+			end
 		end
 		function Tab:Destroy()
+			if Tab._Destroyed then return end
+			Tab._Destroyed = true
+			while next(TabElements) do
+				local Element = next(TabElements)
+				Element:Destroy()
+			end
 			local TabIndex
 			for Index, TabData in ipairs(Library.Tabs) do
 				if TabData.func == Tab then
@@ -3340,16 +3429,19 @@ function Library:MakeWindow(Configs)
 				table.remove(ContainerList, ContainerIndex)
 			end
 
-			if ActiveTab == Tab then
-				ActiveTab = nil
-			end
-
-			if #Library.Tabs == 0 then
-				FirstTab = false
-			end
+			local WasActive = ActiveTab == Tab
+			if WasActive then ActiveTab = nil end
+			if ConfigTab == Tab then ConfigTab = nil end
+			if #Library.Tabs == 0 then FirstTab = false end
 
 			if TabSelect then TabSelect:Destroy() end
 			Container:Destroy()
+			if WasActive then
+				if ConfigButton then ConfigButton:SetActive(false) end
+				for _, Entry in ipairs(Library.Tabs) do
+					if not Entry.func._Destroyed and not Entry.func:IsLocked() and Entry.func:Enable() then break end
+				end
+			end
 		end
 		function Tab:SetTitle(Value)
 			TName = TranslateText(tostring(Value or ""))
@@ -3360,6 +3452,7 @@ function Library:MakeWindow(Configs)
 		end
 		
 		function Tab:AddSection(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local SectionFlag = type(Configs) == "table" and Configs.Flag or nil
 			local SectionName = type(Configs) == "string" and Configs or Configs[1] or Configs.Name or Configs.Title or Configs.Section
 			SectionName = TranslateText(tostring(SectionName or ""))
@@ -3396,13 +3489,18 @@ function Library:MakeWindow(Configs)
 				SectionFrame:Destroy()
 			end
 			function Section:Set(New)
-				if New then
+				if New ~= nil then
 					SectionLabel.Text = TranslateText(tostring(GetStr(New) or ""))
 				end
+			end
+			Section.SetTitle = Section.Set
+			function Section:GetTitle()
+				return SectionLabel.Text
 			end
 			return RegisterFlagObject(SectionFlag, Section, SectionFrame)
 		end
 		function Tab:AddParagraph(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local PName = Configs[1] or Configs.Title or TranslateText("Paragraph")
 			local PDesc = Configs[2] or Configs.Text or Configs.Desc or Configs.Description or ""
 			
@@ -3428,6 +3526,7 @@ function Library:MakeWindow(Configs)
 			return RegisterFlagObject(Configs.Flag, Paragraph, Frame)
 		end
 		function Tab:AddButton(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local BName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Button!")
 			local BDescription = Configs.Desc or Configs.Description or ""
 			local Callback = Funcs:GetCallback(Configs, 2)
@@ -3452,6 +3551,8 @@ function Library:MakeWindow(Configs)
 			local Button = {}
 			function Button:Visible(...) Funcs:ToggleVisible(FButton, ...) end
 			function Button:Destroy() FButton:Destroy() end
+			function Button:SetTitle(Value) LabelFunc:SetTitle(tostring(Value or "")) end
+			function Button:SetDesc(Value) LabelFunc:SetDesc(tostring(Value or "")) end
 			function Button:Callback(...) Funcs:InsertCallback(Callback, ...) end
 			function Button:Click()
 				if self.IsLocked and self:IsLocked() then
@@ -3477,6 +3578,7 @@ function Library:MakeWindow(Configs)
 			return RegisterFlagObject(Configs.Flag, Button, FButton)
 		end
 		function Tab:AddToggle(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local TName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Toggle")
 			local TDesc = Configs.Desc or Configs.Description or ""
 			local Callback = Funcs:GetCallback(Configs, 3)
@@ -3507,85 +3609,81 @@ function Library:MakeWindow(Configs)
 				BackgroundColor3 = Theme["Color Theme"]
 			}), "Theme")Make("Corner", Toggle, UDim.new(0.5, 0))
 			
-			local WaitClick
-			local function SetToggle(Val)
-				if WaitClick then return end
-				
-				WaitClick, Default = true, Val
+			local function SetToggle(Value, Force)
+				if type(Value) ~= "boolean" then return false end
+				if Default == Value and not Force then return true end
+				Default = Value
 				SetFlag(Flag, Default)
-				Funcs:FireCallback(Callback, Default)
 				if Default then
+					Toggle.AnchorPoint = Vector2.new(1, 0.5)
 					CreateTween({Toggle, "Position", UDim2.new(1, 0, 0.5), AnimationToggle})
 					CreateTween({Toggle, "BackgroundTransparency", 0, AnimationToggle})
-					CreateTween({Toggle, "AnchorPoint", Vector2.new(1, 0.5), AnimationToggle, false})
 				else
+					Toggle.AnchorPoint = Vector2.new(0, 0.5)
 					CreateTween({Toggle, "Position", UDim2.new(0, 0, 0.5), AnimationToggle})
 					CreateTween({Toggle, "BackgroundTransparency", 0.8, AnimationToggle})
-					CreateTween({Toggle, "AnchorPoint", Vector2.new(0, 0.5), AnimationToggle, false})
 				end
-				WaitClick = false
-			end;task.spawn(SetToggle, Default)
-			
-			Button.Activated:Connect(function()
-				SetToggle(not Default)
-				PlayUISound()
-			end)
-			
-			local Toggle = {}
-			function Toggle:Visible(...) Funcs:ToggleVisible(Button, ...) end
-			function Toggle:Destroy() Button:Destroy() end
-			function Toggle:Callback(...)
-				local Added = Funcs:InsertCallback(Callback, ...)
-				if type(Added) == "function" then
-					Added(Default)
-				end
+				Funcs:FireCallback(Callback, Default)
+				return true
 			end
-			function Toggle:SetEnabled(Value)
-				if type(Value) ~= "boolean" then
-					return false
-				end
+			SetToggle(Default == true, true)
 
-				if WaitClick then
-					repeat task.wait() until not WaitClick
-				end
+			Button.Activated:Connect(function()
+				if not Button.Interactable then return end
+				if SetToggle(not Default) then PlayUISound() end
+			end)
 
+			local ToggleControl = {}
+			function ToggleControl:Visible(...) Funcs:ToggleVisible(Button, ...) end
+			function ToggleControl:Destroy() Button:Destroy() end
+			function ToggleControl:Callback(...)
+				local Added = Funcs:InsertCallback(Callback, ...)
+				if type(Added) == "function" then Added(Default) end
+			end
+			function ToggleControl:SetEnabled(Value)
+				if type(Value) ~= "boolean" then return false end
 				SetToggle(Value)
 				return Default
 			end
-			function Toggle:GetEnabled()
+			function ToggleControl:GetEnabled()
 				return Default
 			end
-			Toggle.Get = Toggle.GetEnabled
-			Toggle.IsEnabled = Toggle.GetEnabled
-			function Toggle:Toggle()
+			ToggleControl.Get = ToggleControl.GetEnabled
+			ToggleControl.IsEnabled = ToggleControl.GetEnabled
+			function ToggleControl:Toggle()
 				return self:SetEnabled(not Default)
 			end
-			function Toggle:Set(Val1, Val2)
+			function ToggleControl:Set(Val1, Val2)
 				if type(Val1) == "string" and type(Val2) == "string" then
 					LabelFunc:SetTitle(Val1)
 					LabelFunc:SetDesc(Val2)
 				elseif type(Val1) == "string" then
-					LabelFunc:SetTitle(Val1, false, true)
+					LabelFunc:SetTitle(Val1)
 				elseif type(Val1) == "boolean" then
-					if WaitClick and Val2 then
-						repeat task.wait() until not WaitClick
-					end
-					task.spawn(SetToggle, Val1)
+					SetToggle(Val1)
 				elseif type(Val1) == "function" then
 					Callback = {Val1}
 				end
 			end
+			function ToggleControl:SetTitle(Value)
+				LabelFunc:SetTitle(tostring(Value or ""))
+			end
+			function ToggleControl:SetDesc(Value)
+				LabelFunc:SetDesc(tostring(Value or ""))
+			end
 
-			ApplyLocked(Toggle, Button, Configs)
-			return RegisterFlagObject(Flag, Toggle, Button)
+			ApplyLocked(ToggleControl, Button, Configs)
+			return RegisterFlagObject(Flag, ToggleControl, Button)
 		end
 		function Tab:AddDropdown(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local DName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Dropdown")
 			local DDesc = Configs.Desc or Configs.Description or ""
 			local DOptions = Configs[2] or Configs.Options or {}
+			DOptions = type(DOptions) == "table" and DOptions or {}
 			local OpDefault = Configs[3] or Configs.Default or "..."
 			local DMultiSelect = Configs.MultiSelect or false
-			local DMultiConfig = Configs.MultiConfig or {}
+			local DMultiConfig = type(Configs.MultiConfig) == "table" and Configs.MultiConfig or {}
 			local DAllowNone = Configs.AllowNone ~= false
 			local UsesGlobalSearch = type(Configs.Search) ~= "boolean"
 			local DSearch = UsesGlobalSearch and Library.Save.DropdownSearch == true or Configs.Search == true
@@ -3832,6 +3930,7 @@ function Library:MakeWindow(Configs)
 			local ScrollSize, WaitClick = 5
 
 			local function Disable()
+				if not NoClickFrame.Visible or WaitClick then return end
 				WaitClick = true
 
 				CreateTween({Arrow, "Rotation", 0, AnimationDropdown})
@@ -3846,6 +3945,16 @@ function Library:MakeWindow(Configs)
 				end
 
 				WaitClick = false
+			end
+
+			local function HideInstantly()
+				if not NoClickFrame.Visible then return end
+				NoClickFrame.Visible = false
+				DropFrame.Size = UDim2.fromOffset(152, 0)
+				Arrow.Image = "rbxassetid://10709791523"
+				Arrow.Rotation = 0
+				Arrow.ImageColor3 = Color3.fromRGB(255, 255, 255)
+				if SearchInput then SearchInput:ReleaseFocus() end
 			end
 
 			local function GetFrameSize()
@@ -3876,6 +3985,7 @@ function Library:MakeWindow(Configs)
 				end
 			end
 
+			local CalculatePos
 			local function Minimize()
 				if WaitClick then
 					return
@@ -3889,6 +3999,7 @@ function Library:MakeWindow(Configs)
 					CreateTween({DropFrame, "Size", UDim2.new(0, 152, 0, 0), AnimationDropdown, true})
 					NoClickFrame.Visible = false
 				else
+					CalculatePos()
 					NoClickFrame.Visible = true
 					Arrow.Image = "rbxassetid://10709790948"
 					CreateTween({Arrow, "ImageColor3", Theme["Color Theme"], AnimationDropdown})
@@ -3902,7 +4013,7 @@ function Library:MakeWindow(Configs)
 				WaitClick = false
 			end
 
-			local function CalculatePos()
+			CalculatePos = function()
 				local FramePos = SelectedFrame.AbsolutePosition
 				local ScreenSize = ScreenGui.AbsoluteSize
 
@@ -3922,7 +4033,13 @@ function Library:MakeWindow(Configs)
 				local AnchorPoint = FramePos.Y > ScreenSize.Y / 1.4 and 1 or ScrollSize > 80 and 0.5 or 0
 
 				DropFrame.AnchorPoint = Vector2.new(0, AnchorPoint)
-				CreateTween({DropFrame, "Position", NewPos, AnimationDropdownPosition})
+				if DropFrame.Position ~= NewPos then
+					if NoClickFrame.Visible then
+						CreateTween({DropFrame, "Position", NewPos, AnimationDropdownPosition})
+					else
+						DropFrame.Position = NewPos
+					end
+				end
 			end
 
 			local AddNewOptions, GetOptions, AddOption, RemoveOption, Selected, SetSearchEnabled, SetPrefixOnly
@@ -4031,34 +4148,25 @@ function Library:MakeWindow(Configs)
 				end
 
 				local function UpdateSelected()
-					for _, Value in pairs(Options) do
-						local Nodes = Value.nodes
-						local IsActive = MultiSelect and Value.Stats or Value.Value == Selected
-
-						CreateTween({
-							Nodes[2],
-							"BackgroundTransparency",
-							IsActive and 0 or 1,
-							0.35
-						})
-
-						CreateTween({
-							Nodes[2],
-							"Size",
-							IsActive
-								and UDim2.fromOffset(4, 14)
-								or UDim2.fromOffset(4, 4),
-							0.35
-						})
-
-						CreateTween({
-							Nodes[3],
-							"TextTransparency",
-							IsActive and 0 or 0.4,
-							0.35
-						})
+					for _, Entry in pairs(Options) do
+						local Nodes = Entry.nodes
+						local IsActive = MultiSelect and Entry.Stats == true or (not MultiSelect and Entry.Value == Selected)
+						if Entry.VisualActive ~= IsActive then
+							local IndicatorTransparency = IsActive and 0 or 1
+							local IndicatorSize = IsActive and UDim2.fromOffset(4, 14) or UDim2.fromOffset(4, 4)
+							local TextTransparency = IsActive and 0 or 0.4
+							if Entry.VisualActive == nil then
+								Nodes[2].BackgroundTransparency = IndicatorTransparency
+								Nodes[2].Size = IndicatorSize
+								Nodes[3].TextTransparency = TextTransparency
+							else
+								CreateTween({Nodes[2], "BackgroundTransparency", IndicatorTransparency, AnimationTab})
+								CreateTween({Nodes[2], "Size", IndicatorSize, AnimationTab})
+								CreateTween({Nodes[3], "TextTransparency", TextTransparency, AnimationTab})
+							end
+							Entry.VisualActive = IsActive
+						end
 					end
-
 					UpdateLabel()
 				end
 
@@ -4290,32 +4398,35 @@ function Library:MakeWindow(Configs)
 				end
 
 				AddNewOptions = function(List, Clear)
+					if type(List) ~= "table" then return end
+					local Desired = {}
+					local Changed = false
+					for Index, Value in pairs(List) do
+						Desired[GetOptionName(Value, Index)] = Value
+					end
 					if Clear then
 						local RemoveList = {}
-
-						for Name, Value in pairs(Options) do
-							table.insert(RemoveList, {
-								Name = Name,
-								Value = Value.Value
-							})
+						for Name, Entry in pairs(Options) do
+							if Desired[Name] == nil or Desired[Name] ~= Entry.Value then
+								RemoveList[#RemoveList + 1] = {Name, Entry.Value}
+							end
 						end
-
-						for _, Value in pairs(RemoveList) do
-							RemoveOption(Value.Name, Value.Value)
+						for _, Entry in ipairs(RemoveList) do
+							RemoveOption(Entry[1], Entry[2])
+							Changed = true
 						end
 					end
-
 					for Index, Value in pairs(List) do
-						AddOption(Index, Value, true)
+						local Name = GetOptionName(Value, Index)
+						if not Options[Name] then
+							AddOption(Index, Value, true)
+							Changed = true
+						end
 					end
-
+					if not Changed then return end
 					CallbackSelected()
 					UpdateSelected()
-
-					if SearchConfig.Enabled then
-						UpdateSearch()
-					end
-
+					if SearchConfig.Enabled then UpdateSearch() end
 					CalculateSize()
 				end
 
@@ -4356,8 +4467,10 @@ function Library:MakeWindow(Configs)
 					end
 				end
 
-				function Dropdown:Visible(...)
-					Funcs:ToggleVisible(Button, ...)
+				function Dropdown:Visible(Value)
+					if Value == nil then Value = not Button.Visible end
+					Funcs:ToggleVisible(Button, Value)
+					if not Value then HideInstantly() end
 				end
 
 				function Dropdown:Destroy()
@@ -4455,12 +4568,25 @@ function Library:MakeWindow(Configs)
 				NoClickFrame.MouseButton1Down:Connect(Disable)
 				NoClickFrame.MouseButton1Click:Connect(Disable)
 				TrackDropdownConnection(MainFrame:GetPropertyChangedSignal("Visible"):Connect(Disable))
-				SelectedFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(CalculatePos)
+				TrackDropdownConnection(Container:GetPropertyChangedSignal("Visible"):Connect(function()
+					if not Container.Visible then HideInstantly() end
+				end))
+				SelectedFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+					if NoClickFrame.Visible then CalculatePos() end
+				end)
 				Button.Activated:Connect(CalculateSize)
-				ScrollFrame.ChildAdded:Connect(CalculateSize)
-				ScrollFrame.ChildRemoved:Connect(CalculateSize)
+				local SizeUpdateQueued = false
+				local function QueueSizeUpdate()
+					if SizeUpdateQueued then return end
+					SizeUpdateQueued = true
+					task.defer(function()
+						SizeUpdateQueued = false
+						if ScrollFrame.Parent then CalculateSize() end
+					end)
+				end
+				ScrollFrame.ChildAdded:Connect(QueueSizeUpdate)
+				ScrollFrame.ChildRemoved:Connect(QueueSizeUpdate)
 
-				CalculatePos()
 				CalculateSize()
 
 				ApplyLocked(Dropdown, Button, Configs, function(IsLocked)
@@ -4473,6 +4599,7 @@ function Library:MakeWindow(Configs)
 			end
 		end
 		function Tab:AddPlayers(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local PName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Players")
 			local PDesc = Configs.Desc or Configs.Description or ""
 			local Display = Configs.Display or false
@@ -4647,8 +4774,8 @@ function Library:MakeWindow(Configs)
 						Position = UDim2.new(0, 8, 0.5, 0),
 						AnchorPoint = Vector2.new(0, 0.5),
 						BackgroundTransparency = 1,
-						Image = "",
-						ImageTransparency = 1
+						Image = Value.Thumbnail or "",
+						ImageTransparency = Value.Thumbnail and 0 or 1
 					})
 					ThumbnailNodes[OptionButton] = Thumbnail
 
@@ -4657,6 +4784,7 @@ function Library:MakeWindow(Configs)
 					NameLabel.Position = UDim2.new(0, 30, 0, 0)
 					NameLabel.Size = UDim2.new(1, -30, 1, 0)
 
+					if Value.Thumbnail and Value.Thumbnail ~= "" then return end
 					task.spawn(function()
 						local Success, Content = pcall(function()
 							return Players:GetUserThumbnailAsync(
@@ -4801,6 +4929,12 @@ function Library:MakeWindow(Configs)
 			function PlayersElement:Callback(Func)
 				Funcs:InsertCallback(Callback, Func)
 			end
+			function PlayersElement:SetTitle(Value)
+				if PlayerDropdown then PlayerDropdown:SetTitle(tostring(Value or "")) end
+			end
+			function PlayersElement:SetDesc(Value)
+				if PlayerDropdown then PlayerDropdown:SetDesc(tostring(Value or "")) end
+			end
 
 			function PlayersElement:Visible(...)
 				PlayerDropdown:Visible(...)
@@ -4851,6 +4985,7 @@ function Library:MakeWindow(Configs)
 			return RegisterFlagObject(Flag, PlayersElement, FlagObjectHolders[PlayerDropdown])
 		end
 		function Tab:AddSelector(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local SName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Selector")
 			local SDesc = Configs.Desc or Configs.Description or ""
 			local Options = Configs[2] or Configs.Options
@@ -5208,27 +5343,20 @@ function Library:MakeWindow(Configs)
 			return RegisterFlagObject(Flag, Selector, Button)
 		end
 		function Tab:AddSlider(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local SName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Slider!")
 			local SDesc = Configs.Desc or Configs.Description or ""
-			local Min = Configs[2] or Configs.MinValue or Configs.Min or 10
-			local Max = Configs[3] or Configs.MaxValue or Configs.Max or 100
-			local Increase = tonumber(Configs[4] or Configs.Increase) or 1
+			local Min = tonumber(Configs[2] or Configs.MinValue or Configs.Min) or 10
+			local Max = tonumber(Configs[3] or Configs.MaxValue or Configs.Max) or 100
+			if Min > Max then Min, Max = Max, Min end
+			local Step = math.abs(tonumber(Configs[4] or Configs.Increase) or 1)
+			if Step <= 0 or Step ~= Step then Step = 1 end
 			local Callback = Funcs:GetCallback(Configs, 6)
 			local Flag = Configs[7] or Configs.Flag or false
 			local Default = Configs[5] or Configs.Default or 25
-
-			if Increase == 0 then
-				Increase = 1
-			end
-
-			if CheckFlag(Flag) then
-				Default = GetFlag(Flag)
-			end
-
-			Min, Max = Min / Increase, Max / Increase
+			if CheckFlag(Flag) then Default = GetFlag(Flag) end
 
 			local Button, LabelFunc = ButtonFrame(Container, SName, SDesc, UDim2.new(1, -180), false)
-
 			local SliderHolder = Create("TextButton", Button, {
 				Size = UDim2.new(0.45, 0, 1),
 				Position = UDim2.new(1),
@@ -5237,28 +5365,24 @@ function Library:MakeWindow(Configs)
 				Text = "",
 				BackgroundTransparency = 1
 			})
-
 			local SliderBar = InsertTheme(Create("Frame", SliderHolder, {
 				BackgroundColor3 = Theme["Color Stroke"],
 				Size = UDim2.new(1, -20, 0, 6),
 				Position = UDim2.new(0.5, 0, 0.5),
 				AnchorPoint = Vector2.new(0.5, 0.5)
 			}), "Stroke")Make("Corner", SliderBar)
-
 			local Indicator = InsertTheme(Create("Frame", SliderBar, {
 				BackgroundColor3 = Theme["Color Theme"],
-				Size = UDim2.fromScale(0.3, 1),
+				Size = UDim2.fromScale(0, 1),
 				BorderSizePixel = 0
 			}), "Theme")Make("Corner", Indicator)
-
 			local SliderIcon = Create("Frame", SliderBar, {
 				Size = UDim2.new(0, 6, 0, 12),
 				BackgroundColor3 = Color3.fromRGB(220, 220, 220),
-				Position = UDim2.fromScale(0.3, 0.5),
+				Position = UDim2.fromScale(0, 0.5),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				BackgroundTransparency = 0.2
 			})Make("Corner", SliderIcon)
-
 			local LabelVal = InsertTheme(Create("TextLabel", SliderHolder, {
 				Size = UDim2.new(0, 14, 0, 14),
 				AnchorPoint = Vector2.new(1, 0.5),
@@ -5269,201 +5393,127 @@ function Library:MakeWindow(Configs)
 				TextSize = 12
 			}), "Text")
 
-			local ValueScale = Create("UIScale", LabelVal)
-			local SliderConnections = {}
+			local Value
 			local Dragging = false
 			local DragInput
-			local SuppressCallback = false
-
-			local function ConnectSlider(Signal, CallbackFunction)
-				local Connected = Signal:Connect(CallbackFunction)
-				SliderConnections[#SliderConnections + 1] = Connected
-				return Connected
-			end
-
-			local function UpdateLabel(NewValue)
-				local Number = tonumber(NewValue * Increase)
-				Number = math.floor(Number * 100) / 100
-
-				Default, LabelVal.Text = Number, tostring(Number)
-				if not SuppressCallback then
-					Funcs:FireCallback(Callback, Default)
-				end
-			end
-
-			local function UpdatePosition(ScreenX)
-				local Width = SliderBar.AbsoluteSize.X
-				if Width <= 0 then
-					return
-				end
-
-				local Position = (ScreenX - SliderBar.AbsolutePosition.X) / Width
-				SliderIcon.Position = UDim2.fromScale(math.clamp(Position, 0, 1), 0.5)
-			end
-
-			local function UpdateValues()
-				local SliderPos = SliderIcon.Position.X.Scale
-				Indicator.Size = UDim2.new(SliderPos, 0, 1, 0)
-				UpdateLabel(math.floor(SliderPos * (Max - Min) + Min))
-			end
-
-			local function FinishDrag()
-				if not Dragging then
-					return
-				end
-
-				Dragging = false
-				DragInput = nil
-				Container.ScrollingEnabled = true
-				CreateTween({SliderIcon, "Transparency", 0.2, AnimationSlider})
-				SetFlag(Flag, Default)
-			end
-
-			ConnectSlider(SliderHolder.InputBegan, function(Input)
-				if not Button.Interactable then return end
-				local InputType = Input.UserInputType
-				if InputType ~= Enum.UserInputType.MouseButton1 and InputType ~= Enum.UserInputType.Touch then
-					return
-				end
-
-				Dragging = true
-				DragInput = InputType == Enum.UserInputType.Touch and Input or nil
-				Container.ScrollingEnabled = false
-				CreateTween({SliderIcon, "Transparency", 0, AnimationSlider})
-				UpdatePosition(Input.Position.X)
-			end)
-
-			TrackConnection(ConnectSlider(UserInputService.InputChanged, function(Input)
-				if not Dragging then
-					return
-				end
-
-				if DragInput then
-					if Input == DragInput then
-						UpdatePosition(Input.Position.X)
-					end
-				elseif Input.UserInputType == Enum.UserInputType.MouseMovement then
-					UpdatePosition(Input.Position.X)
-				end
-			end))
-
-			TrackConnection(ConnectSlider(UserInputService.InputEnded, function(Input)
-				if not Dragging then
-					return
-				end
-
-				if DragInput then
-					if Input == DragInput then
-						FinishDrag()
-					end
-				elseif Input.UserInputType == Enum.UserInputType.MouseButton1 then
-					FinishDrag()
-				end
-			end))
-
-			ConnectSlider(LabelVal:GetPropertyChangedSignal("Text"), function()
-				ValueScale.Scale = 0.3
-				CreateTween({ValueScale, "Scale", 1.2, 0.1})
-				CreateTween({LabelVal, "Rotation", math.random(-1, 1) * 5, 0.15, true})
-				CreateTween({ValueScale, "Scale", 1, 0.2})
-				CreateTween({LabelVal, "Rotation", 0, 0.1})
-			end)
-
-			local function SetSlider(NewValue, Silent)
-				if type(NewValue) ~= "number" then
-					return
-				end
-
-				local MinValue, MaxValue = Min * Increase, Max * Increase
-				local Range = MaxValue - MinValue
-				local SliderPos = Range == 0 and 0 or (NewValue - MinValue) / Range
-				local Position = UDim2.fromScale(math.clamp(SliderPos, 0, 1), 0.5)
-
-				SetFlag(Flag, NewValue)
-				if Silent then
-					SuppressCallback = true
-					SliderIcon.Position = Position
-					UpdateValues()
-					SuppressCallback = false
-				else
-					CreateTween({SliderIcon, "Position", Position, AnimationSlider, true})
-				end
-			end
-
-			SetSlider(Default)
-			ConnectSlider(SliderIcon:GetPropertyChangedSignal("Position"), UpdateValues)
-			UpdateValues()
-
-			local Slider = {}
-
-			function Slider:Set(NewVal1, NewVal2)
-				if NewVal1 and NewVal2 then
-					LabelFunc:SetTitle(NewVal1)
-					LabelFunc:SetDesc(NewVal2)
-				elseif type(NewVal1) == "string" then
-					LabelFunc:SetTitle(NewVal1)
-				elseif type(NewVal1) == "function" then
-					Callback = {NewVal1}
-				elseif type(NewVal1) == "number" then
-					SetSlider(NewVal1)
-				end
-			end
-
-			function Slider:Get()
-				return tonumber(Default)
-			end
-
-			function Slider:SetValue(Value, Silent)
-				if type(Value) ~= "number" then
-					return false
-				end
-
-				SetSlider(Value, Silent == true)
+			local MoveConnection
+			local EndConnection
+			local WasScrolling
+			local Destroyed = false
+			local function SetValue(ValueInput, Silent, Force)
+				local Number = tonumber(ValueInput)
+				if not Number or Number ~= Number then return false end
+				Number = math.clamp(Number, Min, Max)
+				Number = math.min(Max, Min + math.floor((Number - Min) / Step + 0.5) * Step)
+				Number = tonumber(string.format("%.6f", Number))
+				if not Force and Value == Number then return true end
+				Value = Number
+				local Fraction = Max == Min and 0 or math.clamp((Number - Min) / (Max - Min), 0, 1)
+				SliderIcon.Position = UDim2.fromScale(Fraction, 0.5)
+				Indicator.Size = UDim2.fromScale(Fraction, 1)
+				LabelVal.Text = tostring(Number)
+				SetFlag(Flag, Number)
+				if not Silent then Funcs:FireCallback(Callback, Number) end
 				return true
 			end
+			local function UpdateFromPosition(ScreenX)
+				local Width = SliderBar.AbsoluteSize.X
+				if Width <= 0 then return end
+				local Fraction = math.clamp((ScreenX - SliderBar.AbsolutePosition.X) / Width, 0, 1)
+				SetValue(Min + (Max - Min) * Fraction, false)
+			end
+			local function FinishDrag()
+				if not Dragging then return end
+				Dragging = false
+				DragInput = nil
+				if MoveConnection then MoveConnection:Disconnect() MoveConnection = nil end
+				if EndConnection then EndConnection:Disconnect() EndConnection = nil end
+				Container.ScrollingEnabled = WasScrolling
+				SliderIcon.BackgroundTransparency = 0.2
+			end
 
+			local TabVisibilityConnection = Container:GetPropertyChangedSignal("Visible"):Connect(function()
+				if not Container.Visible then FinishDrag() end
+			end)
+			SliderHolder.InputBegan:Connect(function(Input)
+				if Destroyed or not Button.Interactable or Dragging then return end
+				if Input.UserInputType ~= Enum.UserInputType.MouseButton1
+					and Input.UserInputType ~= Enum.UserInputType.Touch then return end
+				Dragging = true
+				DragInput = Input.UserInputType == Enum.UserInputType.Touch and Input or nil
+				WasScrolling = Container.ScrollingEnabled
+				Container.ScrollingEnabled = false
+				SliderIcon.BackgroundTransparency = 0
+				UpdateFromPosition(Input.Position.X)
+				MoveConnection = UserInputService.InputChanged:Connect(function(Changed)
+					if DragInput then
+						if Changed == DragInput then UpdateFromPosition(Changed.Position.X) end
+					elseif Changed.UserInputType == Enum.UserInputType.MouseMovement then
+						UpdateFromPosition(Changed.Position.X)
+					end
+				end)
+			EndConnection = UserInputService.InputEnded:Connect(function(Ended)
+					if DragInput then
+						if Ended == DragInput then FinishDrag() end
+					elseif Ended.UserInputType == Enum.UserInputType.MouseButton1 then
+						FinishDrag()
+					end
+				end)
+			end)
+
+			local Slider = {}
+			function Slider:Set(Val1, Val2)
+				if type(Val1) == "string" then
+					LabelFunc:SetTitle(Val1)
+					if type(Val2) == "string" then LabelFunc:SetDesc(Val2) end
+				elseif type(Val1) == "function" then
+					Callback = {Val1}
+				elseif type(Val1) == "number" then
+					SetValue(Val1)
+				end
+			end
+			function Slider:SetTitle(Title)
+				LabelFunc:SetTitle(tostring(Title or ""))
+			end
+			function Slider:SetDesc(Desc)
+				LabelFunc:SetDesc(tostring(Desc or ""))
+			end
+			function Slider:Get() return Value end
+			function Slider:SetValue(NewValue, Silent)
+				return SetValue(NewValue, Silent == true)
+			end
 			function Slider:Callback(...)
 				local Added = Funcs:InsertCallback(Callback, ...)
-				if type(Added) == "function" then
-					Added(tonumber(Default))
-				end
+				if type(Added) == "function" then Added(Value) end
 			end
-
-			function Slider:Visible(...)
-				Funcs:ToggleVisible(Button, ...)
-			end
-
+			function Slider:Visible(...) Funcs:ToggleVisible(Button, ...) end
 			function Slider:Destroy()
+				if Destroyed then return end
 				FinishDrag()
-
-				for _, Connected in ipairs(SliderConnections) do
-					if Connected.Connected then
-						Connected:Disconnect()
-					end
-					UntrackConnection(Connected)
-				end
-
-				table.clear(SliderConnections)
+				Destroyed = true
+				TabVisibilityConnection:Disconnect()
 				Button:Destroy()
 			end
 
+			SetValue(Default, false, true)
 			ApplyLocked(Slider, Button, Configs, function(IsLocked)
 				if IsLocked then FinishDrag() end
 			end)
 			return RegisterFlagObject(Flag, Slider, Button)
 		end
 		function Tab:AddTextBox(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local TName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Text Box")
 			local TDesc = Configs.Desc or Configs.Description or ""
 			local TDefault = Configs[2] or Configs.Default or ""
+			local Flag = Configs.Flag
+			if CheckFlag(Flag) then TDefault = GetFlag(Flag) end
 			local TPlaceholderText = TranslateText(tostring(Configs[5] or Configs.PlaceholderText or "Input"))
 			local TClearText = Configs[3] or Configs.ClearText or false
 			local Callback = Funcs:GetCallback(Configs, 4)
 			local Mod = Configs.Mod
 
-			if type(TDefault) ~= "string" or TDefault:gsub(" ", ""):len() < 1 then
-				TDefault = false
-			end
+			if type(TDefault) ~= "string" then TDefault = tostring(TDefault or "") end
 
 			local Button, LabelFunc = ButtonFrame(Container, TName, TDesc, UDim2.new(1, -38), false)
 
@@ -5547,19 +5597,20 @@ function Library:MakeWindow(Configs)
 			end
 
 			local Changing = false
+			local LastSubmitted = ""
 
 			local function Input()
 				if not Button.Interactable then return end
-				local Text = TextBoxInput.Text
-
-				if Text:gsub(" ", ""):len() > 0 then
-					if TextBox.OnChanging then
-						Text = TextBox.OnChanging(Text) or Text
-					end
-
-					Funcs:FireCallback(Callback, Text)
-					TextBoxInput.Text = Text
+				local Text = ApplyMod(TextBoxInput.Text)
+				if type(TextBox.OnChanging) == "function" then
+					local Changed = TextBox.OnChanging(Text)
+					if type(Changed) == "string" then Text = Changed end
 				end
+				if TextBoxInput.Text ~= Text then TextBoxInput.Text = Text end
+				if LastSubmitted == Text then return end
+				LastSubmitted = Text
+				SetFlag(Flag, Text)
+				Funcs:FireCallback(Callback, Text)
 			end
 
 			TextBoxInput:GetPropertyChangedSignal("Text"):Connect(function()
@@ -5582,6 +5633,7 @@ function Library:MakeWindow(Configs)
 			end)
 
 			TextBoxInput.FocusLost:Connect(Input)
+			TextBoxInput.Text = ApplyMod(TDefault)
 			Input()
 
 			TextBoxInput.FocusLost:Connect(function()
@@ -5652,9 +5704,10 @@ function Library:MakeWindow(Configs)
 			end
 
 			ApplyLocked(TextBox, Button, Configs)
-			return RegisterFlagObject(Configs.Flag, TextBox, Button)
+			return RegisterFlagObject(Flag, TextBox, Button)
 		end
 		function Tab:AddKeybind(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			if not UserInputService.KeyboardEnabled then return end
 
 			local KName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Keybind")
@@ -5942,6 +5995,7 @@ function Library:MakeWindow(Configs)
 				end
 
 				if not Button.Visible
+					or not Container.Visible
 					or not MainFrame.Visible
 					or Minimized
 					or not Container:IsDescendantOf(ScreenGui) then
@@ -5950,6 +6004,7 @@ function Library:MakeWindow(Configs)
 			end
 
 			local AncestryConnection = Container.AncestryChanged:Connect(CancelHiddenCapture)
+			local TabVisibilityConnection = Container:GetPropertyChangedSignal("Visible"):Connect(CancelHiddenCapture)
 
 			local VisibilityConnection = MainFrame:GetPropertyChangedSignal("Visible"):Connect(
 				CancelHiddenCapture
@@ -5987,6 +6042,7 @@ function Library:MakeWindow(Configs)
 				InputConnection:Disconnect()
 				SizeConnection:Disconnect()
 				AncestryConnection:Disconnect()
+				TabVisibilityConnection:Disconnect()
 				VisibilityConnection:Disconnect()
 				ContentConnection:Disconnect()
 				ButtonVisibilityConnection:Disconnect()
@@ -6066,6 +6122,7 @@ function Library:MakeWindow(Configs)
 			return RegisterFlagObject(Configs.Flag, Keybind, Button)
 		end
 		function Tab:AddColorPicker(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local ColorPicker = {}
 			local ColorConnections = {}
 
@@ -6078,7 +6135,7 @@ function Library:MakeWindow(Configs)
 			local Description = Configs.Desc or Configs.Description or ""
 			local Callback = Funcs:GetCallback(Configs, 3)
 			local Flag = Configs[4] or Configs.Flag or false
-			local MaxRecent = Configs.MaxRecent or 8
+			local MaxRecent = math.clamp(math.floor(tonumber(Configs.MaxRecent) or 8), 0, 32)
 			local SmoothTime = math.clamp(tonumber(Configs.SmoothTime) or ColorPickerSmoothTime, 0, 0.2)
 
 			local DisplayMode = Configs.DisplayMode or Configs.Display or "Hex"
@@ -6860,6 +6917,10 @@ function Library:MakeWindow(Configs)
 			local HueDragging = false
 			local SaturationDragging = false
 			local BrightnessDragging = false
+			local DragInput
+			local MoveConnection
+			local EndConnection
+			local PreviousScrolling
 
 			local function UpdateHue(Input)
 				Hue = GetSliderValue(Input, HueBackground, HueIndicator)
@@ -6876,105 +6937,80 @@ function Library:MakeWindow(Configs)
 				ApplyHSV(false, false, BrightnessIndicator)
 			end
 
-			local function StartDrag(Indicator, CallbackFunction, Input)
-				CreateTween({
-					Indicator,
-					"Size",
-					UDim2.new(0, 9, 0, 24),
-					0.15
-				})
+			local function FinishColorDrag(Commit)
+				local Changed = HueDragging or SaturationDragging or BrightnessDragging
+				if not Changed then return end
+				HueDragging, SaturationDragging, BrightnessDragging = false, false, false
+				DragInput = nil
+				if MoveConnection then MoveConnection:Disconnect() MoveConnection = nil end
+				if EndConnection then EndConnection:Disconnect() EndConnection = nil end
+				Container.ScrollingEnabled = PreviousScrolling
+				CreateTween({HueIndicator, "Size", UDim2.new(0, 7, 0, 22), 0.15})
+				CreateTween({SaturationIndicator, "Size", UDim2.new(0, 7, 0, 22), 0.15})
+				CreateTween({BrightnessIndicator, "Size", UDim2.new(0, 7, 0, 22), 0.15})
+				if Commit then ApplyHSV(true, true) end
+			end
 
+			local function StartDrag(Indicator, CallbackFunction, Input)
+				if MoveConnection then return end
+				DragInput = Input.UserInputType == Enum.UserInputType.Touch and Input or nil
+				PreviousScrolling = Container.ScrollingEnabled
 				Container.ScrollingEnabled = false
+				CreateTween({Indicator, "Size", UDim2.new(0, 9, 0, 24), 0.15})
 				CallbackFunction(Input)
+				MoveConnection = UserInputService.InputChanged:Connect(function(Changed)
+					if DragInput then
+						if Changed ~= DragInput then return end
+					elseif Changed.UserInputType ~= Enum.UserInputType.MouseMovement then
+						return
+					end
+					if HueDragging then
+						UpdateHue(Changed)
+					elseif SaturationDragging then
+						UpdateSaturation(Changed)
+					elseif BrightnessDragging then
+						UpdateBrightness(Changed)
+					end
+				end)
+			EndConnection = UserInputService.InputEnded:Connect(function(Ended)
+					if DragInput then
+						if Ended == DragInput then FinishColorDrag(true) end
+					elseif Ended.UserInputType == Enum.UserInputType.MouseButton1 then
+						FinishColorDrag(true)
+					end
+				end)
 			end
 
 			HueBar.InputBegan:Connect(function(Input)
-				if not Option.Interactable then return end
+				if not Option.Interactable or MoveConnection then return end
 				if Input.UserInputType == Enum.UserInputType.MouseButton1
 					or Input.UserInputType == Enum.UserInputType.Touch then
-
 					HueDragging = true
 					StartDrag(HueIndicator, UpdateHue, Input)
 				end
 			end)
 
 			SaturationBar.InputBegan:Connect(function(Input)
-				if not Option.Interactable then return end
+				if not Option.Interactable or MoveConnection then return end
 				if Input.UserInputType == Enum.UserInputType.MouseButton1
 					or Input.UserInputType == Enum.UserInputType.Touch then
-
 					SaturationDragging = true
 					StartDrag(SaturationIndicator, UpdateSaturation, Input)
 				end
 			end)
 
 			BrightnessBar.InputBegan:Connect(function(Input)
-				if not Option.Interactable then return end
+				if not Option.Interactable or MoveConnection then return end
 				if Input.UserInputType == Enum.UserInputType.MouseButton1
 					or Input.UserInputType == Enum.UserInputType.Touch then
-
 					BrightnessDragging = true
 					StartDrag(BrightnessIndicator, UpdateBrightness, Input)
 				end
 			end)
 
-			TrackConnection(TrackColorConnection(UserInputService.InputChanged:Connect(function(Input)
-				if Input.UserInputType ~= Enum.UserInputType.MouseMovement
-					and Input.UserInputType ~= Enum.UserInputType.Touch then
-					return
-				end
-
-				if HueDragging then
-					UpdateHue(Input)
-				elseif SaturationDragging then
-					UpdateSaturation(Input)
-				elseif BrightnessDragging then
-					UpdateBrightness(Input)
-				end
-			end)))
-
-			TrackConnection(TrackColorConnection(UserInputService.InputEnded:Connect(function(Input)
-				if Input.UserInputType ~= Enum.UserInputType.MouseButton1
-					and Input.UserInputType ~= Enum.UserInputType.Touch then
-					return
-				end
-
-				local Changed =
-					HueDragging
-					or SaturationDragging
-					or BrightnessDragging
-
-				HueDragging = false
-				SaturationDragging = false
-				BrightnessDragging = false
-
-				Container.ScrollingEnabled = true
-
-				if Changed then
-					CreateTween({
-						HueIndicator,
-						"Size",
-						UDim2.new(0, 7, 0, 22),
-						0.15
-					})
-
-					CreateTween({
-						SaturationIndicator,
-						"Size",
-						UDim2.new(0, 7, 0, 22),
-						0.15
-					})
-
-					CreateTween({
-						BrightnessIndicator,
-						"Size",
-						UDim2.new(0, 7, 0, 22),
-						0.15
-					})
-
-					ApplyHSV(true, true)
-				end
-			end)))
+			TrackColorConnection(Container:GetPropertyChangedSignal("Visible"):Connect(function()
+				if not Container.Visible then FinishColorDrag(false) end
+			end))
 
 			HueBackground:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateIndicators)
 			SaturationBackground:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateIndicators)
@@ -7105,9 +7141,11 @@ function Library:MakeWindow(Configs)
 			end
 
 			function ColorPicker:Visible(Value)
+				if Value == nil then Value = not Option.Visible end
 				Funcs:ToggleVisible(Option, Value)
 
-				if not Value then
+				if Value == false then
+					FinishColorDrag(false)
 					Expanded = false
 					PickerFrame.Visible = false
 					PickerFrame.Size = UDim2.new(1, 0, 0, 0)
@@ -7123,6 +7161,7 @@ function Library:MakeWindow(Configs)
 			local ColorOption
 
 			function ColorPicker:Destroy()
+				FinishColorDrag(false)
 				if ColorOption then
 					local Index = table.find(Library.Options, ColorOption)
 					if Index then
@@ -7163,8 +7202,7 @@ function Library:MakeWindow(Configs)
 
 			ApplyLocked(ColorPicker, Option, Configs, function(IsLocked)
 				if IsLocked then
-					HueDragging, SaturationDragging, BrightnessDragging = false, false, false
-					Container.ScrollingEnabled = true
+					FinishColorDrag(false)
 					SetExpanded(false)
 				end
 			end)
@@ -7172,6 +7210,7 @@ function Library:MakeWindow(Configs)
 			return RegisterFlagObject(Flag, ColorPicker, Option)
 		end
 		function Tab:AddDiscordInvite(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local Title = TranslateText(tostring(Configs[1] or Configs.Name or Configs.Title or "Discord"))
 			local Desc = TranslateText(tostring(Configs.Desc or Configs.Description or ""))
 			local Logo = Configs[2] or Configs.Logo or ""
@@ -7257,25 +7296,56 @@ function Library:MakeWindow(Configs)
 					Text = TranslateText("Copied to Clipboard"),
 					BackgroundColor3 = Color3.fromRGB(100, 100, 100),
 					TextColor3 = Color3.fromRGB(150, 150, 150)
-				})task.wait(5)
-				SetProps(JoinButton, {
-					Text = TranslateText("Join"),
-					BackgroundColor3 = Color3.fromRGB(50, 150, 50),
-					TextColor3 = Color3.fromRGB(220, 220, 220)
-				})ClickDelay = false
+				})
+				task.delay(5, function()
+					if not JoinButton.Parent then return end
+					SetProps(JoinButton, {
+						Text = TranslateText("Join"),
+						BackgroundColor3 = Color3.fromRGB(50, 150, 50),
+						TextColor3 = Color3.fromRGB(220, 220, 220)
+					})
+					ClickDelay = false
+				end)
 			end)
 			
 			local DiscordInvite = {}
 			function DiscordInvite:Destroy() InviteHolder:Destroy() end
 			function DiscordInvite:Visible(...) Funcs:ToggleVisible(InviteHolder, ...) end
+			function DiscordInvite:SetTitle(Value)
+				LTitle.Text = TranslateText(tostring(Value or ""))
+			end
+			function DiscordInvite:SetDesc(Value)
+				LDesc.Text = TranslateText(tostring(Value or ""))
+			end
 
 			ApplyLocked(DiscordInvite, InviteHolder, Configs)
 			return RegisterFlagObject(Configs.Flag, DiscordInvite, InviteHolder)
 		end
+		for _, MethodName in ipairs({
+			"AddSection", "AddParagraph", "AddButton", "AddToggle", "AddDropdown",
+			"AddPlayers", "AddSelector", "AddSlider", "AddTextBox", "AddKeybind",
+			"AddColorPicker", "AddDiscordInvite"
+		}) do
+			local CreateElement = Tab[MethodName]
+			Tab[MethodName] = function(Self, ...)
+				if Self._Destroyed then return nil end
+				local Element = CreateElement(Self, ...)
+				if type(Element) == "table" and type(Element.Destroy) == "function" then
+					local OriginalDestroy = Element.Destroy
+					local Destroyed = false
+					TabElements[Element] = true
+					Element.Destroy = function(Object, ...)
+						if Destroyed then return end
+						Destroyed = true
+						TabElements[Object] = nil
+						return OriginalDestroy(Object, ...)
+					end
+				end
+				return Element
+			end
+		end
 		return Tab
 	end
-
-	local ConfigTab
 
 	local function GetLanguageOptions()
 		local Languages = Library:GetLanguages()
@@ -7297,6 +7367,12 @@ function Library:MakeWindow(Configs)
 	end
 
 	function Window:ConfigBtn()
+		if ConfigTab and not ConfigTab._Destroyed then
+			if ActiveTab ~= ConfigTab then
+				Window:SelectTab(ConfigTab)
+			end
+			return ConfigTab
+		end
 		if not ConfigTab then
 			ConfigTab = Window:MakeTab({
 				Title = TranslateText("Settings"),
@@ -7462,8 +7538,10 @@ function Library:MakeWindow(Configs)
 				Callback = function(Value)
 					for _, Preset in ipairs(SoundPresets) do
 						if Preset.Name == Value then
-							Library:SetSoundId(Preset.Id)
-							Library:PreviewUISound()
+							if tostring(Library:GetSoundId()) ~= tostring(Preset.Id) then
+								Library:SetSoundId(Preset.Id)
+								Library:PreviewUISound()
+							end
 							break
 						end
 					end
@@ -7511,8 +7589,8 @@ function Library:MakeWindow(Configs)
 			})
 			ExtraLabels[#ExtraLabels + 1] = {DropdownVisibleOptionsControl, "Visible dropdown options"}
 
-			TrackConnection(Connection.LanguageChanged:Connect(function()
-				if not ConfigTab then return end
+			local ConfigLanguageConnection = Connection.LanguageChanged:Connect(function()
+				if not ConfigTab or ConfigTab._Destroyed then return end
 				ConfigTab:SetTitle(TranslateText("Settings"))
 				InterfaceSection:Set(TranslateText("Interface"))
 				LanguageDropdown:SetTitle(TranslateText("Language"))
@@ -7525,7 +7603,12 @@ function Library:MakeWindow(Configs)
 						Control:Set(TranslateText(Key))
 					end
 				end
-			end))
+			end)
+			local ConfigDestroy = ConfigTab.Destroy
+			function ConfigTab:Destroy(...)
+				ConfigLanguageConnection:Disconnect()
+				return ConfigDestroy(self, ...)
+			end
 		end
 
 		Window:SelectTab(ConfigTab)
