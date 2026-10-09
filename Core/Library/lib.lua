@@ -4853,15 +4853,14 @@ function Library:MakeWindow(Configs)
 		function Tab:AddSelector(Configs)
 			local SName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Selector")
 			local SDesc = Configs.Desc or Configs.Description or ""
-			local SOptions = Configs[2] or Configs.Options or {}
+			local Options = Configs[2] or Configs.Options
+			local SOptions = type(Options) == "table" and table.clone(Options) or {}
 			local SDefault = Configs[3] or Configs.Default or 1
 			local Callback = Funcs:GetCallback(Configs, 4)
+			local Flag = Configs[5] or Configs.Flag or false
+			local Wrap = Configs.Wrap == true or Configs.Loop == true
 			
 			local HoverCorner = 3
-
-			if type(SOptions) ~= "table" or #SOptions == 0 then
-				return
-			end
 
 			local Button, LabelFunc = ButtonFrame(Container, SName, SDesc, UDim2.new(1, -180), false)
 
@@ -4944,82 +4943,171 @@ function Library:MakeWindow(Configs)
 				Text = "..."
 			}), "Text")
 
-			local Index = 1
+			local Selector = {}
+			local Destroyed = false
+			local Index = 0
+			local CanPrevious, CanNext = false, false
 
-			if type(SDefault) == "number" then
-				Index = math.clamp(math.floor(SDefault), 1, #SOptions)
-			elseif type(SDefault) == "string" then
-				for i, Value in ipairs(SOptions) do
-					if tostring(Value) == SDefault then
-						Index = i
-						break
+			local function OptionText(Option)
+				if type(Option) == "table" then
+					return tostring(Option.Name or Option.DisplayName or Option.Label or Option.Value or Option)
+				end
+				return tostring(Option)
+			end
+
+			local function FindOption(Value)
+				for i, Option in ipairs(SOptions) do
+					if Option == Value or (type(Value) == "string" and (tostring(Option) == Value or OptionText(Option) == Value)) then
+						return i
+					end
+					if type(Option) == "table" and type(Value) == "table" then
+						local OptionKey = Option.Value or Option.Name or Option.DisplayName or Option.Label
+						local ValueKey = Value.Value or Value.Name or Value.DisplayName or Value.Label
+						if OptionKey ~= nil and OptionKey == ValueKey then
+							return i
+						end
+					end
+				end
+				return nil
+			end
+
+			local function ValidIndex(Value)
+				if type(Value) ~= "number" or Value ~= Value or Value == math.huge or Value == -math.huge then
+					return nil
+				end
+				return math.floor(Value)
+			end
+
+			local SavedValue = CheckFlag(Flag) and GetFlag(Flag) or nil
+			if SavedValue ~= nil then
+				Index = FindOption(SavedValue) or 0
+				if Index == 0 then
+					local SavedIndex = ValidIndex(SavedValue)
+					if SavedIndex and SavedIndex >= 1 and SavedIndex <= #SOptions then
+						Index = SavedIndex
 					end
 				end
 			end
 
-			local function Update()
-				ActiveLabel.Text = string.format("%s (%d/%d)", TranslateText(tostring(SOptions[Index])), Index, #SOptions)
+			if Index == 0 and #SOptions > 0 then
+				local DefaultIndex = ValidIndex(SDefault)
+				Index = DefaultIndex and math.clamp(DefaultIndex, 1, #SOptions) or FindOption(SDefault) or 1
 			end
 
-			local function Select(NewIndex)
-				if NewIndex < 1 or NewIndex > #SOptions then
+			local function Update()
+				if Destroyed then
 					return
 				end
 
-				if NewIndex == Index then
-					return
+				local Count = #SOptions
+				if Index > 0 and Index <= Count then
+					ActiveLabel.Text = string.format("%s (%d/%d)", TranslateText(OptionText(SOptions[Index])), Index, Count)
+				else
+					ActiveLabel.Text = "... (0/0)"
 				end
 
-				Index = NewIndex
+				CanPrevious = Count > 1 and (Wrap or Index > 1)
+				CanNext = Count > 1 and (Wrap or Index < Count)
+				LeftArrow.ImageTransparency = CanPrevious and 0 or 0.6
+				RightArrow.ImageTransparency = CanNext and 0 or 0.6
+				LeftButton.Selectable = CanPrevious
+				RightButton.Selectable = CanNext
+				if not CanPrevious then LeftHover.BackgroundTransparency = 1 end
+				if not CanNext then RightHover.BackgroundTransparency = 1 end
+			end
+
+			local function NotifyChange(OldIndex, OldValue, Silent, IncludeIndex)
 				Update()
-				Funcs:FireCallback(Callback, SOptions[Index])
+				local Value = SOptions[Index]
+				if OldValue ~= Value or (IncludeIndex and OldIndex ~= Index) then
+					SetFlag(Flag, Value)
+					if not Silent then
+						Funcs:FireCallback(Callback, Value)
+					end
+				end
+			end
+
+			local function Select(NewIndex, Silent)
+				NewIndex = ValidIndex(NewIndex)
+				if Destroyed or not NewIndex or NewIndex < 1 or NewIndex > #SOptions or NewIndex == Index then
+					return false
+				end
+
+				local OldIndex, OldValue = Index, SOptions[Index]
+				Index = NewIndex
+				NotifyChange(OldIndex, OldValue, Silent, true)
+				return true
+			end
+
+			local function Move(Step)
+				if Destroyed or #SOptions < 2 then
+					return false
+				end
+
+				local NextIndex = Index + Step
+				if Wrap then
+					NextIndex = (NextIndex - 1) % #SOptions + 1
+				end
+				return Select(NextIndex)
 			end
 
 			LeftButton.MouseEnter:Connect(function()
-				LeftHover.BackgroundTransparency = 0.55
+				if CanPrevious and not Selector.Locked then
+					LeftHover.BackgroundTransparency = 0.55
+				end
 			end)
-
 			LeftButton.MouseLeave:Connect(function()
 				LeftHover.BackgroundTransparency = 1
 			end)
-
 			RightButton.MouseEnter:Connect(function()
-				RightHover.BackgroundTransparency = 0.55
+				if CanNext and not Selector.Locked then
+					RightHover.BackgroundTransparency = 0.55
+				end
 			end)
-
 			RightButton.MouseLeave:Connect(function()
 				RightHover.BackgroundTransparency = 1
 			end)
 
 			LeftButton.Activated:Connect(function()
-				Select(Index - 1)
+				if not Selector.Locked and Move(-1) then
+					PlayUISound()
+				end
 			end)
-
 			RightButton.Activated:Connect(function()
-				Select(Index + 1)
+				if not Selector.Locked and Move(1) then
+					PlayUISound()
+				end
 			end)
 
 			Update()
+			if Index > 0 then
+				SetFlag(Flag, SOptions[Index])
+			end
 
 			local SelectorLanguageConnection = Connection.LanguageChanged:Connect(Update)
-			Button.Destroying:Connect(function()
-				if SelectorLanguageConnection.Connected then
+			local function Cleanup()
+				if Destroyed then return end
+				Destroyed = true
+				if SelectorLanguageConnection and SelectorLanguageConnection.Connected then
 					SelectorLanguageConnection:Disconnect()
 				end
-			end)
-			local Selector = {}
+			end
+			Button.Destroying:Connect(Cleanup)
 
-			function Selector:Set(Value)
+			function Selector:Set(Value, Silent)
 				if type(Value) == "number" then
-					Select(Value)
-				elseif type(Value) == "string" then
-					for i, Option in ipairs(SOptions) do
-						if tostring(Option) == Value then
-							Select(i)
-							break
-						end
+					return Select(Value, Silent)
+				end
+				return Select(FindOption(Value), Silent)
+			end
+
+			function Selector:SelectValue(Value, Silent)
+				for i, Option in ipairs(SOptions) do
+					if Option == Value then
+						return Select(i, Silent)
 					end
 				end
+				return false
 			end
 
 			function Selector:Get()
@@ -5030,12 +5118,68 @@ function Library:MakeWindow(Configs)
 				return Index
 			end
 
+			function Selector:GetOptions()
+				return table.clone(SOptions)
+			end
+
+			function Selector:SetOptions(Options, Silent)
+				if Destroyed or type(Options) ~= "table" then
+					return false
+				end
+
+				local OldIndex, OldValue = Index, SOptions[Index]
+				SOptions = table.clone(Options)
+				if #SOptions == 0 then
+					Index = 0
+				else
+					local RestoredIndex = OldIndex == 0 and CheckFlag(Flag) and FindOption(GetFlag(Flag))
+					Index = (OldIndex > 0 and FindOption(OldValue)) or RestoredIndex or math.clamp(math.max(OldIndex, 1), 1, #SOptions)
+				end
+				NotifyChange(OldIndex, OldValue, Silent)
+				return true
+			end
+
+			function Selector:Add(Option, Silent)
+				if Destroyed or Option == nil then
+					return false
+				end
+
+				table.insert(SOptions, Option)
+				if Index == 0 then
+					Index = 1
+					NotifyChange(0, nil, Silent)
+				else
+					Update()
+				end
+				return true
+			end
+
+			function Selector:Remove(Value, Silent)
+				if Destroyed then return false end
+				local OptionIndex = type(Value) == "number" and ValidIndex(Value) or FindOption(Value)
+				if not OptionIndex or OptionIndex < 1 or OptionIndex > #SOptions then
+					return false
+				end
+
+				local OldIndex, OldValue = Index, SOptions[Index]
+				table.remove(SOptions, OptionIndex)
+				if #SOptions == 0 then
+					Index = 0
+				elseif OptionIndex < Index then
+					Index = Index - 1
+				elseif Index > #SOptions then
+					Index = #SOptions
+				end
+				NotifyChange(OldIndex, OldValue, Silent)
+				return true
+			end
+
 			function Selector:Next()
-				Select(Index + 1)
+				return Move(1)
 			end
 
 			function Selector:Previous()
-				Select(Index - 1)
+				return Move(-1)
 			end
 
 			function Selector:SetTitle(Value)
@@ -5051,18 +5195,17 @@ function Library:MakeWindow(Configs)
 			end
 
 			function Selector:Visible(...)
-				Funcs:ToggleVisible(Button, ...)
+				if not Destroyed then Funcs:ToggleVisible(Button, ...) end
 			end
 
 			function Selector:Destroy()
-				if SelectorLanguageConnection.Connected then
-					SelectorLanguageConnection:Disconnect()
-				end
+				if Destroyed then return end
+				Cleanup()
 				Button:Destroy()
 			end
 
 			ApplyLocked(Selector, Button, Configs)
-			return RegisterFlagObject(Configs.Flag, Selector, Button)
+			return RegisterFlagObject(Flag, Selector, Button)
 		end
 		function Tab:AddSlider(Configs)
 			local SName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Slider!")
