@@ -1480,6 +1480,104 @@ local function ApplyLocked(Element, Holder, Configs, OnChanged)
 	return Element
 end
 
+local LuaKeywords = {
+	["and"] = true, ["break"] = true, ["continue"] = true, ["do"] = true,
+	["else"] = true, ["elseif"] = true, ["end"] = true, ["export"] = true,
+	["for"] = true, ["function"] = true, ["if"] = true, ["in"] = true,
+	["local"] = true, ["not"] = true, ["or"] = true, ["repeat"] = true,
+	["return"] = true, ["then"] = true, ["type"] = true, ["until"] = true,
+	["while"] = true,
+}
+
+local RobloxGlobals = {
+	["game"] = true, ["workspace"] = true, ["script"] = true, ["Enum"] = true,
+	["Instance"] = true, ["Color3"] = true, ["Vector2"] = true, ["Vector3"] = true,
+	["CFrame"] = true, ["UDim"] = true, ["UDim2"] = true, ["Rect"] = true,
+	["Region3"] = true, ["Ray"] = true, ["BrickColor"] = true, ["NumberRange"] = true,
+	["NumberSequence"] = true, ["ColorSequence"] = true, ["TweenInfo"] = true,
+	["task"] = true, ["math"] = true, ["string"] = true, ["table"] = true,
+	["utf8"] = true, ["coroutine"] = true, ["os"] = true, ["debug"] = true,
+	["bit32"] = true, ["buffer"] = true, ["shared"] = true, ["getgenv"] = true,
+	["loadstring"] = true, ["typeof"] = true, ["type"] = true, ["pairs"] = true,
+	["ipairs"] = true, ["next"] = true, ["select"] = true, ["pcall"] = true,
+	["xpcall"] = true, ["assert"] = true, ["error"] = true, ["warn"] = true,
+	["print"] = true, ["tonumber"] = true, ["tostring"] = true,
+}
+
+local function TokenizeCode(Source, State)
+	local Colors = {
+		Keyword = Color3.fromRGB(198, 120, 221),
+		Global = Color3.fromRGB(97, 175, 239),
+		String = Color3.fromRGB(152, 195, 121),
+		Number = Color3.fromRGB(209, 154, 102),
+		Comment = Color3.fromRGB(92, 99, 112),
+		Boolean = Color3.fromRGB(209, 154, 102),
+		Function = Theme["Color Theme"]
+	}
+	local Output, Index, Length = {}, 1, #Source
+	local function Add(Text, Color)
+		Output[#Output + 1] = {Text, Color}
+	end
+	while Index <= Length do
+		local Rest = Source:sub(Index)
+		if State then
+			local Kind, Equals = State:match("^(%a+):(.*)$")
+			local Close = "]" .. Equals .. "]"
+			local Finish = Source:find(Close, Index, true)
+			local Last = Finish and Finish + #Close - 1 or Length
+			Add(Source:sub(Index, Last), Colors[Kind])
+			Index = Last + 1
+			if Finish then State = nil end
+		else
+			local Comment = Rest:sub(1, 2) == "--"
+			local Equals = (Comment and Rest:sub(3) or Rest):match("^%[(=*)%[")
+			if Equals then
+				local Prefix = (Comment and 2 or 0) + #Equals + 2
+				State = (Comment and "Comment:" or "String:") .. Equals
+				Add(Rest:sub(1, Prefix), Comment and Colors.Comment or Colors.String)
+				Index += Prefix
+			elseif Comment then
+				Add(Rest, Colors.Comment)
+				break
+			else
+				local Char = Rest:sub(1, 1)
+				local Token, Color
+				if Char == '"' or Char == "'" or Char == "`" then
+					local Finish = Index + 1
+					while Finish <= Length do
+						local Current = Source:sub(Finish, Finish)
+						if Current == "\\" then
+							Finish += 2
+						elseif Current == Char then
+							Finish += 1
+							break
+						else
+							Finish += 1
+						end
+					end
+					Token, Color = Source:sub(Index, Finish - 1), Colors.String
+				else
+					Token = Rest:match("^[%a_][%w_]*")
+					if Token then
+						Color = LuaKeywords[Token] and Colors.Keyword or RobloxGlobals[Token] and Colors.Global
+						if Token == "true" or Token == "false" or Token == "nil" then Color = Colors.Boolean end
+						if not Color and Rest:sub(#Token + 1):match("^%s*%(") then Color = Colors.Function end
+					else
+						Token = Rest:match("^0[xX][%da-fA-F_]+") or Rest:match("^0[bB][01_]+")
+							or Rest:match("^%d[%d_]*%.?[%d_]*[eE][+-]?[%d_]+")
+							or Rest:match("^%d[%d_]*%.?[%d_]*") or Rest:match("^%.%d[%d_]*")
+						Color = Token and Colors.Number
+					end
+				end
+				Token = Token or Char
+				Add(Token, Color)
+				Index += #Token
+			end
+		end
+	end
+	return Output, State
+end
+
 local function GetColor(Instance)
 	if Instance:IsA("Frame") or Instance:IsA("GuiButton") then
 		return "BackgroundColor3"
@@ -3340,20 +3438,23 @@ function Library:MakeWindow(Configs)
 			local SectionName = type(Configs) == "string" and Configs or Configs[1] or Configs.Name or Configs.Title or Configs.Section
 			SectionName = TranslateText(tostring(SectionName or ""))
 			
-			local SectionFrame = Create("Frame", Container, {
+			local SectionFrame = InsertTheme(Create("Frame", Container, {
 				Size = UDim2.new(1, 0, 0, 20),
-				BackgroundTransparency = 1,
-			})
+				BackgroundColor3 = Theme["Color Hub 2"],
+				BackgroundTransparency = 0.48,
+				BorderSizePixel = 0
+			}), "Frame")
+			Make("Corner", SectionFrame, UDim.new(0, ElementCornerRadius))
 			
 			local SectionLabel = InsertTheme(Create("TextLabel", SectionFrame, {
 				Font = Enum.Font.GothamBold,
 				Text = SectionName,
 				TextColor3 = Theme["Color Text"],
 				Size = UDim2.new(1, -25, 1, 0),
-				Position = UDim2.new(0, 5),
+				Position = UDim2.new(0, 8),
 				BackgroundTransparency = 1,
 				TextTruncate = "AtEnd",
-				TextSize = 14,
+				TextSize = 12,
 				TextXAlignment = "Left"
 			}), "Text")
 			
@@ -7092,6 +7193,638 @@ function Library:MakeWindow(Configs)
 
 			return RegisterFlagObject(Flag, ColorPicker, Option)
 		end
+		function Tab:AddCode(Configs)
+			Configs = type(Configs) == "table" and Configs or {}
+
+			local TitleText = TranslateText(tostring(Configs.Title or Configs.Name or "Code"))
+			local InitialCode = tostring(Configs.Code or Configs.Source or Configs.Text or "")
+			local Baseline = InitialCode
+			local EditAllowed = Configs.Edit == true or Configs.Editable == true
+			local CanExecute = Configs.Execute == true
+			local CanCopy = Configs.Copy ~= false
+			local OnChange = type(Configs.OnChange) == "function" and Configs.OnChange or nil
+			local FontSize, LineSpacing = 13, 1.16
+			local LineHeight = math.ceil(TextService:GetTextSize("Ag", FontSize, Enum.Font.Code, Vector2.new(1000, 1000)).Y * LineSpacing)
+			local CellWidth = TextService:GetTextSize("MMMMMMMMMMMMMMMM", FontSize, Enum.Font.Code, Vector2.new(1000, 1000)).X / 16
+			local HeaderHeight, Padding, BottomPadding = 30, 5, 6
+			local MaxVisibleLines, GutterWidth = 8, 25
+			local Editable, Focused, Destroyed, Updating, RefreshQueued = false, false, false, false, false
+			local Lines, StyledLines, LineCount, MaxColumns = {}, {}, 1, 0
+			local HighlightCache, Cached = {}, 0
+			local LineLabels, SelectionFrames, Buttons = {}, {}, {}
+			local RenderVersion, DrawnVersion, DrawnFirst, DrawnLast = 0, -1, 0, 0
+			local CopyToken, EditPressedWhileActive, ActionPointerDown = 0, false, false
+			local SpinTween, BodyTween
+			local Code = {}
+
+			local function Columns(Text)
+				local Count = utf8.len(Text)
+				return Count or #Text
+			end
+
+			local Holder = InsertTheme(Create("Frame", Container, {
+				Name = "CodeElement",
+				Size = UDim2.new(1, 0, 0, 60),
+				BackgroundColor3 = Theme["Color Hub 2"],
+				BorderSizePixel = 0,
+				ClipsDescendants = true
+			}), "Frame")
+			Make("Corner", Holder, UDim.new(0, ElementCornerRadius))
+
+			local Header = Create("Frame", Holder, {
+				Name = "Header",
+				Size = UDim2.new(1, 0, 0, HeaderHeight),
+				BackgroundTransparency = 1
+			})
+
+			InsertTheme(Create("ImageLabel", Header, {
+				Name = "FileIcon",
+				Position = UDim2.fromOffset(9, 8),
+				Size = UDim2.fromOffset(14, 14),
+				BackgroundTransparency = 1,
+				Image = Library:GetIcon("code2"),
+				ImageColor3 = Theme["Color Dark Text"]
+			}), "DarkText")
+
+			local FileName = InsertTheme(Create("TextLabel", Header, {
+				Name = "Filename",
+				Position = UDim2.fromOffset(30, 0),
+				Size = UDim2.new(1, -140, 1, 0),
+				BackgroundTransparency = 1,
+				Text = TitleText,
+				Font = Enum.Font.GothamMedium,
+				TextSize = 11,
+				TextColor3 = Theme["Color Text"],
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd
+			}), "Text")
+
+			local Actions = Create("Frame", Header, {
+				Name = "Actions",
+				Position = UDim2.new(1, -7, 0.5, 0),
+				AnchorPoint = Vector2.new(1, 0.5),
+				Size = UDim2.fromOffset(0, 24),
+				AutomaticSize = Enum.AutomaticSize.X,
+				BackgroundTransparency = 1
+			}, {
+				Create("UIListLayout", {
+					FillDirection = Enum.FillDirection.Horizontal,
+					SortOrder = Enum.SortOrder.LayoutOrder,
+					VerticalAlignment = Enum.VerticalAlignment.Center,
+					Padding = UDim.new(0, 2)
+				})
+			})
+
+			local function Action(Name, IconName, Order)
+				local Button = Create("ImageButton", Actions, {
+					Name = Name,
+					LayoutOrder = Order,
+					Size = UDim2.fromOffset(24, 24),
+					BackgroundColor3 = Theme["Color Theme"],
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					AutoButtonColor = false,
+					Image = ""
+				})
+				Make("Corner", Button, UDim.new(0, 6))
+				local Icon = InsertTheme(Create("ImageLabel", Button, {
+					Name = "Icon",
+					Size = UDim2.fromOffset(14, 14),
+					Position = UDim2.fromScale(0.5, 0.5),
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					BackgroundTransparency = 1,
+					Image = Library:GetIcon(IconName),
+					ImageColor3 = Theme["Color Dark Text"]
+				}), "DarkText")
+				local Scale = Create("UIScale", Button, {Scale = 1})
+				local Entry = {Button = Button, Icon = Icon, Scale = Scale, Selected = false, Hover = false, Press = false}
+				Buttons[#Buttons + 1] = Entry
+				function Entry.Update(Instant)
+					if Destroyed then return end
+					local TargetAlpha = Entry.Selected and (Entry.Hover and 0.18 or 0.32) or (Entry.Hover and 0.78 or 1)
+					local TargetScale = Entry.Press and 0.91 or (Entry.Hover and 1.03 or 1)
+					if Entry.TintTween then Entry.TintTween:Cancel() end
+					if Entry.ScaleTween then Entry.ScaleTween:Cancel() end
+					if Instant then
+						Button.BackgroundTransparency = TargetAlpha
+						Scale.Scale = TargetScale
+					else
+						Entry.TintTween = TweenService:Create(Button, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = TargetAlpha})
+						Entry.ScaleTween = TweenService:Create(Scale, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = TargetScale})
+						Entry.TintTween:Play()
+						Entry.ScaleTween:Play()
+					end
+					Icon.ImageColor3 = (Entry.Hover or Entry.Selected) and Theme["Color Text"] or Theme["Color Dark Text"]
+					Button.BackgroundColor3 = Theme["Color Theme"]
+				end
+				Button.MouseEnter:Connect(function() Entry.Hover = true; Entry.Update() end)
+				Button.MouseLeave:Connect(function() Entry.Hover = false; Entry.Press = false; Entry.Update() end)
+				Button.MouseButton1Down:Connect(function() Entry.Press = true; Entry.Update() end)
+				Button.MouseButton1Up:Connect(function() Entry.Press = false; Entry.Update() end)
+				return Entry
+			end
+
+			local ExecuteButton = Action("Execute", "refreshcw", 1)
+			local EditButton = EditAllowed and Action("Edit", "pencil", 2) or nil
+			local CopyButton = CanCopy and Action("Copy", "copy", 3) or nil
+			local ResetButton = EditAllowed and Action("Reset", "rotateccw", 4) or nil
+			ExecuteButton.Button.Visible = CanExecute
+			if ResetButton then ResetButton.Button.Visible = false end
+
+			local function UpdateActions()
+				local Count = (CanExecute and 1 or 0) + (EditAllowed and 1 or 0) + (CanCopy and 1 or 0)
+				if ResetButton and ResetButton.Button.Visible then Count += 1 end
+				FileName.Size = UDim2.new(1, -(38 + Count * 24 + math.max(0, Count - 1) * 2), 1, 0)
+			end
+
+			local Body = Create("Frame", Holder, {
+				Name = "Editor",
+				Position = UDim2.fromOffset(5, HeaderHeight),
+				Size = UDim2.new(1, -10, 1, -HeaderHeight - BottomPadding),
+				BackgroundColor3 = Theme["Color Hub 2"]:Lerp(Color3.new(0, 0, 0), 0.28),
+				BorderSizePixel = 0,
+				ClipsDescendants = true
+			})
+			Make("Corner", Body, UDim.new(0, 6))
+
+			local Gutter = Create("Frame", Body, {
+					Name = "Gutter",
+					Size = UDim2.new(0, GutterWidth, 1, 0),
+					BackgroundTransparency = 1,
+					ClipsDescendants = true
+			})
+			local Numbers = InsertTheme(Create("TextLabel", Gutter, {
+					Name = "LineNumbers",
+					Position = UDim2.fromOffset(0, Padding),
+					Size = UDim2.fromOffset(GutterWidth - 5, LineHeight),
+					BackgroundTransparency = 1,
+					Font = Enum.Font.Code,
+					TextSize = FontSize,
+					LineHeight = LineSpacing,
+					TextColor3 = Theme["Color Dark Text"],
+					TextTransparency = 0.45,
+					TextXAlignment = Enum.TextXAlignment.Right,
+					TextYAlignment = Enum.TextYAlignment.Top,
+					Text = "1"
+			}), "DarkText")
+
+			local Scroll = Create("ScrollingFrame", Body, {
+				Name = "CodeScroll",
+				Position = UDim2.fromOffset(GutterWidth, 0),
+				Size = UDim2.new(1, -GutterWidth - 2, 1, 0),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				ScrollBarThickness = 0,
+				ScrollBarImageColor3 = Theme["Color Theme"],
+				ScrollBarImageTransparency = 0.65,
+				ScrollingEnabled = false,
+				ScrollingDirection = Enum.ScrollingDirection.XY,
+				ElasticBehavior = Enum.ElasticBehavior.Never,
+				AutomaticCanvasSize = Enum.AutomaticSize.None,
+				CanvasSize = UDim2.new(),
+				ClipsDescendants = true
+			})
+
+			local TextPosition = UDim2.fromOffset(2, Padding)
+			local SelectionLayer = Create("Frame", Scroll, {
+				Name = "SelectionLayer",
+				Position = TextPosition,
+				Size = UDim2.fromOffset(64, LineHeight),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				ZIndex = 2
+			})
+			local HighlightLayer = Create("Frame", Scroll, {
+				Name = "HighlightLayer",
+				Position = TextPosition,
+				Size = UDim2.fromOffset(64, LineHeight),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				ZIndex = 3
+			})
+			local Input = Create("TextBox", Scroll, {
+				Name = "CodeInput",
+				Position = TextPosition,
+				Size = UDim2.fromOffset(64, LineHeight),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				Font = Enum.Font.Code,
+				TextSize = FontSize,
+				LineHeight = LineSpacing,
+				TextColor3 = Theme["Color Text"],
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				TextWrapped = false,
+				TextEditable = false,
+				MultiLine = true,
+				ClearTextOnFocus = false,
+				RichText = false,
+				TextTransparency = 1,
+				Text = InitialCode,
+				ZIndex = 4
+			})
+			local Caret = InsertTheme(Create("Frame", Scroll, {
+				Name = "Caret",
+				Position = TextPosition,
+				Size = UDim2.fromOffset(1, FontSize + 2),
+				BackgroundColor3 = Theme["Color Text"],
+				BorderSizePixel = 0,
+				Visible = false,
+				ZIndex = 5
+			}), "Text")
+			local Blink = TweenService:Create(Caret, TweenInfo.new(0.52, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1, true), {BackgroundTransparency = 1})
+
+			local function ViewSize()
+				return Scroll.AbsoluteSize / math.max(UIScale, 0.05)
+			end
+
+			local function UpdateCanvas()
+				if Destroyed then return end
+				local View = ViewSize()
+				if View.X < 1 or View.Y < 1 then return end
+				local ContentX = MaxColumns * CellWidth + 6
+				local ContentY = LineCount * LineHeight + Padding * 2
+				local OverflowX = ContentX > View.X + 1
+				local OverflowY = ContentY > View.Y + 1
+				local Width = math.max(math.ceil(View.X), math.ceil(ContentX))
+				local Height = math.max(math.ceil(View.Y), math.ceil(ContentY))
+				Scroll.ScrollingEnabled = OverflowX or OverflowY
+				Scroll.ScrollBarThickness = (OverflowX or OverflowY) and 2 or 0
+				Scroll.ScrollingDirection = OverflowX and OverflowY and Enum.ScrollingDirection.XY
+					or OverflowX and Enum.ScrollingDirection.X or Enum.ScrollingDirection.Y
+				Scroll.CanvasSize = UDim2.fromOffset(Width, Height)
+				Input.Size = UDim2.fromOffset(math.max(Width - 2, View.X - 2), math.max(Height - Padding, View.Y - Padding))
+				SelectionLayer.Size = Input.Size
+				HighlightLayer.Size = Input.Size
+				Numbers.Size = UDim2.fromOffset(GutterWidth - 5, math.max(LineCount * LineHeight, View.Y))
+				if not OverflowX and not OverflowY then
+					Scroll.CanvasPosition = Vector2.zero
+				else
+					Scroll.CanvasPosition = Vector2.new(
+						math.clamp(Scroll.CanvasPosition.X, 0, math.max(0, Width - View.X)),
+						math.clamp(Scroll.CanvasPosition.Y, 0, math.max(0, Height - View.Y))
+					)
+				end
+			end
+
+			local function DrawVisibleLines()
+				if Destroyed then return end
+				local View = ViewSize()
+				local First = math.max(1, math.floor(Scroll.CanvasPosition.Y / LineHeight) + 1)
+				local Last = math.min(LineCount, First + math.ceil(math.max(View.Y, LineHeight) / LineHeight) + 1)
+				if DrawnVersion == RenderVersion and DrawnFirst == First and DrawnLast == Last then return end
+				DrawnVersion, DrawnFirst, DrawnLast = RenderVersion, First, Last
+				local Used = 0
+				for Index = First, Last do
+					local Column = 0
+					for _, Segment in ipairs(StyledLines[Index] or {}) do
+						local Text, Color = Segment[1], Segment[2]
+						local Width = Columns(Text)
+						if not Text:match("^%s+$") then
+							Used += 1
+							local Label = LineLabels[Used]
+							if not Label then
+								Label = Create("TextLabel", HighlightLayer, {
+									Name = "SyntaxToken",
+									BackgroundTransparency = 1,
+									Font = Enum.Font.Code,
+									TextSize = FontSize,
+									TextColor3 = Theme["Color Text"],
+									TextXAlignment = Enum.TextXAlignment.Left,
+									TextYAlignment = Enum.TextYAlignment.Top,
+									TextWrapped = false,
+									RichText = false,
+									ZIndex = 3
+								})
+								LineLabels[Used] = Label
+							end
+							Label.Position = UDim2.fromOffset(Column * CellWidth, (Index - 1) * LineHeight)
+							Label.Size = UDim2.fromOffset(math.ceil(Width * CellWidth) + 3, LineHeight)
+							Label.Text = Text
+							Label.TextColor3 = Color or Theme["Color Text"]
+							Label.Visible = true
+						end
+						Column += Width
+					end
+				end
+				for Index = Used + 1, #LineLabels do
+					LineLabels[Index].Visible = false
+				end
+			end
+
+			local function UpdateSelection()
+				local Start, Finish = Input.CursorPosition, Input.SelectionStart
+				local Used = 0
+				if Editable and Focused and Start > 0 and Finish > 0 and Start ~= Finish then
+					local Low, High = math.min(Start, Finish), math.max(Start, Finish)
+					local Offset = 1
+					for Index, Line in ipairs(Lines) do
+						local Left = math.clamp(Low - Offset, 0, #Line)
+						local Right = math.clamp(High - Offset, 0, #Line)
+						if Right > Left and Index >= DrawnFirst and Index <= DrawnLast then
+							Used += 1
+							local Frame = SelectionFrames[Used]
+							if not Frame then
+								Frame = Create("Frame", SelectionLayer, {
+									BorderSizePixel = 0,
+									BackgroundColor3 = Theme["Color Theme"],
+									BackgroundTransparency = 0.72,
+									ZIndex = 2
+								})
+								SelectionFrames[Used] = Frame
+							end
+							Frame.Position = UDim2.fromOffset(Columns(Line:sub(1, Left)) * CellWidth, (Index - 1) * LineHeight)
+							Frame.Size = UDim2.fromOffset(math.max(1, Columns(Line:sub(Left + 1, Right)) * CellWidth), LineHeight)
+							Frame.Visible = true
+						end
+						Offset += #Line + 1
+						if Offset >= High then break end
+					end
+				end
+			for Index = Used + 1, #SelectionFrames do
+					SelectionFrames[Index].Visible = false
+			end
+			end
+
+			local function UpdateCaret()
+				if Destroyed then return end
+				Blink:Cancel()
+				Caret.Visible = Editable and Focused and Input.CursorPosition > 0
+				if not Caret.Visible then return end
+				local Before = Input.Text:sub(1, Input.CursorPosition - 1)
+				local Row = select(2, Before:gsub("\n", ""))
+				local Column = Before:match("[^\n]*$") or ""
+				local X = Columns(Column) * CellWidth
+				local Y = Row * LineHeight
+				Caret.Position = UDim2.fromOffset(2 + X, Padding + Y)
+				Caret.BackgroundTransparency = 0
+				local View = ViewSize()
+				local Current = Scroll.CanvasPosition
+				local NextX, NextY = Current.X, Current.Y
+				if X + 9 > Current.X + View.X then NextX = X + 9 - View.X end
+				if X < Current.X then NextX = X end
+				if Y + Padding + LineHeight > Current.Y + View.Y then NextY = Y + Padding + LineHeight - View.Y end
+				if Y < Current.Y then NextY = Y end
+				if Scroll.ScrollingEnabled then
+					Scroll.CanvasPosition = Vector2.new(
+						math.clamp(NextX, 0, math.max(0, Scroll.CanvasSize.X.Offset - View.X)),
+						math.clamp(NextY, 0, math.max(0, Scroll.CanvasSize.Y.Offset - View.Y))
+					)
+				end
+				Blink:Play()
+			end
+
+			local function UpdateModified()
+				if ResetButton then ResetButton.Button.Visible = Editable and Input.Text ~= Baseline end
+				UpdateActions()
+			end
+
+			local function Refresh()
+				if Destroyed then return end
+				table.clear(Lines)
+				table.clear(StyledLines)
+				local NumbersList, State = {}, nil
+				MaxColumns = 0
+				for Line in (Input.Text .. "\n"):gmatch("(.-)\n") do
+					local Index = #Lines + 1
+					Lines[Index] = Line
+					NumbersList[Index] = tostring(Index)
+					MaxColumns = math.max(MaxColumns, Columns(Line))
+					local Key = (State or "") .. "\0" .. Line
+					local CachedLine = HighlightCache[Key]
+					if not CachedLine then
+						local Tokens, NextState = TokenizeCode(Line, State)
+						CachedLine = {Tokens, NextState}
+						HighlightCache[Key] = CachedLine
+						Cached += 1
+					end
+					StyledLines[Index], State = CachedLine[1], CachedLine[2]
+				end
+			if Cached > 600 then table.clear(HighlightCache); Cached = 0 end
+			LineCount = #Lines
+			GutterWidth = math.max(25, #tostring(LineCount) * math.ceil(CellWidth) + 9)
+			Gutter.Size = UDim2.new(0, GutterWidth, 1, 0)
+			Scroll.Position = UDim2.fromOffset(GutterWidth, 0)
+			Scroll.Size = UDim2.new(1, -GutterWidth - 2, 1, 0)
+			Numbers.Text = table.concat(NumbersList, "\n")
+			local NewHeight = HeaderHeight + BottomPadding + Padding * 2 + math.min(math.max(1, LineCount), MaxVisibleLines) * LineHeight
+			Holder.Size = UDim2.new(1, 0, 0, NewHeight)
+			UpdateCanvas()
+			DrawVisibleLines()
+			UpdateCaret()
+			UpdateSelection()
+			end
+
+			local function QueueRefresh()
+				if RefreshQueued or Destroyed then return end
+				RefreshQueued = true
+				task.defer(function()
+					RefreshQueued = false
+					Refresh()
+				end)
+			end
+
+			Input:GetPropertyChangedSignal("Text"):Connect(function()
+				if Destroyed then return end
+				UpdateModified()
+				QueueRefresh()
+				if not Updating and OnChange then task.spawn(OnChange, Input.Text) end
+			end)
+			Input:GetPropertyChangedSignal("CursorPosition"):Connect(function()
+					if Editable then task.defer(function() if not Destroyed then UpdateCaret(); UpdateSelection() end end) end
+			end)
+			Input:GetPropertyChangedSignal("SelectionStart"):Connect(UpdateSelection)
+			Input.Focused:Connect(function()
+					if not Editable then Input:ReleaseFocus(); return end
+					Focused = true
+					UpdateCaret()
+					UpdateSelection()
+				end)
+			Input.FocusLost:Connect(function()
+					Focused = false
+					UpdateCaret()
+					UpdateSelection()
+					task.defer(function()
+						if not Destroyed and Editable and not ActionPointerDown and not Input:IsFocused() then
+							Code:SetEditable(false)
+						end
+					end)
+				end)
+			Scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+					Numbers.Position = UDim2.fromOffset(0, Padding - Scroll.CanvasPosition.Y)
+					DrawVisibleLines()
+					UpdateSelection()
+				end)
+			Scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+					UpdateCanvas()
+					DrawVisibleLines()
+				end)
+
+			function Code:SetCode(Value)
+					local NewCode = tostring(Value or "")
+					Baseline = NewCode
+					Updating = true
+					Input.Text = NewCode
+					Updating = false
+					UpdateModified()
+					Refresh()
+					return NewCode
+				end
+			Code.Set = Code.SetCode
+			function Code:GetCode() return Input.Text end
+			function Code:SetTitle(Value)
+					TitleText = TranslateText(tostring(Value or ""))
+					FileName.Text = TitleText
+				end
+			function Code:SetLanguage(Value) return tostring(Value or "Lua") end
+			function Code:SetEditable(Value)
+					if Destroyed then return false end
+					if Value == true and (not EditAllowed or (self.IsLocked and self:IsLocked())) then return false end
+					Editable = Value == true
+					Input.TextEditable = Editable
+					if EditButton then
+						EditButton.Selected = Editable
+						EditButton.Icon.Image = Library:GetIcon(Editable and "check" or "pencil")
+						EditButton.Update()
+					end
+					UpdateModified()
+					if Editable then
+						Input:CaptureFocus()
+					elseif Input:IsFocused() then
+						Input:ReleaseFocus()
+					end
+					if BodyTween then BodyTween:Cancel() end
+					BodyTween = TweenService:Create(Body, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						BackgroundColor3 = Theme["Color Hub 2"]:Lerp(Color3.new(0, 0, 0), Editable and 0.37 or 0.28)
+					})
+					BodyTween:Play()
+					return Editable
+				end
+			function Code:IsEditable() return Editable end
+			function Code:CanEdit() return EditAllowed end
+			function Code:IsModified() return Input.Text ~= Baseline end
+			function Code:Reset()
+					if not EditAllowed then return false, "Editing is disabled." end
+					if self.IsLocked and self:IsLocked() then self:NotifyLocked(); return false, "Locked" end
+					Updating = true
+					Input.Text = Baseline
+					Updating = false
+					UpdateModified()
+					Refresh()
+					return true
+				end
+			function Code:SetExecuteEnabled(Value)
+					CanExecute = Value == true
+					ExecuteButton.Button.Visible = CanExecute
+					UpdateActions()
+					return CanExecute
+				end
+			function Code:CanExecute() return CanExecute end
+			function Code:Copy()
+					if self.IsLocked and self:IsLocked() then self:NotifyLocked(); return false, "Locked" end
+					if not CanCopy then return false, "Copy is disabled." end
+					if type(Hub) ~= "table" or type(Hub.SetClipboard) ~= "function" then return false, "Clipboard API is unavailable." end
+					local Success, Error = Hub:SetClipboard(Input.Text)
+					if Success and CopyButton then
+						CopyToken += 1
+						local Token = CopyToken
+						CopyButton.Icon.Image = Library:GetIcon("check")
+						task.delay(0.65, function()
+							if not Destroyed and Token == CopyToken then CopyButton.Icon.Image = Library:GetIcon("copy") end
+						end)
+					end
+					return Success, Error
+				end
+			function Code:Execute()
+					if self.IsLocked and self:IsLocked() then self:NotifyLocked(); return false, "Locked" end
+					if not CanExecute then return false, "Code execution is disabled." end
+					if type(Hub) ~= "table" or type(Hub.Execute) ~= "function" then return false, "Code execution API is unavailable." end
+					local Success, Result = Hub:Execute(Input.Text, TitleText)
+					if not Success then
+						local ErrorText = tostring(Result)
+						if #ErrorText > 120 then ErrorText = ErrorText:sub(1, 117) .. "..." end
+						ShowToastMessage("Code execution failed: {Error}", {Error = ErrorText})
+					end
+					return Success, Result
+				end
+			function Code:Visible(Value) Funcs:ToggleVisible(Holder, Value) end
+			function Code:Destroy() if not Destroyed then Holder:Destroy() end end
+
+			ExecuteButton.Button.Activated:Connect(function()
+					if SpinTween then SpinTween:Cancel() end
+					ExecuteButton.Icon.Rotation = 0
+					SpinTween = TweenService:Create(ExecuteButton.Icon, TweenInfo.new(0.54, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Rotation = 360})
+					SpinTween:Play()
+					task.spawn(function() Code:Execute() end)
+				end)
+			if EditButton then
+				EditButton.Button.InputBegan:Connect(function(InputObject)
+					if InputObject.UserInputType == Enum.UserInputType.MouseButton1 or InputObject.UserInputType == Enum.UserInputType.Touch then
+						EditPressedWhileActive = Editable
+						ActionPointerDown = true
+					end
+				end)
+				EditButton.Button.Activated:Connect(function()
+					local Stop = EditPressedWhileActive or Editable
+					EditPressedWhileActive = false
+					ActionPointerDown = false
+					Code:SetEditable(not Stop)
+				end)
+				EditButton.Button.InputEnded:Connect(function(InputObject)
+					if InputObject.UserInputType == Enum.UserInputType.MouseButton1 or InputObject.UserInputType == Enum.UserInputType.Touch then
+						task.defer(function() ActionPointerDown = false; EditPressedWhileActive = false end)
+					end
+				end)
+			end
+			if CopyButton then CopyButton.Button.Activated:Connect(function() Code:Copy() end) end
+			if ResetButton then
+				ResetButton.Button.InputBegan:Connect(function(InputObject)
+					if InputObject.UserInputType == Enum.UserInputType.MouseButton1 or InputObject.UserInputType == Enum.UserInputType.Touch then
+						ActionPointerDown = true
+					end
+				end)
+				ResetButton.Button.Activated:Connect(function()
+					ActionPointerDown = false
+					Code:Reset()
+					if Editable and not Destroyed then Input:CaptureFocus() end
+				end)
+				ResetButton.Button.InputEnded:Connect(function(InputObject)
+					if InputObject.UserInputType == Enum.UserInputType.MouseButton1 or InputObject.UserInputType == Enum.UserInputType.Touch then
+						task.defer(function() ActionPointerDown = false end)
+					end
+				end)
+			end
+
+			local ThemeConnection = Connection.ThemeChanged:Connect(function()
+					if Destroyed then return end
+					Body.BackgroundColor3 = Theme["Color Hub 2"]:Lerp(Color3.new(0, 0, 0), Editable and 0.37 or 0.28)
+					Scroll.ScrollBarImageColor3 = Theme["Color Theme"]
+					for _, Entry in ipairs(Buttons) do Entry.Update(true) end
+					for _, Frame in ipairs(SelectionFrames) do Frame.BackgroundColor3 = Theme["Color Theme"] end
+					table.clear(HighlightCache)
+					Cached = 0
+					Refresh()
+				end)
+			Holder.Destroying:Connect(function()
+					Destroyed = true
+					ThemeConnection:Disconnect()
+					Blink:Cancel()
+					if SpinTween then SpinTween:Cancel() end
+					if BodyTween then BodyTween:Cancel() end
+					for _, Entry in ipairs(Buttons) do
+						if Entry.TintTween then Entry.TintTween:Cancel() end
+						if Entry.ScaleTween then Entry.ScaleTween:Cancel() end
+					end
+					table.clear(HighlightCache)
+				end)
+			ApplyLocked(Code, Holder, Configs, function(Locked)
+					if Locked and Editable then Code:SetEditable(false) end
+				end)
+			Refresh()
+			UpdateActions()
+			for _, Entry in ipairs(Buttons) do Entry.Update(true) end
+			return RegisterFlagObject(Configs.Flag, Code, Holder)
+		end
 		function Tab:AddDiscordInvite(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local Title = TranslateText(tostring(Configs[1] or Configs.Name or Configs.Title or "Discord"))
@@ -7207,7 +7940,7 @@ function Library:MakeWindow(Configs)
 		for _, MethodName in ipairs({
 			"AddSection", "AddParagraph", "AddButton", "AddToggle", "AddDropdown",
 			"AddPlayers", "AddSelector", "AddSlider", "AddTextBox", "AddKeybind",
-			"AddColorPicker", "AddDiscordInvite"
+			"AddColorPicker", "AddCode", "AddDiscordInvite"
 		}) do
 			local CreateElement = Tab[MethodName]
 			Tab[MethodName] = function(Self, ...)
@@ -7496,6 +8229,16 @@ function Library:MakeWindow(Configs)
 
 		Window:SelectTab(ConfigTab)
 		return ConfigTab
+	end
+
+	function Window:AddCode(Configs)
+		Configs = type(Configs) == "table" and Configs or {}
+		local Target = type(Configs.Tab) == "table" and Configs.Tab or ActiveTab
+		if type(Target) ~= "table" or type(Target.AddCode) ~= "function" then
+			ShowToastMessage("Create a tab before adding code.")
+			return nil
+		end
+		return Target:AddCode(Configs)
 	end
 
 	return Window
