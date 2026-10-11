@@ -1,15 +1,37 @@
-local Games = {
-    [4924922222] = "Brookhaven",
-    [1686885941] = "Brookhaven",
+--// Games
 
-    [2753915549] = "Blox Fruits",
-    [994732206] = "Blox Fruits",
+local Games = {}
 
-    [13772394625] = "Blade Ball",
-    [4777817887] = "Blade Ball",
+--// Functions
 
-    [142823291] = "Murder Mystery 2",
-    [66654135] = "Murder Mystery 2"
-}
+local function AddGame(Name, Ids)
+    for _, Id in ipairs(Ids) do
+        Games[Id] = Name
+    end
+end
+
+--// Register
+
+AddGame("Blade Ball", {
+    13772394625,
+    4777817887
+})
+
+AddGame("Blox Fruits", {
+    2753915549,
+    994732206
+})
+
+AddGame("Brookhaven", {
+    4924922222,
+    1686885941
+})
+
+AddGame("Murder Mystery 2", {
+    142823291,
+    66654135
+})
+
+--// Return
 
 return Games
