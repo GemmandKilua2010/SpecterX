@@ -1086,7 +1086,7 @@ function Controller:Resume() pause(self._state, false) return self end
 function Controller:SetTitle(value)
     local s = self._state
     if alive(s) then
-        s.Title = clip(tostring(value or ""), Config.MaxTitleLength)
+        s.Title = clip(value == nil and "" or tostring(value), Config.MaxTitleLength)
         s.Data.Title = s.Title
         refreshContent(s)
     end
@@ -1095,7 +1095,7 @@ end
 function Controller:SetText(value)
     local s = self._state
     if alive(s) then
-        s.Text = clip(tostring(value or ""), Config.MaxTextLength)
+        s.Text = clip(value == nil and "" or tostring(value), Config.MaxTextLength)
         s.Data.Text = s.Text
         refreshContent(s)
     end
