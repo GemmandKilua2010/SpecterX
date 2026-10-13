@@ -15,55 +15,19 @@ local Players = game:GetService("Players")
 
 local Hub, RootConfig = ...
 local Player = Players.LocalPlayer
-local LibraryConfig = type(RootConfig) == "table" and RootConfig.Library or nil
-LibraryConfig = type(LibraryConfig) == "table" and LibraryConfig or {}
-
-local SharedThemes = type(RootConfig) == "table" and RootConfig.Themes or nil
-SharedThemes = type(SharedThemes) == "table" and SharedThemes or {}
-
-if not next(SharedThemes) then
-    SharedThemes = {
-        MetalRed = {
-            ["Color Hub 1"] = ColorSequence.new(Color3.fromRGB(20, 20, 20)),
-            ["Color Hub 2"] = Color3.fromRGB(20, 20, 20),
-            ["Color Stroke"] = Color3.fromRGB(100, 0, 0),
-            ["Color Theme"] = Color3.fromRGB(200, 30, 30),
-            ["Color Text"] = Color3.fromRGB(220, 220, 220),
-            ["Color Dark Text"] = Color3.fromRGB(170, 170, 170)
-        }
-    }
-end
+assert(type(Hub) == "table" and type(Hub.GenerateName) == "function", "The Hub module must be supplied to the library.")
+assert(type(RootConfig) == "table", "Core/config.lua must be supplied to the library.")
+local LibraryConfig = assert(RootConfig.Library, "Config.Library is required.")
+local SharedThemes = assert(RootConfig.Themes, "Config.Themes is required.")
+local RootTheme = RootConfig.Theme
+assert(type(RootTheme) == "string" and type(SharedThemes[RootTheme]) == "table", "Config.Theme must name a theme in Config.Themes.")
 
 local Library = {
 	Themes = SharedThemes,
 	Info = {
 		Version = "1.1.0"
 	},
-	Save = {
-		UISize = {534, 281},
-		TabSize = 160,
-		Theme = "MetalRed",
-		Keybind = "G",
-		Transparency = 3,
-		Language = "US",
-		Draggable = true,
-		Resizable = true,
-		TabResizable = true,
-		MinimizedWidth = 220,
-		ScrollThickness = 1.5,
-		ScrollTransparency = 0.2,
-		BackgroundImage = "",
-		BackgroundPreset = "None",
-		BackgroundImageTransparency = 35,
-		BackgroundScale = "Crop",
-		SoundEnabled = false,
-		SoundVolume = 35,
-		SoundId = "179235828",
-		DropdownSearch = false,
-		DropdownPrefixOnly = true,
-		DropdownCloseOnSelect = false,
-		DropdownMaxVisibleOptions = 10
-	},
+	Save = {},
 	Settings = {},
 	Connection = {},
 	Instances = {},
@@ -82,6 +46,18 @@ local DropdownPrefixListeners = setmetatable({}, {__mode = "k"})
 local DropdownSizeListeners = setmetatable({}, {__mode = "k"})
 
 --// Config
+
+local function ConfigNumber(Source, Key)
+    local Value = tonumber(Source[Key])
+    assert(Value, "Config.Library requires a numeric " .. Key .. ".")
+    return Value
+end
+
+local function ConfigSection(Key)
+    local Value = LibraryConfig[Key]
+    assert(type(Value) == "table", "Config.Library." .. Key .. " is required.")
+    return Value
+end
 
 local function GetPair(Value, DefaultX, DefaultY)
     if type(Value) ~= "table" then
@@ -168,12 +144,15 @@ local function NormalizeBackgroundScale(Value)
             end
         end
     end
-    return "Crop"
+    return ConfigSection("Background").ScaleType
 end
 
-local DefaultWidth, DefaultHeight = GetPair(LibraryConfig.Size, 534, 281)
-local MinWidth, MinHeight = GetPair(LibraryConfig.MinSize, 500, 280)
-local MaxWidth, MaxHeight = GetPair(LibraryConfig.MaxSize, 580, 350)
+local DefaultWidth, DefaultHeight = GetPair(LibraryConfig.Size)
+local MinWidth, MinHeight = GetPair(LibraryConfig.MinSize)
+local MaxWidth, MaxHeight = GetPair(LibraryConfig.MaxSize)
+assert(DefaultWidth and DefaultHeight, "Config.Library.Size requires two numbers.")
+assert(MinWidth and MinHeight, "Config.Library.MinSize requires two numbers.")
+assert(MaxWidth and MaxHeight, "Config.Library.MaxSize requires two numbers.")
 
 MinWidth = math.max(320, MinWidth)
 MinHeight = math.max(200, MinHeight)
@@ -183,87 +162,88 @@ MaxHeight = math.max(MinHeight, MaxHeight)
 DefaultWidth = math.clamp(DefaultWidth, MinWidth, MaxWidth)
 DefaultHeight = math.clamp(DefaultHeight, MinHeight, MaxHeight)
 
-local MinTabSize = math.max(100, tonumber(LibraryConfig.MinTabSize) or 140)
-local MaxTabSize = math.max(MinTabSize, tonumber(LibraryConfig.MaxTabSize) or 220)
-local DefaultTabSize = math.clamp(tonumber(LibraryConfig.TabSize) or 160, MinTabSize, MaxTabSize)
-local ScreenPadding = math.max(0, tonumber(LibraryConfig.ScreenPadding) or 16)
-local SettingsFolder = type(LibraryConfig.SettingsFolder) == "string" and LibraryConfig.SettingsFolder or "Library"
-local SettingsFile = type(LibraryConfig.SettingsFile) == "string" and LibraryConfig.SettingsFile or "settings.json"
+local MinTabSize = math.max(100, ConfigNumber(LibraryConfig, "MinTabSize"))
+local MaxTabSize = math.max(MinTabSize, ConfigNumber(LibraryConfig, "MaxTabSize"))
+local DefaultTabSize = math.clamp(ConfigNumber(LibraryConfig, "TabSize"), MinTabSize, MaxTabSize)
+local ScreenPadding = math.max(0, ConfigNumber(LibraryConfig, "ScreenPadding"))
+local SettingsFolder = assert(LibraryConfig.SettingsFolder, "Config.Library.SettingsFolder is required.")
+local SettingsFile = assert(LibraryConfig.SettingsFile, "Config.Library.SettingsFile is required.")
 local SettingsPath = SettingsFolder .. "/" .. SettingsFile
-local DefaultKeybind = (GetKeyCode(LibraryConfig.Keybind) or Enum.KeyCode.G).Name
-local DefaultTransparency = math.clamp(tonumber(LibraryConfig.Transparency) or 3, 0, 100)
-local DefaultMinimizedWidth = math.clamp(tonumber(LibraryConfig.MinimizedWidth) or 220, 160, 320)
-local ColorPickerSmoothTime = math.clamp(tonumber(LibraryConfig.ColorPickerSmoothTime) or 0.06, 0, 0.2)
-local ResponsiveConfig = type(LibraryConfig.Responsive) == "table" and LibraryConfig.Responsive or {}
+local DefaultKeybind = assert(GetKeyCode(LibraryConfig.Keybind), "Config.Library.Keybind is invalid.").Name
+local DefaultTransparency = math.clamp(ConfigNumber(LibraryConfig, "Transparency"), 0, 100)
+local DefaultMinimizedWidth = math.clamp(ConfigNumber(LibraryConfig, "MinimizedWidth"), 160, 320)
+local ColorPickerSmoothTime = math.clamp(ConfigNumber(LibraryConfig, "ColorPickerSmoothTime"), 0, 0.2)
+local ResponsiveConfig = ConfigSection("Responsive")
 local ResponsiveEnabled = ResponsiveConfig.Enabled ~= false
-local CompactBreakpoint = math.max(320, tonumber(ResponsiveConfig.CompactBreakpoint) or 640)
-local CompactTabSize = math.clamp(tonumber(ResponsiveConfig.CompactTabSize) or 128, 100, MaxTabSize)
-local ResponsiveMinScale = math.clamp(tonumber(ResponsiveConfig.MinScale) or 0.5, 0.35, 1)
-local ResponsiveMaxScale = math.clamp(tonumber(ResponsiveConfig.MaxScale) or 1, ResponsiveMinScale, 1.5)
-local SmallScreenPadding = math.max(0, tonumber(ResponsiveConfig.SmallScreenPadding) or 8)
-local TouchTopbarButtonSize = math.clamp(tonumber(ResponsiveConfig.TouchTopbarButtonSize) or 18, 14, 28)
-local DesktopTopbarButtonSize = math.clamp(tonumber(ResponsiveConfig.DesktopTopbarButtonSize) or 14, 12, 24)
+local CompactBreakpoint = math.max(320, ConfigNumber(ResponsiveConfig, "CompactBreakpoint"))
+local CompactTabSize = math.clamp(ConfigNumber(ResponsiveConfig, "CompactTabSize"), 100, MaxTabSize)
+local ResponsiveMinScale = math.clamp(ConfigNumber(ResponsiveConfig, "MinScale"), 0.35, 1)
+local ResponsiveMaxScale = math.clamp(ConfigNumber(ResponsiveConfig, "MaxScale"), ResponsiveMinScale, 1.5)
+local SmallScreenPadding = math.max(0, ConfigNumber(ResponsiveConfig, "SmallScreenPadding"))
+local TouchTopbarButtonSize = math.clamp(ConfigNumber(ResponsiveConfig, "TouchTopbarButtonSize"), 14, 28)
+local DesktopTopbarButtonSize = math.clamp(ConfigNumber(ResponsiveConfig, "DesktopTopbarButtonSize"), 12, 24)
 local Draggable = LibraryConfig.Draggable ~= false
 local Resizable = LibraryConfig.Resizable ~= false
 local TabResizable = LibraryConfig.TabResizable ~= false
-local DragThreshold = math.max(0, tonumber(LibraryConfig.DragThreshold) or 3)
-local ResizeHandleSize = math.clamp(tonumber(LibraryConfig.ResizeHandleSize) or 35, 12, 48)
-local TabResizeHandleWidth = math.clamp(tonumber(LibraryConfig.TabResizeHandleWidth) or 20, 6, 30)
+local DragThreshold = math.max(0, ConfigNumber(LibraryConfig, "DragThreshold"))
+local ResizeHandleSize = math.clamp(ConfigNumber(LibraryConfig, "ResizeHandleSize"), 12, 48)
+local TabResizeHandleWidth = math.clamp(ConfigNumber(LibraryConfig, "TabResizeHandleWidth"), 6, 30)
 
-local AppearanceConfig = type(LibraryConfig.Appearance) == "table" and LibraryConfig.Appearance or {}
-local CornerRadius = math.max(0, tonumber(AppearanceConfig.CornerRadius) or 10)
-local ElementCornerRadius = math.max(0, tonumber(AppearanceConfig.ElementCornerRadius) or 6)
-local StrokeThickness = math.max(0, tonumber(AppearanceConfig.StrokeThickness) or 1)
-local ButtonHoverTransparency = math.clamp(tonumber(AppearanceConfig.ButtonHoverTransparency) or 0.4, 0, 1)
-local GradientRotation = tonumber(AppearanceConfig.GradientRotation) or 45
+local AppearanceConfig = ConfigSection("Appearance")
+local ControlColors = AppearanceConfig.ControlColors
+local ControlsConfig = ConfigSection("Controls")
+local CornerRadius = math.max(0, ConfigNumber(AppearanceConfig, "CornerRadius"))
+local ElementCornerRadius = math.max(0, ConfigNumber(AppearanceConfig, "ElementCornerRadius"))
+local StrokeThickness = math.max(0, ConfigNumber(AppearanceConfig, "StrokeThickness"))
+local ButtonHoverTransparency = math.clamp(ConfigNumber(AppearanceConfig, "ButtonHoverTransparency"), 0, 1)
+local GradientRotation = ConfigNumber(AppearanceConfig, "GradientRotation")
 
-local TopBarConfig = type(LibraryConfig.TopBar) == "table" and LibraryConfig.TopBar or {}
-local TopBarHeight = math.clamp(tonumber(TopBarConfig.Height) or 28, 20, 48)
-local TopBarTitleTextSize = math.clamp(tonumber(TopBarConfig.TitleTextSize) or 12, 8, 24)
-local TopBarSubTitleTextSize = math.clamp(tonumber(TopBarConfig.SubTitleTextSize) or 8, 6, 20)
-local TopBarTitlePadding = math.max(0, tonumber(TopBarConfig.TitlePadding) or 15)
-local TopBarControlsRightPadding = math.max(0, tonumber(TopBarConfig.ControlsRightPadding) or 9)
-local TopBarControlsSpacing = math.max(0, tonumber(TopBarConfig.ControlsSpacing) or 10)
-local TopBarButtonTransparency = math.clamp(tonumber(TopBarConfig.ButtonTransparency) or 0.15, 0, 1)
+local TopBarConfig = ConfigSection("TopBar")
+local TopBarHeight = math.clamp(ConfigNumber(TopBarConfig, "Height"), 20, 48)
+local TopBarTitleTextSize = math.clamp(ConfigNumber(TopBarConfig, "TitleTextSize"), 8, 24)
+local TopBarSubTitleTextSize = math.clamp(ConfigNumber(TopBarConfig, "SubTitleTextSize"), 6, 20)
+local TopBarTitlePadding = math.max(0, ConfigNumber(TopBarConfig, "TitlePadding"))
+local TopBarControlsRightPadding = math.max(0, ConfigNumber(TopBarConfig, "ControlsRightPadding"))
+local TopBarControlsSpacing = math.max(0, ConfigNumber(TopBarConfig, "ControlsSpacing"))
+local TopBarButtonTransparency = math.clamp(ConfigNumber(TopBarConfig, "ButtonTransparency"), 0, 1)
 
-local TabsConfig = type(LibraryConfig.Tabs) == "table" and LibraryConfig.Tabs or {}
-local TabsPadding = math.max(0, tonumber(TabsConfig.Padding) or 10)
-local TabsSpacing = math.max(0, tonumber(TabsConfig.Spacing) or 5)
-local TabButtonHeight = math.clamp(tonumber(TabsConfig.ButtonHeight) or 24, 16, 48)
-local TabTextSize = math.clamp(tonumber(TabsConfig.TextSize) or 10, 7, 24)
-local TabIconSize = math.clamp(tonumber(TabsConfig.IconSize) or 13, 8, 32)
-local TabIconOffset = math.max(0, tonumber(TabsConfig.IconOffset) or 8)
-local TabTextOffset = math.max(0, tonumber(TabsConfig.TextOffset) or 15)
-local TabTextIconOffset = math.max(TabTextOffset, tonumber(TabsConfig.TextIconOffset) or 25)
-local TabInactiveTransparency = math.clamp(tonumber(TabsConfig.InactiveTransparency) or 0.3, 0, 1)
-local TabIndicatorWidth = math.clamp(tonumber(TabsConfig.IndicatorWidth) or 4, 1, 12)
-local TabIndicatorHeight = math.clamp(tonumber(TabsConfig.IndicatorHeight) or 13, 2, 32)
-local TabIndicatorIdleSize = math.clamp(tonumber(TabsConfig.IndicatorIdleSize) or 4, 1, TabIndicatorHeight)
+local TabsConfig = ConfigSection("Tabs")
+local TabsPadding = math.max(0, ConfigNumber(TabsConfig, "Padding"))
+local TabsSpacing = math.max(0, ConfigNumber(TabsConfig, "Spacing"))
+local TabButtonHeight = math.clamp(ConfigNumber(TabsConfig, "ButtonHeight"), 16, 48)
+local TabTextSize = math.clamp(ConfigNumber(TabsConfig, "TextSize"), 7, 24)
+local TabIconSize = math.clamp(ConfigNumber(TabsConfig, "IconSize"), 8, 32)
+local TabIconOffset = math.max(0, ConfigNumber(TabsConfig, "IconOffset"))
+local TabTextOffset = math.max(0, ConfigNumber(TabsConfig, "TextOffset"))
+local TabTextIconOffset = math.max(TabTextOffset, ConfigNumber(TabsConfig, "TextIconOffset"))
+local TabInactiveTransparency = math.clamp(ConfigNumber(TabsConfig, "InactiveTransparency"), 0, 1)
+local TabIndicatorWidth = math.clamp(ConfigNumber(TabsConfig, "IndicatorWidth"), 1, 12)
+local TabIndicatorHeight = math.clamp(ConfigNumber(TabsConfig, "IndicatorHeight"), 2, 32)
+local TabIndicatorIdleSize = math.clamp(ConfigNumber(TabsConfig, "IndicatorIdleSize"), 1, TabIndicatorHeight)
 
-local ElementsConfig = type(LibraryConfig.Elements) == "table" and LibraryConfig.Elements or {}
-local ElementHeight = math.clamp(tonumber(ElementsConfig.Height) or 25, 18, 60)
-local ElementTitleTextSize = math.clamp(tonumber(ElementsConfig.TitleTextSize) or 10, 7, 24)
-local ElementDescriptionTextSize = math.clamp(tonumber(ElementsConfig.DescriptionTextSize) or 8, 6, 20)
-local ElementHorizontalPadding = math.max(0, tonumber(ElementsConfig.HorizontalPadding) or 10)
-local ElementVerticalPadding = math.max(0, tonumber(ElementsConfig.VerticalPadding) or 5)
-local ElementSpacing = math.max(0, tonumber(ElementsConfig.Spacing) or 2)
+local ElementsConfig = ConfigSection("Elements")
+local ElementHeight = math.clamp(ConfigNumber(ElementsConfig, "Height"), 18, 60)
+local ElementTitleTextSize = math.clamp(ConfigNumber(ElementsConfig, "TitleTextSize"), 7, 24)
+local ElementDescriptionTextSize = math.clamp(ConfigNumber(ElementsConfig, "DescriptionTextSize"), 6, 20)
+local ElementHorizontalPadding = math.max(0, ConfigNumber(ElementsConfig, "HorizontalPadding"))
+local ElementVerticalPadding = math.max(0, ConfigNumber(ElementsConfig, "VerticalPadding"))
+local ElementSpacing = math.max(0, ConfigNumber(ElementsConfig, "Spacing"))
 
-local ScrollConfig = type(LibraryConfig.Scroll) == "table" and LibraryConfig.Scroll or {}
-local ScrollThickness = math.clamp(tonumber(ScrollConfig.Thickness) or 1.5, 0, 12)
-local ScrollTransparency = math.clamp(tonumber(ScrollConfig.Transparency) or 0.2, 0, 1)
+local ScrollConfig = ConfigSection("Scroll")
+local ScrollThickness = math.clamp(ConfigNumber(ScrollConfig, "Thickness"), 0, 12)
+local ScrollTransparency = math.clamp(ConfigNumber(ScrollConfig, "Transparency"), 0, 1)
 
-local BackgroundConfig = type(LibraryConfig.Background) == "table" and LibraryConfig.Background or {}
+local BackgroundConfig = ConfigSection("Background")
 local DefaultBackgroundImage = NormalizeAssetId(BackgroundConfig.Image) or ""
-local DefaultBackgroundPreset = type(BackgroundConfig.Default) == "string" and BackgroundConfig.Default or "None"
-local DefaultBackgroundImageTransparency = math.clamp(tonumber(BackgroundConfig.ImageTransparency) or 35, 0, 100)
+local DefaultBackgroundPreset = assert(BackgroundConfig.Default, "Config.Library.Background.Default is required.")
+local DefaultBackgroundImageTransparency = math.clamp(ConfigNumber(BackgroundConfig, "ImageTransparency"), 0, 100)
 local DefaultBackgroundScale = NormalizeBackgroundScale(BackgroundConfig.ScaleType)
 local BackgroundPresets = type(BackgroundConfig.Presets) == "table" and BackgroundConfig.Presets or {}
 
-local AudioConfig = type(LibraryConfig.Audio) == "table" and LibraryConfig.Audio or {}
+local AudioConfig = ConfigSection("Audio")
 local DefaultSoundEnabled = AudioConfig.Enabled == true
-local DefaultSoundVolume = math.clamp(tonumber(AudioConfig.Volume) or 35, 0, 100)
-local DefaultSoundId = NormalizeAssetId(AudioConfig.SoundId) or "179235828"
-if DefaultSoundId == "" then DefaultSoundId = "179235828" end
+local DefaultSoundVolume = math.clamp(ConfigNumber(AudioConfig, "Volume"), 0, 100)
+local DefaultSoundId = assert(NormalizeAssetId(AudioConfig.SoundId), "Config.Library.Audio.SoundId is invalid.")
 
 local SoundPresets = {}
 local SoundPresetOptions = {}
@@ -279,34 +259,35 @@ for _, Preset in ipairs(type(AudioConfig.Presets) == "table" and AudioConfig.Pre
     end
 end
 
-if #SoundPresets == 0 then
-    SoundPresets[1] = {Name = "Classic Click", Id = "179235828"}
-    SoundPresetOptions[1] = "Classic Click"
-    SoundPresetIndexById["179235828"] = 1
+local function EnsureSoundPreset(Id)
+    if not Id or Id == "" then return nil end
+    if not SoundPresetIndexById[Id] then
+        SoundPresets[#SoundPresets + 1] = {Name = Id, Id = Id}
+        SoundPresetOptions[#SoundPresetOptions + 1] = Id
+        SoundPresetIndexById[Id] = #SoundPresets
+    end
+    return SoundPresetIndexById[Id]
 end
+EnsureSoundPreset(DefaultSoundId)
 
-if not SoundPresetIndexById[DefaultSoundId] then
-    DefaultSoundId = SoundPresets[1].Id
-end
-
-local DropdownConfig = type(LibraryConfig.Dropdown) == "table" and LibraryConfig.Dropdown or {}
+local DropdownConfig = ConfigSection("Dropdown")
 local DefaultDropdownSearch = DropdownConfig.Search == true
 local DefaultDropdownPrefixOnly = DropdownConfig.PrefixOnly ~= false
 local DefaultDropdownCloseOnSelect = DropdownConfig.CloseOnSelect == true
-local DefaultDropdownMaxVisibleOptions = math.clamp(math.floor(tonumber(DropdownConfig.MaxVisibleOptions) or 10), 3, 12)
+local DefaultDropdownMaxVisibleOptions = math.clamp(math.floor(ConfigNumber(DropdownConfig, "MaxVisibleOptions")), 3, 12)
 
-local AnimationConfig = type(LibraryConfig.Animation) == "table" and LibraryConfig.Animation or {}
-local AnimationDefault = math.max(0, tonumber(AnimationConfig.Default) or 0.5)
-local AnimationWindow = math.max(0, tonumber(AnimationConfig.Window) or 0.22)
-local AnimationTopBar = math.max(0, tonumber(AnimationConfig.TopBar) or 0.12)
-local AnimationTabOpen = math.max(0, tonumber(AnimationConfig.TabOpen) or 0.3)
-local AnimationTab = math.max(0, tonumber(AnimationConfig.Tab) or 0.35)
-local AnimationToggle = math.max(0, tonumber(AnimationConfig.Toggle) or 0.25)
-local AnimationDropdown = math.max(0, tonumber(AnimationConfig.Dropdown) or 0.2)
-local AnimationDropdownPosition = math.max(0, tonumber(AnimationConfig.DropdownPosition) or 0.1)
-local AnimationSlider = math.max(0, tonumber(AnimationConfig.Slider) or 0.3)
-local AnimationDialog = math.max(0, tonumber(AnimationConfig.Dialog) or 0.2)
-local AnimationDialogFade = math.max(0, tonumber(AnimationConfig.DialogFade) or 0.15)
+local AnimationConfig = ConfigSection("Animation")
+local AnimationDefault = math.max(0, ConfigNumber(AnimationConfig, "Default"))
+local AnimationWindow = math.max(0, ConfigNumber(AnimationConfig, "Window"))
+local AnimationTopBar = math.max(0, ConfigNumber(AnimationConfig, "TopBar"))
+local AnimationTabOpen = math.max(0, ConfigNumber(AnimationConfig, "TabOpen"))
+local AnimationTab = math.max(0, ConfigNumber(AnimationConfig, "Tab"))
+local AnimationToggle = math.max(0, ConfigNumber(AnimationConfig, "Toggle"))
+local AnimationDropdown = math.max(0, ConfigNumber(AnimationConfig, "Dropdown"))
+local AnimationDropdownPosition = math.max(0, ConfigNumber(AnimationConfig, "DropdownPosition"))
+local AnimationSlider = math.max(0, ConfigNumber(AnimationConfig, "Slider"))
+local AnimationDialog = math.max(0, ConfigNumber(AnimationConfig, "Dialog"))
+local AnimationDialogFade = math.max(0, ConfigNumber(AnimationConfig, "DialogFade"))
 
 Library.Save.UISize = {DefaultWidth, DefaultHeight}
 Library.Save.TabSize = DefaultTabSize
@@ -330,10 +311,8 @@ Library.Save.DropdownPrefixOnly = DefaultDropdownPrefixOnly
 Library.Save.DropdownCloseOnSelect = DefaultDropdownCloseOnSelect
 Library.Save.DropdownMaxVisibleOptions = DefaultDropdownMaxVisibleOptions
 
-local RootTheme = type(RootConfig) == "table" and RootConfig.Theme or nil
-if type(RootTheme) == "string" and Library.Themes[RootTheme] then
-    Library.Save.Theme = RootTheme
-end
+Library.Save.Theme = RootTheme
+Library.Save.Language = assert(RootConfig.Language.Default, "Config.Language.Default is required.")
 
 if type(Hub) == "table" and type(Hub.GetLanguage) == "function" then
     Library.Save.Language = Hub:GetLanguage()
@@ -341,12 +320,30 @@ end
 
 local Settings = Library.Settings
 local Flags = Library.Flags
-local UIScale = 1.9636363983154297
-local RequestedScale = tonumber(LibraryConfig.Scale) or 1.9636363983154297
+local UIScale = ConfigNumber(LibraryConfig, "Scale")
+local RequestedScale = UIScale
 local OrderedParents = setmetatable({}, {__mode = "k"})
 
-local GenerateName
 local LoadedSettingKeys = {}
+
+local JsonFiles = {}
+function JsonFiles.Read(Path)
+    if type(Hub) ~= "table" or type(Hub.ReadFile) ~= "function"
+        or type(Hub.FileExists) ~= "function" or not Hub:FileExists(Path) then
+        return nil
+    end
+    local Source = Hub:ReadFile(Path)
+    if type(Source) ~= "string" then return nil end
+    local Success, Decoded = pcall(HttpService.JSONDecode, HttpService, Source)
+    return Success and type(Decoded) == "table" and Decoded or nil
+end
+
+function JsonFiles.Write(Path, Data)
+    if type(Hub) ~= "table" or type(Hub.CreateFile) ~= "function" then return false end
+    local Success, Encoded = pcall(HttpService.JSONEncode, HttpService, Data)
+    if not Success then return false end
+    return Hub:CreateFile(Path, Encoded) == true, Encoded
+end
 
 local SetProps, SetChildren, InsertTheme, Create do
 	InsertTheme = function(Instance, Type)
@@ -382,142 +379,97 @@ local SetProps, SetChildren, InsertTheme, Create do
 	Create = function(...)
 		local args = {...}
 		if type(args) ~= "table" then return end
-		local new = Instance.new(args[1])
-		if new:IsA("UIListLayout") then
-			new.SortOrder = Enum.SortOrder.LayoutOrder
-		end
-		local Children = {}
-		
+		local new = Hub:CreateInstance(args[1])
 		if type(args[2]) == "table" then
 			SetProps(new, args[2])
 			SetChildren(new, args[3])
-			Children = args[3] or {}
 		elseif typeof(args[2]) == "Instance" then
 			new.Parent = args[2]
 			SetProps(new, args[3])
 			SetChildren(new, args[4])
-			Children = args[4] or {}
 		end
 
 		if new:IsA("GuiObject") and OrderedParents[new.Parent] ~= nil then
 			OrderedParents[new.Parent] += 1
 			new.LayoutOrder = OrderedParents[new.Parent]
 		end
-		new.Name = GenerateName and GenerateName(12) or new.Name
 		return new
 	end
 	
-	local function Save()
-		if type(Hub) ~= "table" or type(Hub.FileExists) ~= "function" or not Hub:FileExists(SettingsPath) then
-			return
-		end
+    local function LoadSettings()
+        local Decode = JsonFiles.Read(SettingsPath)
+        if not Decode then return end
+        table.clear(LoadedSettingKeys)
 
-		local Source = Hub:ReadFile(SettingsPath)
-		if type(Source) ~= "string" then
-			return
-		end
+        local function Accept(Key, Value)
+            Library.Save[Key] = Value
+            LoadedSettingKeys[Key] = true
+        end
 
-		local Success, Decode = pcall(HttpService.JSONDecode, HttpService, Source)
-		if not Success or type(Decode) ~= "table" then
-			return
-		end
-
-		table.clear(LoadedSettingKeys)
-		for Key in pairs(Decode) do
-			LoadedSettingKeys[Key] = true
-		end
-
-		local Width, Height = GetPair(Decode.UISize, DefaultWidth, DefaultHeight)
-		Library.Save.UISize = {
-			math.clamp(Width, MinWidth, MaxWidth),
-			math.clamp(Height, MinHeight, MaxHeight)
-		}
-
-		Library.Save.TabSize = math.clamp(tonumber(Decode.TabSize) or DefaultTabSize, MinTabSize, MaxTabSize)
-
-		if type(Decode.Theme) == "string" and Library.Themes[Decode.Theme] then
-			Library.Save.Theme = Decode.Theme
-		end
-
-		local SavedKeybind = GetKeyCode(Decode.Keybind)
-		if SavedKeybind then
-			Library.Save.Keybind = SavedKeybind.Name
-		end
-
-		Library.Save.Transparency = math.clamp(tonumber(Decode.Transparency) or DefaultTransparency, 0, 100)
-
-		if type(Decode.Draggable) == "boolean" then
-			Library.Save.Draggable = Decode.Draggable
-		end
-		if type(Decode.Resizable) == "boolean" then
-			Library.Save.Resizable = Decode.Resizable
-		end
-		if type(Decode.TabResizable) == "boolean" then
-			Library.Save.TabResizable = Decode.TabResizable
-		end
-		Library.Save.MinimizedWidth = math.clamp(tonumber(Decode.MinimizedWidth) or DefaultMinimizedWidth, 160, math.min(320, MaxWidth))
-		Library.Save.ScrollThickness = math.clamp(tonumber(Decode.ScrollThickness) or ScrollThickness, 0, 12)
-		Library.Save.ScrollTransparency = math.clamp(tonumber(Decode.ScrollTransparency) or ScrollTransparency, 0, 1)
-
-		local SavedBackground = NormalizeAssetId(Decode.BackgroundImage)
-		if SavedBackground ~= nil then
-			Library.Save.BackgroundImage = SavedBackground
-		end
-		if type(Decode.BackgroundPreset) == "string" then
-			Library.Save.BackgroundPreset = Decode.BackgroundPreset
-		end
-		Library.Save.BackgroundImageTransparency = math.clamp(tonumber(Decode.BackgroundImageTransparency) or DefaultBackgroundImageTransparency, 0, 100)
-		Library.Save.BackgroundScale = NormalizeBackgroundScale(Decode.BackgroundScale or DefaultBackgroundScale)
-
-		if type(Decode.SoundEnabled) == "boolean" then
-			Library.Save.SoundEnabled = Decode.SoundEnabled
-		end
-		Library.Save.SoundVolume = math.clamp(tonumber(Decode.SoundVolume) or DefaultSoundVolume, 0, 100)
-		local SavedSoundId = NormalizeAssetId(Decode.SoundId)
-		if SavedSoundId and SoundPresetIndexById[SavedSoundId] then
-			Library.Save.SoundId = SavedSoundId
-		end
-
-		if type(Decode.DropdownSearch) == "boolean" then
-			Library.Save.DropdownSearch = Decode.DropdownSearch
-		end
-		if type(Decode.DropdownPrefixOnly) == "boolean" then
-			Library.Save.DropdownPrefixOnly = Decode.DropdownPrefixOnly
-		end
-		if type(Decode.DropdownCloseOnSelect) == "boolean" then
-			Library.Save.DropdownCloseOnSelect = Decode.DropdownCloseOnSelect
-		end
-		Library.Save.DropdownMaxVisibleOptions = math.clamp(
-			math.floor(tonumber(Decode.DropdownMaxVisibleOptions) or DefaultDropdownMaxVisibleOptions),
-			3,
-			12
-		)
-
-		if type(Decode.Language) == "string" and type(Hub) == "table" and type(Hub.SetLanguage) == "function" then
-			local Success, Language = Hub:SetLanguage(Decode.Language)
-			if Success then
-				Library.Save.Language = Language
-			end
-		end
-	end
+        -- Missing or invalid fields retain their values from Core/config.lua.
+        local NumericRanges = {
+            TabSize = {MinTabSize, MaxTabSize},
+            Transparency = {0, 100},
+            MinimizedWidth = {160, math.min(320, MaxWidth)},
+            ScrollThickness = {0, 12},
+            ScrollTransparency = {0, 1},
+            BackgroundImageTransparency = {0, 100},
+            SoundVolume = {0, 100},
+            DropdownMaxVisibleOptions = {3, 12}
+        }
+        for Key, Range in pairs(NumericRanges) do
+            local Value = tonumber(Decode[Key])
+            if Value and Value == Value and math.abs(Value) < math.huge then
+                if Key == "DropdownMaxVisibleOptions" then Value = math.floor(Value) end
+                Accept(Key, math.clamp(Value, Range[1], Range[2]))
+            end
+        end
+        for _, Key in ipairs({"Draggable", "Resizable", "TabResizable", "SoundEnabled", "DropdownSearch", "DropdownPrefixOnly", "DropdownCloseOnSelect"}) do
+            if type(Decode[Key]) == "boolean" then Accept(Key, Decode[Key]) end
+        end
+        if type(Decode.UISize) == "table" then
+            local Width, Height = GetPair(Decode.UISize)
+            if Width and Height and Width == Width and Height == Height
+                and math.abs(Width) < math.huge and math.abs(Height) < math.huge then
+                Accept("UISize", {math.clamp(Width, MinWidth, MaxWidth), math.clamp(Height, MinHeight, MaxHeight)})
+            end
+        end
+        if type(Decode.Theme) == "string" and type(Library.Themes[Decode.Theme]) == "table" then
+            Accept("Theme", Decode.Theme)
+        end
+        local KeyCode = GetKeyCode(Decode.Keybind)
+        if KeyCode then Accept("Keybind", KeyCode.Name) end
+        for _, Key in ipairs({"BackgroundImage", "SoundId"}) do
+            if Decode[Key] ~= nil then
+                local Id = NormalizeAssetId(Decode[Key])
+                if Id ~= nil then Accept(Key, Id) end
+            end
+        end
+        if type(Decode.BackgroundPreset) == "string" then Accept("BackgroundPreset", Decode.BackgroundPreset) end
+        if type(Decode.BackgroundScale) == "string" then
+            for Name in pairs(BackgroundScaleTypes) do
+                if Name:lower() == Decode.BackgroundScale:lower() then Accept("BackgroundScale", Name); break end
+            end
+        end
+        if type(Decode.Language) == "string" and type(Hub) == "table" and type(Hub.SetLanguage) == "function" then
+            local Success, Language = Hub:SetLanguage(Decode.Language)
+            if Success then Accept("Language", Language) end
+        end
+    end
 
 	if type(Hub) == "table" and type(Hub.CreateFolder) == "function" then
 		Hub:CreateFolder(SettingsFolder)
 	end
 
-	pcall(Save)
+	pcall(LoadSettings)
+    EnsureSoundPreset(Library.Save.SoundId)
 	Draggable = Library.Save.Draggable ~= false
 	Resizable = Library.Save.Resizable ~= false
 	TabResizable = Library.Save.TabResizable ~= false
 	ScrollThickness = Library.Save.ScrollThickness
 	ScrollTransparency = Library.Save.ScrollTransparency
 
-	if type(Hub) == "table" and type(Hub.CreateFile) == "function" then
-		local Success, Encoded = pcall(HttpService.JSONEncode, HttpService, Library.Save)
-		if Success then
-			Hub:CreateFile(SettingsPath, Encoded)
-		end
-	end
+	JsonFiles.Write(SettingsPath, Library.Save)
 end
 
 local Funcs = {} do
@@ -539,6 +491,14 @@ local Funcs = {} do
 			end
 		end
 	end
+
+    function Funcs:NotifyListeners(List, ...)
+        for Object, Callback in pairs(List) do
+            if type(Callback) ~= "function" or not pcall(Callback, ...) then
+                List[Object] = nil
+            end
+        end
+    end
 	
 	function Funcs:ToggleVisible(Obj, Bool)
 		if Bool ~= nil then
@@ -663,41 +623,18 @@ local GetFlag, SetFlag, CheckFlag do
 		local ScriptFile = Settings.ScriptFile
 		if not db and type(ScriptFile) == "string" and ScriptFile ~= "" then
 			db = true
-			task.wait(0.1)
+			task.wait(math.max(0, ConfigNumber(LibraryConfig, "FlagsSaveDelay")))
 			db = false
 
-			local Success, Encoded = pcall(HttpService.JSONEncode, HttpService, Flags)
-			if Success and type(Hub) == "table" and type(Hub.CreateFile) == "function" then
-				local Saved = Hub:CreateFile(ScriptFile, Encoded)
-				if Saved then
-					Connection:FireConnection("FileSaved", "Script-Flags", ScriptFile, Encoded)
-				end
+			local Saved, Encoded = JsonFiles.Write(ScriptFile, Flags)
+			if Saved then
+				Connection:FireConnection("FileSaved", "Script-Flags", ScriptFile, Encoded)
 			end
 		end
 	end)
 end
 
 --// Runtime
-
-local FallbackRNG = Random.new()
-local FallbackCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-local FallbackCharacterCount = #FallbackCharacters
-
-GenerateName = function(Length)
-    if type(Hub) == "table" and type(Hub.GenerateName) == "function" then
-        return Hub:GenerateName(Length)
-    end
-
-    Length = math.clamp(math.floor(tonumber(Length) or 12), 1, 256)
-    local Parts = table.create(Length)
-
-    for Index = 1, Length do
-        local Position = FallbackRNG:NextInteger(1, FallbackCharacterCount)
-        Parts[Index] = FallbackCharacters:sub(Position, Position)
-    end
-
-    return table.concat(Parts)
-end
 
 local Runtime = {}
 
@@ -729,7 +666,7 @@ end
 
 local function GetViewportSize()
     local Camera = workspace.CurrentCamera
-    return Camera and Camera.ViewportSize or Vector2.new(1280, 720)
+    return Camera and Camera.ViewportSize or Vector2.new(table.unpack(LibraryConfig.FallbackViewportSize))
 end
 
 local function GetInputMode()
@@ -772,52 +709,7 @@ local ScreenScale = Create("UIScale", {
     Scale = UIScale
 })
 
-local function ResolveGuiParent()
-    local RobloxGui
-
-    local Success, Result = pcall(CoreGui.FindFirstChild, CoreGui, "RobloxGui")
-    if Success then
-        RobloxGui = Result
-    end
-
-    if not RobloxGui then
-        Success, Result = pcall(CoreGui.WaitForChild, CoreGui, "RobloxGui", 1)
-        if Success then
-            RobloxGui = Result
-        end
-    end
-
-    return typeof(RobloxGui) == "Instance" and RobloxGui or CoreGui
-end
-
-local function GetGuiContainer()
-    local Existing = Runtime.GuiContainer
-    if typeof(Existing) == "Instance" and Existing:IsA("Folder") and Existing.Parent then
-        local TargetParent = ResolveGuiParent()
-        if Existing.Parent ~= TargetParent then
-            pcall(function()
-                Existing.Parent = TargetParent
-            end)
-        end
-        return Existing
-    end
-
-    local TargetParent = ResolveGuiParent()
-    local Success, Result = pcall(Create, "Folder", TargetParent, {Archivable = false})
-
-    if (not Success or typeof(Result) ~= "Instance") and TargetParent ~= CoreGui then
-        Success, Result = pcall(Create, "Folder", CoreGui, {Archivable = false})
-    end
-
-    if Success and typeof(Result) == "Instance" then
-        Runtime.GuiContainer = Result
-        return Result
-    end
-
-    return CoreGui
-end
-
-local GuiContainer = GetGuiContainer()
+local GuiContainer = Hub:GetGuiContainer()
 local ScreenGui = Create("ScreenGui", GuiContainer, {
     Archivable = false,
     ResetOnSpawn = false,
@@ -829,7 +721,10 @@ local ScreenGui = Create("ScreenGui", GuiContainer, {
 Runtime.Gui = ScreenGui
 Library.Window = ScreenGui
 
-local UISound = Create("Sound", ScreenGui, {
+local LibraryResources = Create("Folder", ScreenGui, {Archivable = false})
+Library.Resources = LibraryResources
+
+local UISound = Create("Sound", LibraryResources, {
     SoundId = ToAssetContentId(Library.Save.SoundId),
     Volume = (Library.Save.SoundVolume or DefaultSoundVolume) / 100
 })
@@ -880,6 +775,7 @@ TrackConnection(UserInputService:GetPropertyChangedSignal("PreferredInput"):Conn
 BindCamera()
 
 ScreenGui.Destroying:Connect(function()
+    UISound:Destroy()
     if CameraConnection then
         CameraConnection:Disconnect()
         CameraConnection = nil
@@ -903,7 +799,7 @@ ScreenGui.Destroying:Connect(function()
 
     task.defer(function()
         if Runtime.GuiContainer == GuiContainer
-            and GuiContainer ~= CoreGui
+            and typeof(GuiContainer) == "Instance" and GuiContainer:IsA("Folder")
             and GuiContainer.Parent
             and #GuiContainer:GetChildren() == 0 then
             Runtime.GuiContainer = nil
@@ -1050,30 +946,14 @@ local function MakeDrag(Instance, Options)
 end
 
 local function VerifyTheme(Theme)
-	for name,_ in pairs(Library.Themes) do
-		if name == Theme then
-			return true
-		end
-	end
+    return type(Theme) == "string" and type(Library.Themes[Theme]) == "table"
 end
 
-local function SaveJson(FileName, SaveData)
-	if type(Hub) ~= "table" or type(Hub.CreateFile) ~= "function" then
-		return false
-	end
-
-	local Success, Json = pcall(HttpService.JSONEncode, HttpService, SaveData)
-	if not Success then
-		return false
-	end
-
-	local Saved = Hub:CreateFile(FileName, Json)
-	return Saved == true
-end
+local SaveJson = JsonFiles.Write
 
 local SettingsSaveQueued = false
 local SettingsLastChange = 0
-local SettingsSaveDelay = 0.5
+local SettingsSaveDelay = math.max(0, ConfigNumber(LibraryConfig, "SettingsSaveDelay"))
 local function FlushSettingsWhenIdle()
     if not SettingsSaveQueued then return end
     local Remaining = SettingsSaveDelay - (os.clock() - SettingsLastChange)
@@ -1115,10 +995,16 @@ local function Make(Ele, Instance, props, ...)
 	return Element
 end
 
+local function BindHover(Object, Property, HoverValue, IdleValue)
+    Object.MouseEnter:Connect(function() Object[Property] = HoverValue end)
+    Object.MouseLeave:Connect(function() Object[Property] = IdleValue end)
+    return Object
+end
+
 AddEle("Corner", function(parent, Radius)
-	local New = SetProps(Create("UICorner", parent, {
+	local New = Create("UICorner", parent, {
 		CornerRadius = Radius or UDim.new(0, CornerRadius)
-	}), props)
+	})
 	return New
 end)
 
@@ -1141,12 +1027,7 @@ AddEle("Button", function(parent, props, ...)
 		AutoButtonColor = false
 	}), props), "Frame")
 	
-	New.MouseEnter:Connect(function()
-		New.BackgroundTransparency = ButtonHoverTransparency
-	end)
-	New.MouseLeave:Connect(function()
-		New.BackgroundTransparency = 0
-	end)
+	BindHover(New, "BackgroundTransparency", ButtonHoverTransparency, 0)
 	if args[1] then
 		New.Activated:Connect(args[1])
 	end
@@ -1200,12 +1081,7 @@ local function ButtonFrame(Instance, Title, Description, HolderSize, Clickable)
 			AutomaticSize = "Y",
 			BackgroundColor3 = Theme["Color Hub 2"]
 		}), "Frame")
-		Frame.MouseEnter:Connect(function()
-			Frame.BackgroundTransparency = ButtonHoverTransparency
-		end)
-		Frame.MouseLeave:Connect(function()
-			Frame.BackgroundTransparency = 0
-		end)
+		BindHover(Frame, "BackgroundTransparency", ButtonHoverTransparency, 0)
 	else
 		Frame = Make("Button", Instance, {
 			Size = UDim2.new(1, 0, 0, ElementHeight),
@@ -1265,9 +1141,7 @@ end
 
 --// Locked
 
-local LockedToast
-local LockedToastLabel
-local LockedToastToken = 0
+local LibraryNotification = {Token = 0}
 
 TranslateText = function(Text, Values)
 	local Result = Text
@@ -1330,53 +1204,120 @@ end
 
 TrackConnection(Connection.LanguageChanged:Connect(RefreshTranslations))
 
-local function ShowToastMessage(Message, Values)
-	LockedToastToken += 1
-	local Token = LockedToastToken
-
-	if not LockedToast or not LockedToast.Parent then
-		LockedToast = InsertTheme(Create("Frame", ScreenGui, {
-			Size = UDim2.fromOffset(300, 32),
-			Position = UDim2.new(0.5, 0, 1, -25),
-			AnchorPoint = Vector2.new(0.5, 1),
-			BackgroundColor3 = Theme["Color Hub 2"],
-			Visible = false,
-			ZIndex = 2000
-		}), "Frame")
-
-		Make("Corner", LockedToast, UDim.new(0, 6))
-		Make("Stroke", LockedToast, {
-			Transparency = 0.15
-		})
-
-		LockedToastLabel = InsertTheme(Create("TextLabel", LockedToast, {
-			Size = UDim2.new(1, -16, 1, 0),
-			Position = UDim2.fromOffset(8, 0),
-			BackgroundTransparency = 1,
-			TextColor3 = Theme["Color Text"],
-			TextSize = 10,
-			Font = Enum.Font.GothamMedium,
-			TextWrapped = true,
-			ZIndex = 2001
-		}), "Text")
-	end
-
-	LockedToastLabel.Text = TranslateText(tostring(Message or "This element is unavailable."), Values)
-	LockedToast.Visible = true
-
-	task.delay(2, function()
-		if Token == LockedToastToken and LockedToast and LockedToast.Parent then
-			LockedToast.Visible = false
-		end
-	end)
+local function PositionLibraryNotification()
+    local State = LibraryNotification
+    local Notice, Label = State.Frame, State.Label
+    if not Notice or not Notice.Parent or not Notice.Visible then return end
+    local Config = ConfigSection("Notification")
+    local Scale = math.max(ScreenScale.Scale, 0.001)
+    local View, Origin = ScreenGui.AbsoluteSize, ScreenGui.AbsolutePosition
+    if View.X <= 0 or View.Y <= 0 then return end
+    local Anchor = State.Anchor
+    local HubPosition, HubSize
+    if typeof(Anchor) == "Instance" and Anchor:IsA("GuiObject") and Anchor.Parent then
+        HubPosition, HubSize = Anchor.AbsolutePosition - Origin, Anchor.AbsoluteSize
+    else
+        HubPosition, HubSize = Vector2.zero, View
+    end
+    local Margin = math.min(Config.Margin * Scale, View.X / 4, View.Y / 4)
+    local Width = math.max(1, math.min(Config.MaxWidth * Scale, HubSize.X - Margin * 2, View.X - Margin * 2))
+    Notice.Size = UDim2.fromOffset(Width / Scale, Notice.Size.Y.Offset)
+    local Height = math.min(math.max(Config.Height * Scale, Label.TextBounds.Y + Config.TextHeightPadding * Scale), math.max(1, View.Y - Margin * 2))
+    local X = math.clamp(HubPosition.X + (HubSize.X - Width) / 2, Margin, math.max(Margin, View.X - Width - Margin))
+    local Below, Above = HubPosition.Y + HubSize.Y + Margin, HubPosition.Y - Height - Margin
+    local Y = Below + Height <= View.Y - Margin and Below or Above >= Margin and Above
+        or math.clamp(HubPosition.Y + HubSize.Y - Height - Margin, Margin, math.max(Margin, View.Y - Height - Margin))
+    Notice.Position = UDim2.fromOffset(X / Scale, Y / Scale)
+    Notice.Size = UDim2.fromOffset(Width / Scale, Height / Scale)
 end
+
+-- The library's compact notification is independent of the external Hub Notify API.
+function Library:NotifyLibrary(Message, Values, Anchor)
+    if not ScreenGui.Parent then return false end
+    local Config = ConfigSection("Notification")
+    local Options = type(Message) == "table" and Message or {}
+    if type(Message) == "table" then
+        Message = Options.Message or Options.Text
+        Values = Options.Values or Values
+        Anchor = Options.Anchor or Anchor
+    end
+    local State = LibraryNotification
+    State.Source, State.Values = tostring(Message or LibraryConfig.LockedMessage), Values
+    local ResolvedAnchor = Anchor or self.MainFrame
+    if ResolvedAnchor ~= State.Anchor then
+        for _, Link in ipairs(State.AnchorConnections or {}) do Link:Disconnect() end
+        State.AnchorConnections = {}
+        State.Anchor = ResolvedAnchor
+        if typeof(ResolvedAnchor) == "Instance" and ResolvedAnchor:IsA("GuiObject") then
+            for _, Property in ipairs({"AbsolutePosition", "AbsoluteSize"}) do
+                State.AnchorConnections[#State.AnchorConnections + 1] = ResolvedAnchor:GetPropertyChangedSignal(Property):Connect(PositionLibraryNotification)
+            end
+        end
+    end
+    if not State.Frame or not State.Frame.Parent then
+        State.Frame = InsertTheme(Create("Frame", LibraryResources, {
+            Size = UDim2.fromOffset(Config.Width, Config.Height),
+            BackgroundColor3 = Theme["Color Hub 2"], BorderSizePixel = 0,
+            Visible = false, ClipsDescendants = true, ZIndex = Config.ZIndex
+        }), "Frame")
+        Make("Corner", State.Frame, UDim.new(0, Config.CornerRadius))
+        State.Stroke = InsertTheme(Create("UIStroke", State.Frame, {
+            Color = Theme["Color Theme"], Thickness = StrokeThickness,
+            Transparency = Config.StrokeTransparency, ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        }), "Theme")
+        State.Label = InsertTheme(Create("TextLabel", State.Frame, {
+            Position = UDim2.fromOffset(Config.TextPaddingX, Config.TextPaddingY),
+            Size = UDim2.new(1, -Config.TextPaddingX * 2, 1, -Config.TextPaddingY * 2),
+            BackgroundTransparency = 1, Font = Enum.Font.GothamMedium,
+            TextSize = Config.TextSize, TextWrapped = true, RichText = false,
+            TextColor3 = Theme["Color Text"], ZIndex = Config.ZIndex + 1
+        }), "Text")
+        State.Label:GetPropertyChangedSignal("TextBounds"):Connect(PositionLibraryNotification)
+        State.Frame.Destroying:Connect(function()
+            State.Token += 1
+            for _, Link in ipairs(State.AnchorConnections or {}) do Link:Disconnect() end
+            State.AnchorConnections = {}
+            State.Anchor = nil
+        end)
+    end
+    State.Label.Text = TranslateText(State.Source, State.Values)
+    State.Frame.Visible = true
+    State.Token += 1
+    local Token = State.Token
+    PositionLibraryNotification()
+    task.defer(PositionLibraryNotification)
+    local Handle = {Frame = State.Frame}
+    function Handle:Close()
+        if Token == State.Token then
+            State.Token += 1
+            if State.Frame and State.Frame.Parent then State.Frame.Visible = false end
+        end
+    end
+    local Duration = math.max(0, tonumber(Options.Duration or Options.Time) or Config.Duration)
+    if Duration > 0 then task.delay(Duration, function() Handle:Close() end) end
+    return Handle
+end
+
+local function ShowToastMessage(Message, Values)
+    return Library:NotifyLibrary(Message, Values)
+end
+
+TrackConnection(ScreenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(PositionLibraryNotification))
+TrackConnection(ScreenScale:GetPropertyChangedSignal("Scale"):Connect(PositionLibraryNotification))
+TrackConnection(Connection.LanguageChanged:Connect(function()
+    local State = LibraryNotification
+    if State.Label and State.Label.Parent then
+        State.Label.Text = TranslateText(State.Source, State.Values)
+        PositionLibraryNotification()
+    end
+end))
 
 local function ApplyLocked(Element, Holder, Configs, OnChanged)
 	Configs = type(Configs) == "table" and Configs or {}
 
 	local Locked = Configs.Locked == true
 	Element.Locked = Locked
-	local DefaultLockedMessage = type(LibraryConfig.LockedMessage) == "string" and LibraryConfig.LockedMessage or "This element is unavailable."
+	local DefaultLockedMessage = LibraryConfig.LockedMessage
 	local Message = type(Configs.LockedMessage) == "string" and Configs.LockedMessage or DefaultLockedMessage
 
 	local Overlay = Create("Frame", Holder, {
@@ -1414,7 +1355,7 @@ local function ApplyLocked(Element, Holder, Configs, OnChanged)
 		AutomaticSize = Enum.AutomaticSize.X,
 		Size = UDim2.fromOffset(0, 18),
 		BackgroundTransparency = 1,
-		Text = TranslateText(Configs.LockedTitle or "Locked"),
+		Text = TranslateText(Configs.LockedTitle or ControlsConfig.Titles.Locked),
 		TextColor3 = Color3.new(1, 1, 1),
 		TextSize = 11,
 		Font = Enum.Font.GothamMedium,
@@ -1518,80 +1459,6 @@ local RobloxGlobals = {
 	["xpcall"] = true, ["assert"] = true, ["error"] = true, ["warn"] = true,
 	["print"] = true, ["tonumber"] = true, ["tostring"] = true,
 }
-
-local function TokenizeCode(Source, State)
-	local Colors = {
-		Keyword = Color3.fromRGB(198, 120, 221),
-		Global = Color3.fromRGB(97, 175, 239),
-		String = Color3.fromRGB(152, 195, 121),
-		Number = Color3.fromRGB(209, 154, 102),
-		Comment = Color3.fromRGB(92, 99, 112),
-		Boolean = Color3.fromRGB(209, 154, 102),
-		Function = Theme["Color Theme"]
-	}
-	local Output, Index, Length = {}, 1, #Source
-	local function Add(Text, Color)
-		Output[#Output + 1] = {Text, Color}
-	end
-	while Index <= Length do
-		local Rest = Source:sub(Index)
-		if State then
-			local Kind, Equals = State:match("^(%a+):(.*)$")
-			local Close = "]" .. Equals .. "]"
-			local Finish = Source:find(Close, Index, true)
-			local Last = Finish and Finish + #Close - 1 or Length
-			Add(Source:sub(Index, Last), Colors[Kind])
-			Index = Last + 1
-			if Finish then State = nil end
-		else
-			local Comment = Rest:sub(1, 2) == "--"
-			local Equals = (Comment and Rest:sub(3) or Rest):match("^%[(=*)%[")
-			if Equals then
-				local Prefix = (Comment and 2 or 0) + #Equals + 2
-				State = (Comment and "Comment:" or "String:") .. Equals
-				Add(Rest:sub(1, Prefix), Comment and Colors.Comment or Colors.String)
-				Index += Prefix
-			elseif Comment then
-				Add(Rest, Colors.Comment)
-				break
-			else
-				local Char = Rest:sub(1, 1)
-				local Token, Color
-				if Char == '"' or Char == "'" or Char == "`" then
-					local Finish = Index + 1
-					while Finish <= Length do
-						local Current = Source:sub(Finish, Finish)
-						if Current == "\\" then
-							Finish += 2
-						elseif Current == Char then
-							Finish += 1
-							break
-						else
-							Finish += 1
-						end
-					end
-					Token, Color = Source:sub(Index, Finish - 1), Colors.String
-				else
-					Token = Rest:match("^[%a_][%w_]*")
-					if Token then
-						Color = LuaKeywords[Token] and Colors.Keyword or RobloxGlobals[Token] and Colors.Global
-						if Token == "true" or Token == "false" or Token == "nil" then Color = Colors.Boolean end
-						if not Color and Rest:sub(#Token + 1):match("^%s*%(") then Color = Colors.Function end
-					else
-						Token = Rest:match("^0[xX][%da-fA-F_]+") or Rest:match("^0[bB][01_]+")
-							or Rest:match("^%d[%d_]*%.?[%d_]*[eE][+-]?[%d_]+")
-							or Rest:match("^%d[%d_]*%.?[%d_]*") or Rest:match("^%.%d[%d_]*")
-						Color = Token and Colors.Number
-					end
-				end
-				Token = Token or Char
-				Add(Token, Color)
-				Index += #Token
-			end
-		end
-	end
-	return Output, State
-end
 
 local function GetColor(Instance)
 	if Instance:IsA("Frame") or Instance:IsA("GuiButton") then
@@ -1725,7 +1592,7 @@ function Library:GetLanguage()
         return Hub:GetLanguage()
     end
 
-    return Library.Save.Language or "US"
+    return Library.Save.Language or RootConfig.Language.Default
 end
 
 function Library:GetLanguages()
@@ -1733,7 +1600,7 @@ function Library:GetLanguages()
         return Hub:GetLanguages()
     end
 
-    return {US = "English", BR = "Português", ES = "Español"}
+    return table.clone(RootConfig.Language.Names)
 end
 
 function Library:SetLanguage(NewLanguage)
@@ -1804,11 +1671,11 @@ function Library:SetTheme(NewTheme)
 end
 
 function Library:GetBackground()
-    return Library.Save.BackgroundImage or ""
+    return Library.Save.BackgroundImage or DefaultBackgroundImage
 end
 
 function Library:GetBackgroundPreset()
-    return Library.Save.BackgroundPreset or "None"
+    return Library.Save.BackgroundPreset or DefaultBackgroundPreset
 end
 
 function Library:GetBackgroundPresets()
@@ -1930,6 +1797,7 @@ function Library:SetSoundId(Value)
     end
     if tostring(Library.Save.SoundId) == tostring(AssetId) then return true end
     Library.Save.SoundId = AssetId
+    EnsureSoundPreset(AssetId)
     UISound.SoundId = ToAssetContentId(AssetId)
     QueueSettingsSave()
     return true
@@ -1953,14 +1821,7 @@ function Library:SetDropdownSearchDefault(Value)
     Library.Save.DropdownSearch = Value
     QueueSettingsSave()
 
-    for Dropdown, SetSearchEnabled in pairs(DropdownSearchListeners) do
-        if type(SetSearchEnabled) == "function" then
-            local Success = pcall(SetSearchEnabled, Value)
-            if not Success then
-                DropdownSearchListeners[Dropdown] = nil
-            end
-        end
-    end
+    Funcs:NotifyListeners(DropdownSearchListeners, Value)
 
     return true
 end
@@ -1975,14 +1836,7 @@ function Library:SetDropdownPrefixOnly(Value)
     Library.Save.DropdownPrefixOnly = Value
     QueueSettingsSave()
 
-    for Dropdown, SetPrefixOnly in pairs(DropdownPrefixListeners) do
-        if type(SetPrefixOnly) == "function" then
-            local Success = pcall(SetPrefixOnly, Value)
-            if not Success then
-                DropdownPrefixListeners[Dropdown] = nil
-            end
-        end
-    end
+    Funcs:NotifyListeners(DropdownPrefixListeners, Value)
 
     return true
 end
@@ -2000,7 +1854,7 @@ function Library:SetDropdownCloseOnSelect(Value)
 end
 
 function Library:GetDropdownMaxVisibleOptions()
-    return math.clamp(math.floor(tonumber(Library.Save.DropdownMaxVisibleOptions) or 10), 3, 12)
+    return math.clamp(math.floor(tonumber(Library.Save.DropdownMaxVisibleOptions) or DefaultDropdownMaxVisibleOptions), 3, 12)
 end
 
 function Library:SetDropdownMaxVisibleOptions(Value)
@@ -2012,20 +1866,13 @@ function Library:SetDropdownMaxVisibleOptions(Value)
     Library.Save.DropdownMaxVisibleOptions = Value
     QueueSettingsSave()
 
-    for Dropdown, UpdateSize in pairs(DropdownSizeListeners) do
-        if type(UpdateSize) == "function" then
-            local Success = pcall(UpdateSize)
-            if not Success then
-                DropdownSizeListeners[Dropdown] = nil
-            end
-        end
-    end
+    Funcs:NotifyListeners(DropdownSizeListeners)
 
     return true
 end
 
 function Library:SetTransparency(NewTransparency)
-    local Target = math.clamp(tonumber(NewTransparency) or Library.Save.Transparency or 3, 0, 100)
+    local Target = math.clamp(tonumber(NewTransparency) or Library.Save.Transparency or DefaultTransparency, 0, 100)
     if Library.Transparency == Target then return end
     Library.Transparency = Target
     Library.Save.Transparency = Library.Transparency
@@ -2118,13 +1965,13 @@ end
 function Library:MakeWindow(Configs)
     Configs = type(Configs) == "table" and Configs or {}
 
-	local WTitle = tostring(Configs[1] or Configs.Name or Configs.Title or "Library")
-	local WMiniText = tostring(Configs[2] or Configs.SubTitle or "By Unknown")
+	local WTitle = tostring(Configs[1] or Configs.Name or Configs.Title or RootConfig.Title)
+	local WMiniText = tostring(Configs[2] or Configs.SubTitle or RootConfig.SubTitle)
 	local Keybind = LoadedSettingKeys.Keybind and Library.Save.Keybind
 		or Configs[3]
 		or Configs.Keybind
 		or Library.Save.Keybind
-		or Enum.KeyCode.G
+		or DefaultKeybind
 
 	local Minimized, SaveSize, WaitClick
 	local RequestedMinimizedWidth = LoadedSettingKeys.MinimizedWidth and Library.Save.MinimizedWidth
@@ -2134,29 +1981,17 @@ function Library:MakeWindow(Configs)
 	local TitleWidth = TextService:GetTextSize(WTitle, TopBarTitleTextSize, Enum.Font.GothamMedium, Vector2.new(1000, TopBarHeight)).X
 	local MinimizedWidth = math.clamp(math.max(RequestedMinimizedWidth, TitleWidth + 115), 160, math.min(320, MaxWidth))
 
-	Settings.ScriptFile = Configs[4] or Configs.SaveFolder or false
+	Settings.ScriptFile = LibraryConfig.SaveFolder
+	if Settings.ScriptFile == nil then Settings.ScriptFile = Configs[4] or Configs.SaveFolder or false end
 	
-	local function LoadFile()
-		local File = Settings.ScriptFile
-		if type(File) ~= "string" or File == "" or not Library:FileExists(File) then
-			return
-		end
-
-		local Source = Library:ReadFile(File)
-		if type(Source) ~= "string" then
-			return
-		end
-
-		local DecodeSuccess, Decoded = pcall(HttpService.JSONDecode, HttpService, Source)
-		if not DecodeSuccess or type(Decoded) ~= "table" then
-			return
-		end
-
-		table.clear(Flags)
-		for Flag, Value in pairs(Decoded) do
-			Flags[Flag] = Value
-		end
-	end
+    local function LoadFile()
+        local File = Settings.ScriptFile
+        if type(File) ~= "string" or File == "" then return end
+        local Decoded = JsonFiles.Read(File)
+        if not Decoded then return end
+        table.clear(Flags)
+        for Flag, Value in pairs(Decoded) do Flags[Flag] = Value end
+    end
 
 	LoadFile()
 	
@@ -2222,11 +2057,12 @@ function Library:MakeWindow(Configs)
     local MainFrame = InsertTheme(Create("ImageLabel", ScreenGui, {
         Size = UDim2.fromOffset(UISizeX, UISizeY),
         Position = UDim2.new(0.5, -UISizeX/2, 0.5, -UISizeY/2),
-        BackgroundTransparency = (Library.Save.Transparency or 3) / 100,
+        BackgroundTransparency = (Library.Save.Transparency or DefaultTransparency) / 100,
         Image = ToAssetContentId(Library.Save.BackgroundImage),
         ImageTransparency = (Library.Save.BackgroundImageTransparency or DefaultBackgroundImageTransparency) / 100,
-        ScaleType = BackgroundScaleTypes[Library.Save.BackgroundScale] or Enum.ScaleType.Crop,
+        ScaleType = BackgroundScaleTypes[Library.Save.BackgroundScale] or BackgroundScaleTypes[DefaultBackgroundScale],
     }), "Main")
+    Library.MainFrame = MainFrame
 	local MainGradient = InsertTheme(Create("UIGradient", MainFrame, {
 		Color = Theme["Color Hub 1"],
 		Rotation = GradientRotation,
@@ -2619,7 +2455,7 @@ function Library:MakeWindow(Configs)
 	function Window:AddTopbarButton(ButtonConfig)
 		ButtonConfig = type(ButtonConfig) == "table" and ButtonConfig or {}
 
-		local Icon = ButtonConfig.Icon or ButtonConfig.Image or "circle"
+		local Icon = ButtonConfig.Icon or ButtonConfig.Image or ControlsConfig.TopBarIcon
 		if type(Icon) == "string" and not Icon:find("rbxasset", 1, true) then
 			Icon = Library:GetIcon(Icon) or Icon
 		elseif type(Icon) == "number" then
@@ -3094,8 +2930,8 @@ function Library:MakeWindow(Configs)
 			Window:MinimizeBtn()
 		end
 		
-		local DTitle = TranslateText(tostring(Configs[1] or Configs.Title or "Dialog"))
-		local DText = TranslateText(tostring(Configs[2] or Configs.Text or "This is a Dialog"))
+		local DTitle = TranslateText(tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Dialog))
+		local DText = TranslateText(tostring(Configs[2] or Configs.Text or ControlsConfig.Titles.DialogText))
 		local DOptions = Configs[3] or Configs.Options or {}
 		
 		local Frame = Create("Frame", {
@@ -3152,7 +2988,6 @@ function Library:MakeWindow(Configs)
 		ActiveDialog = Screen
 		
 		local DialogCorner = MainCorner:Clone()
-		DialogCorner.Name = GenerateName(12)
 		DialogCorner.Parent = Screen
 		Frame.Parent = Screen
 		CreateTween({Frame, "Size", UDim2.fromOffset(250, 150), AnimationDialog})
@@ -3222,7 +3057,7 @@ function Library:MakeWindow(Configs)
 		if type(paste) == "table" then Configs = paste end
 		Configs = type(Configs) == "table" and Configs or {}
 		local Hidden = Configs.Hidden == true
-		local TName = TranslateText(tostring(Configs[1] or Configs.Title or "Tab!"))
+		local TName = TranslateText(tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Tab))
 		local TIcon = Configs[2] or Configs.Icon or ""
 		local TabSelect, LabelTitle, LabelIcon, Selected
 
@@ -3305,7 +3140,7 @@ function Library:MakeWindow(Configs)
 		local Tab = {}
 		if Hidden then
 			local Locked = Configs.Locked == true
-			local LockedMessage = type(Configs.LockedMessage) == "string" and Configs.LockedMessage or (LibraryConfig.LockedMessage or "This element is unavailable.")
+			local LockedMessage = type(Configs.LockedMessage) == "string" and Configs.LockedMessage or LibraryConfig.LockedMessage
 
 			function Tab:SetLocked(Value)
 				Locked = Value == true
@@ -3500,7 +3335,7 @@ function Library:MakeWindow(Configs)
 		end
 		function Tab:AddParagraph(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
-			local PName = Configs[1] or Configs.Title or TranslateText("Paragraph")
+			local PName = Configs[1] or Configs.Title or TranslateText(ControlsConfig.Titles.Paragraph)
 			local PDesc = FirstDefined(Configs[2], Configs.Text, Configs.Desc, Configs.Description, "")
 			
 			local Frame, LabelFunc = ButtonFrame(Container, PName, PDesc, UDim2.new(1, -20), false)
@@ -3526,7 +3361,7 @@ function Library:MakeWindow(Configs)
 		end
 		function Tab:AddButton(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
-			local BName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Button!")
+			local BName = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.Button)
 			local BDescription = Configs.Desc or Configs.Description or ""
 			local Callback = Funcs:GetCallback(Configs, 2)
 			
@@ -3578,7 +3413,7 @@ function Library:MakeWindow(Configs)
 		end
 		function Tab:AddToggle(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
-			local TName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Toggle")
+			local TName = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.Toggle)
 			local TDesc = Configs.Desc or Configs.Description or ""
 			local Callback = Funcs:GetCallback(Configs, 3)
 			local Flag = Configs[4] or Configs.Flag or false
@@ -3676,11 +3511,11 @@ function Library:MakeWindow(Configs)
 		end
 		function Tab:AddDropdown(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
-			local DName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Dropdown")
+			local DName = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.Dropdown)
 			local DDesc = Configs.Desc or Configs.Description or ""
 			local DOptions = Configs[2] or Configs.Options or {}
 			DOptions = type(DOptions) == "table" and DOptions or {}
-			local OpDefault = Configs[3] or Configs.Default or "..."
+			local OpDefault = Configs[3] or Configs.Default or ControlsConfig.Dropdown.Placeholder
 			local DMultiSelect = Configs.MultiSelect or false
 			local DMultiConfig = type(Configs.MultiConfig) == "table" and Configs.MultiConfig or {}
 			local DAllowNone = Configs.AllowNone ~= false
@@ -3713,15 +3548,15 @@ function Library:MakeWindow(Configs)
 			local SearchConfig = {
 				Enabled = DSearch,
 				Placeholder = CustomSearchPlaceholder or TranslateText("Search..."),
-				TextSize = Configs.SearchConfig and Configs.SearchConfig.TextSize or 11,
-				MinTextSize = Configs.SearchConfig and Configs.SearchConfig.MinTextSize or 8,
-				SearchFrameHeight = Configs.SearchConfig and Configs.SearchConfig.SearchFrameHeight or 21,
-				SearchFrameOffset = Configs.SearchConfig and Configs.SearchConfig.SearchFrameOffset or 5,
-				IconSize = Configs.SearchConfig and Configs.SearchConfig.IconSize or 12,
-				IconPosition = Configs.SearchConfig and Configs.SearchConfig.IconPosition or 6,
-				InputOffset = Configs.SearchConfig and Configs.SearchConfig.InputOffset or 23,
+				TextSize = Configs.SearchConfig and Configs.SearchConfig.TextSize or DropdownConfig.SearchConfig.TextSize,
+				MinTextSize = Configs.SearchConfig and Configs.SearchConfig.MinTextSize or DropdownConfig.SearchConfig.MinTextSize,
+				SearchFrameHeight = Configs.SearchConfig and Configs.SearchConfig.SearchFrameHeight or DropdownConfig.SearchConfig.SearchFrameHeight,
+				SearchFrameOffset = Configs.SearchConfig and Configs.SearchConfig.SearchFrameOffset or DropdownConfig.SearchConfig.SearchFrameOffset,
+				IconSize = Configs.SearchConfig and Configs.SearchConfig.IconSize or DropdownConfig.SearchConfig.IconSize,
+				IconPosition = Configs.SearchConfig and Configs.SearchConfig.IconPosition or DropdownConfig.SearchConfig.IconPosition,
+				InputOffset = Configs.SearchConfig and Configs.SearchConfig.InputOffset or DropdownConfig.SearchConfig.InputOffset,
 				NoResultText = CustomNoResultText or TranslateText("No options found"),
-				NoResultTextSize = Configs.SearchConfig and Configs.SearchConfig.NoResultTextSize or 9,
+				NoResultTextSize = Configs.SearchConfig and Configs.SearchConfig.NoResultTextSize or DropdownConfig.SearchConfig.NoResultTextSize,
 				PrefixOnly = DPrefixOnly == true
 			}
 
@@ -3765,7 +3600,7 @@ function Library:MakeWindow(Configs)
 			local DropFrame = Create("Frame", NoClickFrame, {
 				Size = UDim2.new(SelectedFrame.Size.X, 0, 0),
 				BackgroundTransparency = 0.1,
-				BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+				BackgroundColor3 = ControlColors.White,
 				AnchorPoint = Vector2.new(0, 1),
 				ClipsDescendants = true,
 				Active = true
@@ -3934,7 +3769,7 @@ function Library:MakeWindow(Configs)
 
 				CreateTween({Arrow, "Rotation", 0, AnimationDropdown})
 				CreateTween({DropFrame, "Size", UDim2.new(0, 152, 0, 0), AnimationDropdown, true})
-				CreateTween({Arrow, "ImageColor3", Color3.fromRGB(255, 255, 255), AnimationDropdown})
+				CreateTween({Arrow, "ImageColor3", ControlColors.White, AnimationDropdown})
 
 				Arrow.Image = "rbxassetid://10709791523"
 				NoClickFrame.Visible = false
@@ -3952,7 +3787,7 @@ function Library:MakeWindow(Configs)
 				DropFrame.Size = UDim2.fromOffset(152, 0)
 				Arrow.Image = "rbxassetid://10709791523"
 				Arrow.Rotation = 0
-				Arrow.ImageColor3 = Color3.fromRGB(255, 255, 255)
+				Arrow.ImageColor3 = ControlColors.White
 				if SearchInput then SearchInput:ReleaseFocus() end
 			end
 
@@ -3994,7 +3829,7 @@ function Library:MakeWindow(Configs)
 
 				if NoClickFrame.Visible then
 					Arrow.Image = "rbxassetid://10709791523"
-					CreateTween({Arrow, "ImageColor3", Color3.fromRGB(255, 255, 255), AnimationDropdown})
+					CreateTween({Arrow, "ImageColor3", ControlColors.White, AnimationDropdown})
 					CreateTween({DropFrame, "Size", UDim2.new(0, 152, 0, 0), AnimationDropdown, true})
 					NoClickFrame.Visible = false
 				else
@@ -4048,7 +3883,7 @@ function Library:MakeWindow(Configs)
 
 				local MultiSelect = DMultiSelect
 				local MultiMax = tonumber(DMultiConfig.Max) or math.huge
-				local MultiMin = tonumber(DMultiConfig.Min) or 0
+				local MultiMin = tonumber(DMultiConfig.Min) or ControlsConfig.Dropdown.MultiMin
 
 				MultiMax = math.max(0, MultiMax)
 				MultiMin = math.max(0, MultiMin)
@@ -4597,7 +4432,7 @@ function Library:MakeWindow(Configs)
 		end
 		function Tab:AddPlayers(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
-			local PName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Players")
+			local PName = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.Players)
 			local PDesc = Configs.Desc or Configs.Description or ""
 			local Display = Configs.Display or false
 			local LocalPlayerEnabled = Configs.LocalPlayer ~= false
@@ -4983,7 +4818,7 @@ function Library:MakeWindow(Configs)
 		end
 		function Tab:AddSelector(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
-			local SName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Selector")
+			local SName = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.Selector)
 			local SDesc = Configs.Desc or Configs.Description or ""
 			local Options = Configs[2] or Configs.Options
 			local SOptions = type(Options) == "table" and table.clone(Options) or {}
@@ -5341,16 +5176,16 @@ function Library:MakeWindow(Configs)
 		end
 		function Tab:AddSlider(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
-			local SName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Slider!")
+			local SName = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.Slider)
 			local SDesc = Configs.Desc or Configs.Description or ""
-			local Min = tonumber(Configs[2] or Configs.MinValue or Configs.Min) or 10
-			local Max = tonumber(Configs[3] or Configs.MaxValue or Configs.Max) or 100
+			local Min = tonumber(Configs[2] or Configs.MinValue or Configs.Min) or ControlsConfig.Slider.Min
+			local Max = tonumber(Configs[3] or Configs.MaxValue or Configs.Max) or ControlsConfig.Slider.Max
 			if Min > Max then Min, Max = Max, Min end
-			local Step = math.abs(tonumber(Configs[4] or Configs.Increase) or 1)
+			local Step = math.abs(tonumber(Configs[4] or Configs.Increase) or ControlsConfig.Slider.Step)
 			if Step <= 0 or Step ~= Step then Step = 1 end
 			local Callback = Funcs:GetCallback(Configs, 6)
 			local Flag = Configs[7] or Configs.Flag or false
-			local Default = Configs[5] or Configs.Default or 25
+			local Default = Configs[5] or Configs.Default or ControlsConfig.Slider.Default
 			if CheckFlag(Flag) then Default = GetFlag(Flag) end
 
 			local Button, LabelFunc = ButtonFrame(Container, SName, SDesc, UDim2.new(1, -180), false)
@@ -5375,7 +5210,7 @@ function Library:MakeWindow(Configs)
 			}), "Theme")Make("Corner", Indicator)
 			local SliderIcon = Create("Frame", SliderBar, {
 				Size = UDim2.new(0, 6, 0, 12),
-				BackgroundColor3 = Color3.fromRGB(220, 220, 220),
+				BackgroundColor3 = ControlColors.Light,
 				Position = UDim2.fromScale(0, 0.5),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				BackgroundTransparency = 0.2
@@ -5500,13 +5335,13 @@ function Library:MakeWindow(Configs)
 		end
 		function Tab:AddTextBox(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
-			local TName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Text Box")
+			local TName = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.TextBox)
 			local TDesc = Configs.Desc or Configs.Description or ""
-			local TDefault = FirstDefined(Configs[2], Configs.Default, "")
+			local TDefault = FirstDefined(Configs[2], Configs.Default, ControlsConfig.TextBox.Default)
 			local Flag = Configs.Flag
 			if CheckFlag(Flag) then TDefault = GetFlag(Flag) end
-			local TPlaceholderText = TranslateText(tostring(Configs[5] or Configs.PlaceholderText or "Input"))
-			local TClearText = Configs[3] or Configs.ClearText or false
+			local TPlaceholderText = TranslateText(tostring(Configs[5] or Configs.PlaceholderText or ControlsConfig.TextBox.Placeholder))
+			local TClearText = FirstDefined(Configs[3], Configs.ClearText, ControlsConfig.TextBox.ClearText)
 			local Callback = Funcs:GetCallback(Configs, 4)
 			local Mod = Configs.Mod
 
@@ -5637,7 +5472,7 @@ function Library:MakeWindow(Configs)
 				CreateTween({
 					Pencil,
 					"ImageColor3",
-					Color3.fromRGB(255, 255, 255),
+					ControlColors.White,
 					0.2
 				})
 			end)
@@ -5707,7 +5542,7 @@ function Library:MakeWindow(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			if not UserInputService.KeyboardEnabled then return end
 
-			local KName = Configs[1] or Configs.Name or Configs.Title or TranslateText("Keybind")
+			local KName = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.Keybind)
 			local KDesc = Configs.Desc or Configs.Description or ""
 			local DefaultValue = Configs.Default
 			local KDefault = Configs.Value or Configs.Key or Configs.Keybind or Configs[2]
@@ -6128,14 +5963,14 @@ function Library:MakeWindow(Configs)
 				return ConnectionObject
 			end
 
-			local Name = Configs[1] or Configs.Name or Configs.Title or TranslateText("Custom color")
+			local Name = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.ColorPicker)
 			local Description = Configs.Desc or Configs.Description or ""
 			local Callback = Funcs:GetCallback(Configs, 3)
 			local Flag = Configs[4] or Configs.Flag or false
-			local MaxRecent = math.clamp(math.floor(tonumber(Configs.MaxRecent) or 8), 0, 32)
+			local MaxRecent = math.clamp(math.floor(tonumber(Configs.MaxRecent) or ControlsConfig.ColorPicker.MaxRecent), 0, 32)
 			local SmoothTime = math.clamp(tonumber(Configs.SmoothTime) or ColorPickerSmoothTime, 0, 0.2)
 
-			local DisplayMode = Configs.DisplayMode or Configs.Display or "Hex"
+			local DisplayMode = Configs.DisplayMode or Configs.Display or ControlsConfig.ColorPicker.Display
 			local DisplayString = tostring(DisplayMode):lower():gsub("%s+", "")
 
 			local ShowHex = DisplayString:find("hex", 1, true) ~= nil
@@ -6258,11 +6093,11 @@ function Library:MakeWindow(Configs)
 				return nil, nil
 			end
 
-			local Default = Configs[2] or Configs.Default or "#137D81"
+			local Default = Configs[2] or Configs.Default or ControlsConfig.ColorPicker.Default
 			local CurrentColor, DefaultFormat = ParseColor(Default)
 
 			if not CurrentColor then
-				CurrentColor = Color3.fromRGB(19, 125, 129)
+				CurrentColor = assert(ParseColor(ControlsConfig.ColorPicker.Default), "Config.Library.Controls.ColorPicker.Default is invalid.")
 			end
 
 			if Flag and CheckFlag(Flag) then
@@ -6281,8 +6116,9 @@ function Library:MakeWindow(Configs)
 				Configs.ReturnFormat
 				or Configs.Format
 				or Configs.OutputFormat
+				or (Configs[2] == nil and Configs.Default == nil and ControlsConfig.ColorPicker.ReturnFormat)
 				or DefaultFormat
-				or "Color3"
+				or ControlsConfig.ColorPicker.ReturnFormat
 
 			local ReturnFormatString = tostring(ReturnFormat):lower():gsub("%s+", "")
 			local OutputFormat = "Color3"
@@ -6316,16 +6152,7 @@ function Library:MakeWindow(Configs)
 				return Color, Hex
 			end
 
-			local Presets = Configs.Presets or {
-				Color3.fromRGB(108, 99, 255),
-				Color3.fromRGB(33, 150, 243),
-				Color3.fromRGB(67, 181, 129),
-				Color3.fromRGB(255, 193, 7),
-				Color3.fromRGB(255, 107, 107),
-				Color3.fromRGB(233, 30, 140),
-				Color3.fromRGB(156, 106, 222),
-				Color3.fromRGB(255, 255, 255)
-			}
+			local Presets = Configs.Presets or ControlsConfig.ColorPicker.Presets
 
 			local RecentColors = {}
 
@@ -6544,7 +6371,7 @@ function Library:MakeWindow(Configs)
 			local HueBackground = Create("Frame", HueBar, {
 				Size = UDim2.new(1, 0, 1, 0),
 				BorderSizePixel = 0,
-				BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				BackgroundColor3 = ControlColors.White
 			}, {
 				Create("UIGradient", {
 					Color = ColorSequence.new({
@@ -6565,7 +6392,7 @@ function Library:MakeWindow(Configs)
 				Size = UDim2.new(0, 7, 0, 22),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.new(0, 0, 0.5, 0),
-				BackgroundColor3 = Color3.fromRGB(230, 230, 230),
+				BackgroundColor3 = ControlColors.Handle,
 				BackgroundTransparency = 0.1,
 				ZIndex = 2
 			})
@@ -6605,7 +6432,7 @@ function Library:MakeWindow(Configs)
 			local SaturationIndicator = Create("Frame", SaturationBackground, {
 				Size = UDim2.new(0, 7, 0, 22),
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				BackgroundColor3 = Color3.fromRGB(230, 230, 230),
+				BackgroundColor3 = ControlColors.Handle,
 				BackgroundTransparency = 0.1,
 				ZIndex = 2
 			})
@@ -6655,7 +6482,7 @@ function Library:MakeWindow(Configs)
 			local BrightnessIndicator = Create("Frame", BrightnessBackground, {
 				Size = UDim2.new(0, 7, 0, 22),
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				BackgroundColor3 = Color3.fromRGB(230, 230, 230),
+				BackgroundColor3 = ControlColors.Handle,
 				BackgroundTransparency = 0.1,
 				ZIndex = 2
 			})
@@ -7208,15 +7035,19 @@ function Library:MakeWindow(Configs)
 		end
 		function Tab:AddCode(Configs)
 			Configs = type(Configs) == "table" and Configs or {}
-			local LibraryCreate = Create
-			local function Create(Class, Parent, Properties, Children)
-				local Props = type(Parent) == "table" and Parent or Properties
-				local Instance = LibraryCreate(Class, Parent, Properties, Children)
-				if type(Props) == "table" and Props.Name then Instance.Name = "AddCode_" .. tostring(Props.Name) end
-				return Instance
+			local CodeConfig = LibraryConfig.Code
+			local function ReadOption(Name)
+				if Configs[Name] ~= nil then return Configs[Name] end
+				return CodeConfig[Name]
+			end
+			local function BooleanOption(Name, Alternate)
+				if Configs[Name] ~= nil or Alternate and Configs[Alternate] ~= nil then
+					return Configs[Name] == true or Alternate and Configs[Alternate] == true or false
+				end
+				return CodeConfig[Name] == true
 			end
 
-			local TitleSource = tostring(Configs.Title or Configs.Name or "Code")
+			local TitleSource = tostring(Configs.Title or Configs.Name or CodeConfig.Title)
 			local TitleText = TranslateText(TitleSource)
 			local function NormalizeCode(Value)
 				return (tostring(Value or ""):gsub("\r\n", "\n"):gsub("\r", "\n"))
@@ -7235,20 +7066,20 @@ function Library:MakeWindow(Configs)
 				if not Number or Number ~= Number then Number = Default end
 				return math.clamp(Number, Minimum, Maximum)
 			end
-			local InitialCode = NormalizeCode(Configs.Code or Configs.Source or Configs.Text)
+			local InitialCode = NormalizeCode(Configs.Code or Configs.Source or Configs.Text or CodeConfig.Source)
 			local ObservedCode, RenderedCode = InitialCode, nil
-			local Language = tostring(Configs.Language or "Lua")
+			local Language = tostring(ReadOption("Language"))
 			local SavedCode = InitialCode
-			local EditAllowed = Configs.Edit == true or Configs.Editable == true
-			local CanExecute = Configs.Execute == true
-			local CanCopy = Configs.Copy ~= false
+			local EditAllowed = BooleanOption("Edit", "Editable")
+			local CanExecute = BooleanOption("Execute")
+			local CanCopy = ReadOption("Copy") ~= false
 
-			local ErrorEnabled = Configs.Error == true or Configs.ShowErrors == true
+			local ErrorEnabled = BooleanOption("Error", "ShowErrors")
 			local Option = {
-				BlockOnError = Configs.BlockOnError ~= false,
-				SmoothCaret = Configs.SmoothCaret ~= false,
-				CaretWidth = NumberOption(Configs.CaretWidth, 2, 1, 6),
-				CaretNudge = NumberOption(Configs.CaretOffset, 0, -4, 4)
+				BlockOnError = ReadOption("BlockOnError") ~= false,
+				SmoothCaret = ReadOption("SmoothCaret") ~= false,
+				CaretWidth = NumberOption(Configs.CaretWidth, CodeConfig.CaretWidth, 1, 6),
+				CaretNudge = NumberOption(Configs.CaretOffset, CodeConfig.CaretOffset, -4, 4)
 			}
 			local IndentUnit
 			do
@@ -7263,15 +7094,15 @@ function Library:MakeWindow(Configs)
 					local Count = #Spaces
 					return string.rep(" ", Count % 4 == 0 and 4 or Count % 2 == 0 and 2 or math.min(Count, 8))
 				end
-				return "\t"
+					return CodeConfig.IndentUnit
 			end
 
 				IndentUnit = DetectIndent(InitialCode)
 			end
 			local OnChange = type(Configs.OnChange) == "function" and Configs.OnChange or nil
 			local OnSave = type(Configs.OnSave) == "function" and Configs.OnSave or nil
-			local FontSize = math.floor(NumberOption(Configs.FontSize, 13, 9, 32))
-			local LineSpacing = NumberOption(Configs.LineSpacing, 1.16, 1, 3)
+			local FontSize = math.floor(NumberOption(Configs.FontSize, CodeConfig.FontSize, 9, 32))
+			local LineSpacing = NumberOption(Configs.LineSpacing, CodeConfig.LineSpacing, 1, 3)
 			local LineHeight
 			do
 				local Bounds = Vector2.new(10000, 10000)
@@ -7280,10 +7111,11 @@ function Library:MakeWindow(Configs)
 				local NaturalAdvance = (TenLineHeight - TwoLineHeight) / 8
 				LineHeight = (NaturalAdvance > 0 and NaturalAdvance or TextService:GetTextSize("Ag", FontSize, Enum.Font.Code, Bounds).Y) * LineSpacing
 			end
-			local CellWidth = TextService:GetTextSize(string.rep("M", 64), FontSize, Enum.Font.Code, Vector2.new(10000, 10000)).X / 64
-			local HeaderHeight, Padding, BottomPadding = 30, 5, 6
-			local MaxVisibleLines = math.floor(NumberOption(Configs.MaxVisibleLines, 8, 1, 60))
-			local GutterWidth = 25
+			local HeaderHeight, Padding, BottomPadding = CodeConfig.HeaderHeight, CodeConfig.Padding, CodeConfig.BottomPadding
+			local MaxVisibleLines = math.floor(NumberOption(Configs.MaxVisibleLines, CodeConfig.MaxVisibleLines, 1, 60))
+			local GutterWidth = CodeConfig.GutterWidth
+			local GutterFontSize = math.max(10, FontSize - 2)
+			local ExecuteSpinDuration = NumberOption(ReadOption("ExecuteSpinDuration"), CodeConfig.ExecuteSpinDuration, 0.2, 3)
 			local Editable, Focused, Destroyed, RefreshQueued, Executing = false, false, false, false, false
 			local Lines, StyledLines, LineOffsets, LineCount, MaxLineWidth = {}, {}, {}, 1, 0
 			local HighlightCache, Cached = {}, 0
@@ -7291,8 +7123,9 @@ function Library:MakeWindow(Configs)
 			local LineLabels, NumberLabels, SelectionFrames, Buttons = {}, {}, {}, {}
 			local Measurements, MeasurementCount = {}, 0
 			local MeasurementTexts = setmetatable({}, {__mode = "k"})
-			local QueueRefresh, QueueGeometry, QueueDiagnostics, DrawErrors
+			local QueueRefresh, QueueGeometry, QueueDiagnostics
 			local RenderVersion, DrawnVersion, DrawnFirst, DrawnLast = 0, -1, 0, 0
+			local DrawnActiveRow
 			local CopyToken, ExecutionToken = 0, 0
 			local CopyTweens = {}
 			local AutoClosers = {}
@@ -7307,7 +7140,7 @@ function Library:MakeWindow(Configs)
 			local BlinkToken, CaretFadeTween, CaretMoveTween = 0, nil, nil
 			local Diagnostics, RuntimeDiagnostic, Shown, DiagByLine, DiagToken = {}, nil, {}, {}, 0
 			local UndoStack, RedoStack, LastHistoryTime = {}, {}, 0
-			local ErrorColor = Color3.fromRGB(255, 92, 92)
+			local ErrorColor = CodeConfig.ErrorColor.Dark
 			local Palette = {}
 			local Code = {}
 
@@ -7318,26 +7151,10 @@ function Library:MakeWindow(Configs)
 
 			local function UpdatePalette()
 				local Background = Theme["Color Hub 2"]
-				local Light = (Background and Background.R * 0.2126 + Background.G * 0.7152 + Background.B * 0.0722 > 0.55) or false
-				local function Pick(DarkR, DarkG, DarkB, LightR, LightG, LightB)
-					return Light and Color3.fromRGB(LightR, LightG, LightB) or Color3.fromRGB(DarkR, DarkG, DarkB)
-				end
-				Palette = {
-					Keyword = Pick(198, 120, 221, 133, 55, 164),
-					Global = Pick(86, 182, 194, 0, 109, 125),
-					Function = Pick(97, 175, 239, 37, 100, 166),
-					Property = Pick(171, 201, 229, 42, 85, 125),
-					Type = Pick(229, 192, 123, 139, 86, 16),
-					String = Pick(152, 195, 121, 66, 121, 48),
-					Escape = Pick(209, 154, 102, 156, 80, 29),
-					Number = Pick(209, 154, 102, 156, 80, 29),
-					Literal = Pick(209, 154, 102, 156, 80, 29),
-					Comment = Pick(127, 143, 159, 92, 108, 120),
-					Operator = Pick(198, 120, 221, 133, 55, 164),
-					Punctuation = Pick(171, 178, 191, 65, 75, 90),
-					Attribute = Pick(229, 192, 123, 139, 86, 16)
-				}
-				ErrorColor = Pick(255, 92, 92, 205, 38, 38)
+				local Light = (Background and Background.R * 0.2126 + Background.G * 0.7152 + Background.B * 0.0722 > CodeConfig.PaletteLightThreshold) or false
+				local Mode = Light and "Light" or "Dark"
+				Palette = CodeConfig.Palette[Mode]
+				ErrorColor = CodeConfig.ErrorColor[Mode]
 			end
 			UpdatePalette()
 
@@ -7347,15 +7164,17 @@ function Library:MakeWindow(Configs)
 
 			local Holder = InsertTheme(Create("Frame", Container, {
 				Name = "CodeElement",
+				ZIndex = 10,
 				Size = UDim2.new(1, 0, 0, 60),
 				BackgroundColor3 = Theme["Color Hub 2"],
 				BorderSizePixel = 0,
-				ClipsDescendants = true
+				ClipsDescendants = false
 			}), "Frame")
 			Make("Corner", Holder, UDim.new(0, ElementCornerRadius))
 
 			local Header = Create("Frame", Holder, {
 				Name = "Header",
+				ZIndex = 10,
 				Size = UDim2.new(1, 0, 0, HeaderHeight),
 				BackgroundTransparency = 1
 			})
@@ -7433,33 +7252,16 @@ function Library:MakeWindow(Configs)
 				local Scale = Create("UIScale", Button, {Scale = 1})
 				local IconScale = Create("UIScale", Icon, {Name = "IconScale", Scale = 1})
 				local Entry = {
+					ActionName = Name,
 					Button = Button,
 					Icon = Icon,
 					Scale = Scale,
 					IconScale = IconScale,
 					Selected = false,
 					Hover = false,
-					Press = false,
-					GlowTween = nil
+					Press = false
 				}
 				Buttons[#Buttons + 1] = Entry
-				function Entry.StopGlow()
-					if Entry.GlowTween then
-						Entry.GlowTween:Cancel()
-						Entry.GlowTween = nil
-					end
-				end
-				function Entry.StartGlow()
-					if Destroyed then return end
-					local BaseColor = Theme["Color Theme"]
-					local GlowColor = BaseColor:Lerp(Theme["Color Text"], 0.45)
-					Entry.StopGlow()
-					Icon.ImageColor3 = BaseColor
-					Entry.GlowTween = TweenService:Create(Icon,
-						TweenInfo.new(0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-						{ImageColor3 = GlowColor})
-					Entry.GlowTween:Play()
-				end
 				function Entry.Update(Instant)
 					if Destroyed then return end
 					local TargetAlpha = Entry.Hover and 0.8 or 1
@@ -7475,17 +7277,7 @@ function Library:MakeWindow(Configs)
 						Entry.TintTween:Play()
 						Entry.ScaleTween:Play()
 					end
-					if Entry.Selected then
-						if Entry.Button.Name == "Edit" then
-							Entry.StartGlow()
-						else
-							Entry.StopGlow()
-							Icon.ImageColor3 = Theme["Color Theme"]
-						end
-					else
-						Entry.StopGlow()
-						Icon.ImageColor3 = Entry.Hover and Theme["Color Text"] or Theme["Color Dark Text"]
-					end
+					Icon.ImageColor3 = Entry.Selected and Theme["Color Theme"] or Entry.Hover and Theme["Color Text"] or Theme["Color Dark Text"]
 					Button.BackgroundColor3 = Theme["Color Theme"]
 				end
 				Button.MouseEnter:Connect(function() Entry.Hover = true; Entry.Update() end)
@@ -7564,16 +7356,6 @@ function Library:MakeWindow(Configs)
 				BorderSizePixel = 0,
 				ZIndex = 2
 			})
-			local LineHighlight = Create("Frame", SelectionLayer, {
-				Name = "LineHighlight",
-				Position = UDim2.fromOffset(-2, 0),
-				Size = UDim2.new(1, 2, 0, LineHeight),
-				BackgroundColor3 = Theme["Color Theme"],
-				BackgroundTransparency = 0.93,
-				BorderSizePixel = 0,
-				Visible = false,
-				ZIndex = 1
-			})
 			local HighlightLayer = Create("Frame", Scroll, {
 				Name = "HighlightLayer",
 				Position = TextPosition,
@@ -7605,25 +7387,17 @@ function Library:MakeWindow(Configs)
 				Text = InitialCode,
 				ZIndex = 4
 			})
-			local ErrorLayer = Create("Frame", Scroll, {
-				Name = "ErrorLayer",
-				Position = TextPosition,
-				Size = UDim2.fromOffset(64, LineHeight),
-				BackgroundTransparency = 1,
-				BorderSizePixel = 0,
-				ZIndex = 5
-			})
 			local Caret = Create("Frame", Scroll, {
 				Name = "Caret",
 				Position = TextPosition,
-				Size = UDim2.fromOffset(Option.CaretWidth, FontSize + 1),
+				Size = UDim2.fromOffset(Option.CaretWidth, FontSize * CodeConfig.CaretHeightRatio),
 				BackgroundColor3 = Theme["Color Theme"],
 				BackgroundTransparency = 0,
 				BorderSizePixel = 0,
 				Visible = false,
 				ZIndex = 6
 			})
-			Make("Corner", Caret, UDim.new(0, 1))
+			Make("Corner", Caret, UDim.new(0, CodeConfig.CaretCornerRadius))
 			local MeasurementLayer = Create("Frame", Body, {
 				Name = "MeasurementLayer",
 				Size = UDim2.fromOffset(0, 0),
@@ -7675,56 +7449,6 @@ function Library:MakeWindow(Configs)
 
 			local function ViewSize()
 				return Scroll.AbsoluteWindowSize / EffectiveScale()
-			end
-			local Toast, ToastText, ToastToken = nil, nil, 0
-			local ToastSource, ToastValues
-			local function PositionMessage()
-				if Destroyed or not Toast or not Toast.Visible then return end
-				local Scale = EffectiveScale()
-				local View = ScreenGui.AbsoluteSize
-				local Origin = ScreenGui.AbsolutePosition
-				local HubPosition, HubSize = MainFrame.AbsolutePosition - Origin, MainFrame.AbsoluteSize
-				if View.X <= 0 or View.Y <= 0 then return end
-				local Margin = math.min(8 * Scale, View.X / 4, View.Y / 4)
-				local Width = math.max(1, math.min(420 * Scale, HubSize.X - Margin * 2, View.X - Margin * 2))
-				Toast.Size = UDim2.fromOffset(Width / Scale, Toast.Size.Y.Offset)
-				local TextHeight = ToastText.TextBounds.Y
-				local Height = math.min(math.max(32 * Scale, TextHeight + 16 * Scale), math.max(1, View.Y - Margin * 2))
-				local X = math.clamp(HubPosition.X + (HubSize.X - Width) / 2, Margin, math.max(Margin, View.X - Width - Margin))
-				local Below, Above = HubPosition.Y + HubSize.Y + Margin, HubPosition.Y - Height - Margin
-				local Y = Below + Height <= View.Y - Margin and Below or Above >= Margin and Above
-					or math.clamp(HubPosition.Y + HubSize.Y - Height - Margin, Margin, math.max(Margin, View.Y - Height - Margin))
-				Toast.Position = UDim2.fromOffset(X / Scale, Y / Scale)
-				Toast.Size = UDim2.fromOffset(Width / Scale, Height / Scale)
-			end
-			local function ShowCodeMessage(Message, Values)
-				if Destroyed then return end
-				ToastSource, ToastValues = tostring(Message), Values
-				if not Toast then
-					Toast = InsertTheme(Create("Frame", ScreenGui, {
-						Name = "CodeToast", Size = UDim2.fromOffset(300, 32),
-						BackgroundColor3 = Theme["Color Hub 2"], BorderSizePixel = 0,
-						Visible = false, ClipsDescendants = true, ZIndex = 2000
-					}), "Frame")
-					Make("Corner", Toast, UDim.new(0, 7))
-					Make("Stroke", Toast, {Color = Theme["Color Theme"], Transparency = 0.4})
-					ToastText = InsertTheme(Create("TextLabel", Toast, {
-						Name = "MessageText", Position = UDim2.fromOffset(10, 7),
-						Size = UDim2.new(1, -20, 1, -14), BackgroundTransparency = 1,
-						Font = Enum.Font.GothamMedium, TextSize = 10, TextWrapped = true,
-						RichText = false, TextColor3 = Theme["Color Text"], ZIndex = 2001
-					}), "Text")
-					ToastText:GetPropertyChangedSignal("TextBounds"):Connect(PositionMessage)
-				end
-				ToastText.Text = TranslateText(ToastSource, ToastValues)
-				ToastToken += 1
-				local Token = ToastToken
-				Toast.Visible = true
-				PositionMessage()
-				task.defer(PositionMessage)
-				task.delay(3, function()
-					if not Destroyed and Token == ToastToken then Toast.Visible = false end
-				end)
 			end
 
 			local function ShakeCodeComponent()
@@ -7824,7 +7548,6 @@ function Library:MakeWindow(Configs)
 				Input.Size = UDim2.fromOffset(math.max(Width - 2, View.X - 2), math.max(Height - Padding, View.Y - Padding))
 				HighlightLayer.Size = Input.Size
 				SelectionLayer.Size = Input.Size
-				ErrorLayer.Size = Input.Size
 				NumbersLayer.Size = UDim2.new(1, 0, 0, math.max(LineCount * LineHeight, View.Y))
 				if not OverflowX and not OverflowY then
 					Scroll.CanvasPosition = Vector2.zero
@@ -8117,14 +7840,30 @@ function Library:MakeWindow(Configs)
 				return table.concat(Parts)
 			end
 
+			local function CursorRow()
+				if RenderedCode ~= Input.Text or Input.CursorPosition < 1 then return nil end
+				local Position = math.clamp(Input.CursorPosition, 1, #Input.Text + 1)
+				local Low, High, Row = 1, LineCount, 1
+				while Low <= High do
+					local Middle = math.floor((Low + High) / 2)
+					if LineOffsets[Middle] <= Position then
+						Row, Low = Middle, Middle + 1
+					else
+						High = Middle - 1
+					end
+				end
+				return Row, Position
+			end
 			local function DrawVisibleLines()
 				if Destroyed then return end
 				local View = ViewSize()
 				local HiddenY = (Scroll.AbsolutePosition.Y - Input.AbsolutePosition.Y) / EffectiveScale()
 				local First = math.clamp(math.floor(HiddenY / LineHeight) + 1, 1, LineCount)
 				local Last = math.min(LineCount, First + math.ceil(math.max(View.Y, LineHeight) / LineHeight) + 1)
-				if DrawnVersion == RenderVersion and DrawnFirst == First and DrawnLast == Last then return end
+				local ActiveRow = CodeConfig.GutterActiveLine and Editable and Focused and CursorRow() or nil
+				if DrawnVersion == RenderVersion and DrawnFirst == First and DrawnLast == Last and DrawnActiveRow == ActiveRow then return end
 				DrawnVersion, DrawnFirst, DrawnLast = RenderVersion, First, Last
+				DrawnActiveRow = ActiveRow
 				local Used = 0
 				for Index = First, Last do
 					Used += 1
@@ -8136,20 +7875,24 @@ function Library:MakeWindow(Configs)
 							BackgroundTransparency = 1,
 							Font = Enum.Font.Code,
 							FontFace = Input.FontFace,
-							TextSize = FontSize,
-							TextTransparency = 0.45,
+							TextSize = GutterFontSize,
+							TextTransparency = CodeConfig.GutterNumberTransparency,
 							TextXAlignment = Enum.TextXAlignment.Right,
-							TextYAlignment = Enum.TextYAlignment.Top,
+							TextYAlignment = Enum.TextYAlignment.Center,
 							TextWrapped = false,
+							TextScaled = false,
+							AutoLocalize = false,
 							RichText = false
 						})
 						NumberLabels[Used] = Number
 					end
 					local HasError = DiagByLine[Index] ~= nil
-					Number.TextColor3 = HasError and ErrorColor or Theme["Color Dark Text"]
-					Number.TextTransparency = HasError and 0.05 or 0.45
-					Number.Position = UDim2.fromOffset(0, Y)
-					Number.Size = UDim2.fromOffset(GutterWidth - 5, LineHeight)
+					local IsActive = Index == ActiveRow
+					Number.TextColor3 = HasError and ErrorColor or IsActive and Theme["Color Theme"] or Theme["Color Dark Text"]
+					Number.TextTransparency = HasError and CodeConfig.GutterErrorNumberTransparency
+						or IsActive and CodeConfig.GutterActiveNumberTransparency or CodeConfig.GutterNumberTransparency
+					Number.Position = UDim2.fromOffset(CodeConfig.GutterPaddingLeft, Y)
+					Number.Size = UDim2.fromOffset(math.max(1, GutterWidth - CodeConfig.GutterPaddingLeft - CodeConfig.GutterPaddingRight), LineHeight)
 					Number.Text = tostring(Index)
 					Number.Visible = true
 					local Label = LineLabels[Used]
@@ -8190,20 +7933,12 @@ function Library:MakeWindow(Configs)
 				HighlightLayer.Visible = true
 			end
 			local function CursorLocation()
-				if RenderedCode ~= Input.Text or Input.CursorPosition < 1 then return nil end
-				local Position = math.clamp(Input.CursorPosition, 1, #Input.Text + 1)
-				local Low, High, Row = 1, LineCount, 1
-				while Low <= High do
-					local Middle = math.floor((Low + High) / 2)
-					if LineOffsets[Middle] <= Position then
-						Row, Low = Middle, Middle + 1
-					else
-						High = Middle - 1
-					end
-				end
+				local Row, Position = CursorRow()
+				if not Row then return nil end
 				local X = MeasureCaretWidth(Lines[Row]:sub(1, Position - LineOffsets[Row]))
 				if X == nil then return nil end
-				return X, (Row - 1) * LineHeight
+				if #Lines[Row] > 0 and Position - LineOffsets[Row] == #Lines[Row] then X += CodeConfig.CaretEndGap end
+				return X, (Row - 1) * LineHeight, Row
 			end
 			local function EnsureCursorVisible()
 				if Destroyed or not Editable or not Focused then return end
@@ -8237,29 +7972,29 @@ function Library:MakeWindow(Configs)
 				local Token = BlinkToken
 				Caret.BackgroundTransparency = 0
 				task.spawn(function()
-					local Fade = TweenInfo.new(0.14, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+					local Fade = TweenInfo.new(CodeConfig.CaretBlinkFadeDuration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 					while not Destroyed and Token == BlinkToken do
-						task.wait(0.55)
+						task.wait(CodeConfig.CaretBlinkOnDuration)
 						if Destroyed or Token ~= BlinkToken then return end
 						CaretFadeTween = TweenService:Create(Caret, Fade, {BackgroundTransparency = 1})
 						CaretFadeTween:Play()
-						task.wait(0.5)
+						task.wait(CodeConfig.CaretBlinkFadeDuration + CodeConfig.CaretBlinkOffDuration)
 						if Destroyed or Token ~= BlinkToken then return end
 						CaretFadeTween = TweenService:Create(Caret, Fade, {BackgroundTransparency = 0})
 						CaretFadeTween:Play()
-						task.wait(0.14)
+						task.wait(CodeConfig.CaretBlinkFadeDuration)
 					end
 				end)
 			end
 			local LastCaret = {}
 			local function UpdateCaret()
 				if Destroyed then return end
+				DrawVisibleLines()
 				local WasVisible = Caret.Visible
 				local Selecting = Input.SelectionStart > 0 and Input.SelectionStart ~= Input.CursorPosition
-				local X, Y
-				if Editable and Focused and not Selecting then X, Y = CursorLocation() end
+				local X, Y, Row
+				if Editable and Focused and not Selecting then X, Y, Row = CursorLocation() end
 				Caret.Visible = X ~= nil
-				LineHighlight.Visible = X ~= nil
 				if X == nil then
 					StopBlink()
 					if CaretMoveTween then
@@ -8277,20 +8012,19 @@ function Library:MakeWindow(Configs)
 				local YPos = Snap(Padding + Y + (LineHeight - Height) * 0.5)
 				local Target = UDim2.fromOffset(XPos, YPos)
 				Caret.Size = UDim2.fromOffset(Width, Height)
-				LineHighlight.Position = UDim2.fromOffset(-2, Y)
-				LineHighlight.Size = UDim2.new(1, 2, 0, LineHeight)
 				local Moved = X ~= LastCaret.X or Y ~= LastCaret.Y or Scale ~= LastCaret.Scale
-				if not WasVisible or Scale ~= LastCaret.Scale or not Option.SmoothCaret then
+				if not WasVisible or Scale ~= LastCaret.Scale or Row ~= LastCaret.Row or not Option.SmoothCaret then
 					if CaretMoveTween then CaretMoveTween:Cancel() end
 					CaretMoveTween = nil
 					Caret.Position = Target
 				elseif Moved then
 					if CaretMoveTween then CaretMoveTween:Cancel() end
-					CaretMoveTween = TweenService:Create(Caret, TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = Target})
+					CaretMoveTween = TweenService:Create(Caret, TweenInfo.new(CodeConfig.CaretMoveDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = Target})
 					CaretMoveTween:Play()
 				end
 				if not WasVisible or Moved then StartBlink() end
 				LastCaret.X, LastCaret.Y, LastCaret.Scale = X, Y, Scale
+				LastCaret.Row = Row
 			end
 			local function UpdateSelection()
 				if Destroyed then return end
@@ -8353,7 +8087,7 @@ function Library:MakeWindow(Configs)
 
 			local function UpdateModified()
 				if ResetButton then
-					local Show = EditAllowed and Input.Text ~= InitialCode
+					local Show = EditAllowed and Editable and Input.Text ~= InitialCode
 					ResetButton.Button.Visible = Show
 					if not Show and (ResetButton.Hover or ResetButton.Press) then
 						ResetButton.Hover, ResetButton.Press = false, false
@@ -8363,8 +8097,7 @@ function Library:MakeWindow(Configs)
 				UpdateActions()
 			end
 
-			local SquiggleFrames, SquiggleCount = {}, 0
-			local ErrorTip, ErrorTipText, ErrorTipToken = nil, nil, 0
+			local ErrorTip, ErrorTipText, ErrorTipToken, ErrorTipPoint = nil, nil, 0, nil
 
 			local function SplitLines(Source)
 				local Result = {}
@@ -8372,21 +8105,33 @@ function Library:MakeWindow(Configs)
 				return Result
 			end
 			local function ParseErrorLine(Message)
-				local Text = tostring(Message)
-				local Line, Rest = Text:match(":(%d+):%s*(.*)$")
-				if not Line then return nil, (Text:match("^[^\n]*")) end
-				return tonumber(Line), (Rest:match("^[^\n]*"))
+				local First = tostring(Message or ""):match("^[^\r\n]*") or ""
+				local Line, Column, Text = First:match(":(%d+):(%d+):%s*(.*)")
+				if Line then return tonumber(Line), Text, tonumber(Column) end
+				Line, Text = First:match(":(%d+):%s*(.*)")
+				if Line then return tonumber(Line), Text end
+				return nil, First
 			end
-			local function MakeLineDiagnostic(SourceLines, Line, Message, Kind)
-				Line = math.clamp(Line, 1, math.max(1, #SourceLines))
-				while Line > 1 and not (SourceLines[Line] or ""):find("%S") do Line -= 1 end
+			local function MakeLineDiagnostic(SourceLines, Line, Message, Kind, Column)
+				Line = math.clamp(math.floor(tonumber(Line) or #SourceLines), 1, math.max(1, #SourceLines))
 				local Text = SourceLines[Line] or ""
 				local Start = Text:find("%S") or 1
-				local Finish = #(Text:match("^(.-)%s*$"))
-				if Finish < Start then Finish = Start end
-				return {Line = Line, Start = Start, End = Finish, Message = Message, Kind = Kind}
+				local Finish = math.max(Start, #(Text:match("^(.-)%s*$")))
+				if Column then
+					Start = math.clamp(math.floor(Column), 1, #Text + 1)
+					Finish = Start
+					Column = Start
+				else
+					local Near = tostring(Message):match("[Nn]ear%s+['\"]([^'\"]+)['\"]")
+					if Near then
+						local Position = Text:find(Near, 1, true)
+						if Position and not Text:find(Near, Position + 1, true) then
+							Start, Finish, Column = Position, Position + #Near - 1, Position
+						end
+					end
+				end
+				return {Line = Line, Column = Column, Start = Start, End = Finish, Message = Message, Kind = Kind}
 			end
-
 			local function CompilerDiagnostics(Source, SourceLines)
 				local Loader = loadstring
 				if type(Loader) ~= "function" and type(getgenv) == "function" then
@@ -8394,18 +8139,53 @@ function Library:MakeWindow(Configs)
 					Loader = Okay and type(Environment) == "table" and Environment.loadstring or nil
 				end
 				if type(Loader) ~= "function" then return nil end
-				local Okay, Compiled, Message = pcall(Loader, Source, "=AddCode")
-				if not Okay then return nil end
-				if Compiled then return {} end
-				local Line, Text = ParseErrorLine(Message)
-				return {MakeLineDiagnostic(SourceLines, Line or #SourceLines, Text ~= "" and Text or "Syntax error", "compiler")}
+				local Found, Masked, WorkingLines = {}, {}, nil
+				local Candidate = Source
+				local Limit = math.floor(NumberOption(ReadOption("MaxDiagnostics"), CodeConfig.MaxDiagnostics or 12, 1, 30))
+				for _ = 1, Limit do
+					local Okay, Compiled, Message = pcall(Loader, Candidate, "=AddCode")
+					if not Okay then
+						if #Found == 0 then return nil end
+						break
+					end
+					if Compiled then break end
+					local Line, Text, Column = ParseErrorLine(Message)
+					if not Line or Line < 1 or Line > #SourceLines then
+						if #Found == 0 then
+							Found[1] = MakeLineDiagnostic(SourceLines, Line or #SourceLines, Text ~= "" and Text or "Syntax error", "compiler", Column)
+						end
+						break
+					end
+					if Masked[Line] then break end
+					local OriginalLine = SourceLines[Line]
+					Text = Text ~= "" and Text or "Syntax error"
+					local Identifier = OriginalLine:match("^%s*([%a_][%w_]*)%s*$")
+					local Lower = Text:lower()
+					if Identifier and (Lower:find("incomplete statement", 1, true)
+						or Lower:find("expected assignment", 1, true)) then
+						Text ..= " (near '" .. Identifier .. "')"
+					end
+					Found[#Found + 1] = MakeLineDiagnostic(SourceLines, Line, Text, "compiler", Column)
+					Masked[Line] = true
+					if not OriginalLine:find("%S") then break end
+					if not WorkingLines then WorkingLines = table.clone(SourceLines) end
+					WorkingLines[Line] = ""
+					Candidate = table.concat(WorkingLines, "\n")
+				end
+				table.sort(Found, function(A, B)
+					if A.Line ~= B.Line then return A.Line < B.Line end
+					return A.Start < B.Start
+				end)
+				return Found
 			end
-
 			local function LexicalDiagnostics(SourceLines)
 				local Found, Stack, State, OpenLine = {}, {}, nil, nil
 				local function Report(Line, Start, Finish, Message)
 					if #Found < 6 then
-						Found[#Found + 1] = {Line = Line, Start = Start, End = Finish, Message = Message, Kind = "lexical"}
+						Found[#Found + 1] = {
+							Line = Line, Column = Start, Start = Start, End = Finish,
+							Message = Message, Kind = "lexical"
+						}
 					end
 				end
 				for LineNumber, Line in ipairs(SourceLines) do
@@ -8425,27 +8205,38 @@ function Library:MakeWindow(Configs)
 									local Top = Stack[#Stack]
 									if Top and PairClose[Top[1]] == Symbol then
 										table.remove(Stack)
+									elseif Top then
+										Report(LineNumber, At, At,
+											"Unexpected '" .. Symbol .. "'; expected '" .. PairClose[Top[1]]
+											.. "' to close '" .. Top[1] .. "' from line " .. Top[2] .. ", column " .. Top[3])
 									else
-										Report(LineNumber, At, At, "Unexpected '" .. Symbol .. "'")
+										Report(LineNumber, At, At, "Unexpected closing '" .. Symbol .. "' without an opening delimiter")
 									end
 								end
 							end
-						elseif Kind == "String" and Text:find("^[\"'`]") then
+						elseif Kind == "String" and Text:find("^[\"']") then
 							StringStart = Column
 						end
 						Column += #Text
 					end
 					if Context and Context:sub(1, 1) == "q" and Context:sub(3, 3) ~= "z" then
-						Report(LineNumber, StringStart or 1, math.max(#Line, 1), "Unfinished string")
+						Report(LineNumber, StringStart or 1, math.max(#Line, 1),
+							"Unterminated string; missing closing " .. Context:sub(2, 2))
 					end
 				end
 				if State then
 					local Kind = (State:match("[^|]+$") or ""):sub(1, 1)
-					local Message = Kind == "c" and "Unfinished long comment" or Kind == "s" and "Unfinished long string" or "Unfinished string"
-					if #Found < 6 then Found[#Found + 1] = MakeLineDiagnostic(SourceLines, OpenLine or #SourceLines, Message, "lexical") end
+					local Message = Kind == "c" and "Unterminated block comment"
+						or Kind == "s" and "Unterminated long string"
+						or Kind == "b" and "Unterminated template string"
+						or "Unterminated string or interpolation"
+					if #Found < 6 then
+						Found[#Found + 1] = MakeLineDiagnostic(SourceLines, OpenLine or #SourceLines, Message, "lexical")
+					end
 				end
 				for _, Entry in ipairs(Stack) do
-					Report(Entry[2], Entry[3], Entry[3], "Unclosed '" .. Entry[1] .. "'")
+					Report(Entry[2], Entry[3], Entry[3],
+						"Unclosed '" .. Entry[1] .. "'; missing '" .. PairClose[Entry[1]] .. "'")
 				end
 				table.sort(Found, function(A, B)
 					if A.Line ~= B.Line then return A.Line < B.Line end
@@ -8453,90 +8244,66 @@ function Library:MakeWindow(Configs)
 				end)
 				return Found
 			end
-
 			local function CollectDiagnostics(Source)
 				if not IsLuaLanguage() then return {} end
 				local SourceLines = SplitLines(Source)
 				return CompilerDiagnostics(Source, SourceLines) or LexicalDiagnostics(SourceLines)
 			end
-
-			DrawErrors = function()
-				if Destroyed then return end
-				if #Shown == 0 and SquiggleCount == 0 then return end
-				local HalfPeriod, Rise = 3, 2
-				local SegmentLength = math.sqrt(HalfPeriod * HalfPeriod + Rise * Rise)
-				local SegmentAngle = math.deg(math.atan(Rise / HalfPeriod))
-				local Used = 0
-				if #Shown > 0 and RenderedCode == Input.Text then
-					local Scale = EffectiveScale()
-					local View = ViewSize()
-					local ViewLeft = Scroll.CanvasPosition.X / Scale - 6
-					local ViewRight = ViewLeft + View.X + 12
-					for _, Diagnostic in ipairs(Shown) do
-						local Line = Lines[Diagnostic.Line]
-						if Line and Diagnostic.Line >= DrawnFirst and Diagnostic.Line <= DrawnLast then
-							local X1 = MeasureWidth(Line:sub(1, Diagnostic.Start - 1))
-							local X2 = MeasureWidth(Line:sub(1, Diagnostic.End))
-							if X2 - X1 < 6 then X2 = X1 + 6 end
-							Diagnostic.X1, Diagnostic.X2 = X1, X2
-							local From, To = math.max(X1, ViewLeft), math.min(X2, ViewRight)
-							if To > From then
-								local FirstSegment = math.floor((From - X1) / HalfPeriod)
-								local LastSegment = math.ceil((To - X1) / HalfPeriod) - 1
-								local CenterY = (Diagnostic.Line - 1) * LineHeight + LineHeight - 2.5
-								for Segment = FirstSegment, LastSegment do
-									Used += 1
-									local Frame = SquiggleFrames[Used]
-									if not Frame then
-										Frame = Create("Frame", ErrorLayer, {
-											Name = "Squiggle",
-											AnchorPoint = Vector2.new(0.5, 0.5),
-											BorderSizePixel = 0,
-											ZIndex = 5
-										})
-										SquiggleFrames[Used] = Frame
-									end
-									Frame.Size = UDim2.fromOffset(SegmentLength + 0.5, 1)
-									Frame.Position = UDim2.fromOffset(X1 + (Segment + 0.5) * HalfPeriod, CenterY)
-									Frame.Rotation = Segment % 2 == 0 and -SegmentAngle or SegmentAngle
-									Frame.BackgroundColor3 = ErrorColor
-									Frame.Visible = true
-								end
-							end
-						end
-					end
+			local function ExportDiagnostics(Source)
+				local Result = {}
+				for _, Diagnostic in ipairs(Source) do
+					Result[#Result + 1] = {Line = Diagnostic.Line, Column = Diagnostic.Column, Message = Diagnostic.Message, Kind = Diagnostic.Kind}
 				end
-				for Index = Used + 1, SquiggleCount do
-					local Frame = SquiggleFrames[Index]
-					if Frame then Frame.Visible = false end
-				end
-				SquiggleCount = Used
+				return Result
 			end
+
 
 			local function HideErrorTip()
 				ErrorTipToken += 1
 				if ErrorTip then ErrorTip.Visible = false end
 			end
+			local function PositionErrorTip()
+				if not ErrorTip or not ErrorTip.Visible or not ErrorTipPoint then return end
+				local Scale = EffectiveScale()
+				local ViewOrigin, View = ScreenGui.AbsolutePosition, ScreenGui.AbsoluteSize
+				local Size = ErrorTip.AbsoluteSize
+				local Margin = 4 * Scale
+				local X = ErrorTipPoint.X + 12 * Scale
+				local Y = ErrorTipPoint.Y + 18 * Scale
+				local MinX, MinY = ViewOrigin.X + Margin, ViewOrigin.Y + Margin
+				local MaxX = math.max(MinX, ViewOrigin.X + View.X - Size.X - Margin)
+				local MaxY = math.max(MinY, ViewOrigin.Y + View.Y - Size.Y - Margin)
+				X = math.clamp(X, MinX, MaxX)
+				if Y + Size.Y > ViewOrigin.Y + View.Y - Margin then
+					Y = ErrorTipPoint.Y - Size.Y - 8 * Scale
+				end
+				Y = math.clamp(Y, MinY, MaxY)
+				local HeaderOrigin = Header.AbsolutePosition
+				ErrorTip.Position = UDim2.fromOffset((X - HeaderOrigin.X) / Scale, (Y - HeaderOrigin.Y) / Scale)
+			end
 			local function ShowErrorTip(Diagnostic, Point, Duration)
-				if Destroyed then return end
+				if Destroyed or not Diagnostic or not Holder.Visible then return end
 				if not ErrorTip then
-					ErrorTip = InsertTheme(Create("Frame", ScreenGui, {
-						Name = "CodeErrorTip",
+					ErrorTip = InsertTheme(Create("Frame", Header, {
 						AutomaticSize = Enum.AutomaticSize.XY,
 						Size = UDim2.fromOffset(0, 0),
 						BackgroundColor3 = Theme["Color Hub 2"],
 						BorderSizePixel = 0,
 						Visible = false,
-						ZIndex = 2000
+						ZIndex = 3000
 					}), "Frame")
 					Make("Corner", ErrorTip, UDim.new(0, 6))
-					Make("Stroke", ErrorTip, {Color = ErrorColor, Transparency = 0.35})
+					InsertTheme(Create("UIStroke", ErrorTip, {
+						Color = Theme["Color Theme"],
+						Thickness = StrokeThickness,
+						Transparency = CodeConfig.ErrorTip.StrokeTransparency,
+						ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					}), "Theme")
 					Create("UIPadding", ErrorTip, {
 						PaddingTop = UDim.new(0, 5), PaddingBottom = UDim.new(0, 5),
 						PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8)
 					})
 					ErrorTipText = InsertTheme(Create("TextLabel", ErrorTip, {
-						Name = "MessageText",
 						AutomaticSize = Enum.AutomaticSize.XY,
 						Size = UDim2.fromOffset(0, 0),
 						BackgroundTransparency = 1,
@@ -8546,39 +8313,37 @@ function Library:MakeWindow(Configs)
 						TextXAlignment = Enum.TextXAlignment.Left,
 						RichText = false,
 						TextColor3 = Theme["Color Text"],
-						ZIndex = 2001
+						ZIndex = 3001
 					}), "Text")
 					Create("UISizeConstraint", ErrorTipText, {MaxSize = Vector2.new(280, 400)})
+					ErrorTip:GetPropertyChangedSignal("AbsoluteSize"):Connect(PositionErrorTip)
 				end
-				local Stroke = ErrorTip:FindFirstChildOfClass("UIStroke")
-				if Stroke then Stroke.Color = ErrorColor end
-				ErrorTipText.Text = TranslateText("Line {Line}: {Error}", {Line = tostring(Diagnostic.Line), Error = tostring(Diagnostic.Message)})
-				local Scale = EffectiveScale()
-				local Origin, View = ScreenGui.AbsolutePosition, ScreenGui.AbsoluteSize
-				local Size = ErrorTip.AbsoluteSize
-				local X = Point.X - Origin.X + 12 * Scale
-				local Y = Point.Y - Origin.Y + 18 * Scale
-				X = math.clamp(X, 4, math.max(4, View.X - Size.X - 4))
-				if Y + Size.Y > View.Y - 4 then Y = Point.Y - Origin.Y - Size.Y - 8 * Scale end
-				ErrorTip.Position = UDim2.fromOffset(X / Scale, math.max(4, Y) / Scale)
+				local Values = {Line = tostring(Diagnostic.Line), Column = tostring(Diagnostic.Column or ""), Error = tostring(Diagnostic.Message)}
+				ErrorTipText.Text = TranslateText(Diagnostic.Column and "Line {Line}, column {Column}: {Error}" or "Line {Line}: {Error}", Values)
+				ErrorTipPoint = Point
 				ErrorTip.Visible = true
+				PositionErrorTip()
 				ErrorTipToken += 1
 				local Token = ErrorTipToken
 				if Duration then
 					task.delay(Duration, function()
-						if not Destroyed and ErrorTip and Token == ErrorTipToken then ErrorTip.Visible = false end
+						if not Destroyed and ErrorTip and Token == ErrorTipToken then HideErrorTip() end
 					end)
 				end
 			end
-			local function DiagnosticAt(Point)
-				if #Shown == 0 then return nil end
+			local function DiagnosticAtText(Point)
+				if #Shown == 0 or RenderedCode ~= Input.Text then return nil end
 				local Scale = EffectiveScale()
-				local Origin = Input.AbsolutePosition
-				local X, Y = (Point.X - Origin.X) / Scale, (Point.Y - Origin.Y) / Scale
+				local X = (Point.X - Input.AbsolutePosition.X) / Scale
+				local Y = (Point.Y - Input.AbsolutePosition.Y) / Scale
 				local Row = math.floor(Y / LineHeight) + 1
+				local Line = Lines[Row]
+				if not Line or Y < 0 or Y >= LineCount * LineHeight then return nil end
 				for _, Diagnostic in ipairs(Shown) do
-					if Diagnostic.Line == Row and Diagnostic.X1 and X >= Diagnostic.X1 - 3 and X <= Diagnostic.X2 + 3 then
-						return Diagnostic
+					if Diagnostic.Line == Row then
+						local StartX = MeasureWidth(Line:sub(1, Diagnostic.Start - 1))
+						local EndX = math.max(StartX + 6, MeasureWidth(Line:sub(1, Diagnostic.End)))
+						if X >= StartX - 3 and X <= EndX + 3 then return Diagnostic end
 					end
 				end
 				return nil
@@ -8602,7 +8367,6 @@ function Library:MakeWindow(Configs)
 			local function RedrawErrors()
 				DrawnVersion = -1
 				DrawVisibleLines()
-				DrawErrors()
 			end
 			local function RunDiagnostics()
 				if Destroyed or not ErrorEnabled then return end
@@ -8624,19 +8388,20 @@ function Library:MakeWindow(Configs)
 				end)
 			end
 			local function InvalidateDiagnostics()
-				if #Diagnostics > 0 or RuntimeDiagnostic then
-					Diagnostics, RuntimeDiagnostic = {}, nil
+				if RuntimeDiagnostic then
+					RuntimeDiagnostic = nil
 					RebuildShown()
+					RedrawErrors()
 				end
 				QueueDiagnostics()
 			end
 			local function SetRuntimeError(Message)
 				if not ErrorEnabled then return end
-				local Line, Text = ParseErrorLine(Message)
+				local Line, Text, Column = ParseErrorLine(Message)
 				if not Line or Line < 1 then return end
 				local SourceLines = SplitLines(Input.Text)
 				if Line > #SourceLines then return end
-				RuntimeDiagnostic = MakeLineDiagnostic(SourceLines, Line, Text, "runtime")
+				RuntimeDiagnostic = MakeLineDiagnostic(SourceLines, Line, Text, "runtime", Column)
 				RebuildShown()
 				RedrawErrors()
 			end
@@ -8699,7 +8464,7 @@ function Library:MakeWindow(Configs)
 				MeasureContent.Text = MeasuredSource
 				LineCount = #Lines
 				RenderVersion += 1
-				GutterWidth = math.max(25, #tostring(LineCount) * math.ceil(CellWidth) + 9)
+				GutterWidth = math.ceil(math.max(CodeConfig.GutterWidth, TextService:GetTextSize(string.rep("9", #tostring(LineCount)), GutterFontSize, Enum.Font.Code, Vector2.new(10000, 10000)).X + CodeConfig.GutterPaddingLeft + CodeConfig.GutterPaddingRight))
 				Gutter.Size = UDim2.new(0, GutterWidth, 1, 0)
 				Scroll.Position = UDim2.fromOffset(GutterWidth, 0)
 				Scroll.Size = UDim2.new(1, -GutterWidth - 2, 1, 0)
@@ -8707,7 +8472,6 @@ function Library:MakeWindow(Configs)
 				Holder.Size = UDim2.new(1, 0, 0, NewHeight)
 				UpdateCanvas()
 				DrawVisibleLines()
-				DrawErrors()
 				UpdateCaret()
 				UpdateSelection()
 				EnsureCursorVisible()
@@ -8984,7 +8748,6 @@ function Library:MakeWindow(Configs)
 				if Destroyed then return end
 				SyncGutter()
 				DrawVisibleLines()
-				DrawErrors()
 				UpdateCaret()
 				UpdateSelection()
 			end
@@ -9030,7 +8793,7 @@ function Library:MakeWindow(Configs)
 			end
 			function Code:SetLanguage(Value)
 				if Destroyed then return nil end
-				Language = tostring(Value or "Lua")
+				Language = tostring(Value or CodeConfig.Language)
 				table.clear(HighlightCache)
 				Cached = 0
 				Refresh()
@@ -9100,7 +8863,7 @@ function Library:MakeWindow(Configs)
 				if Destroyed then return false, "Destroyed" end
 				if not Called or Result == false then
 					local Reason = tostring(not Called and Result or Error or "Save rejected.")
-					ShowCodeMessage("Code save failed: {Error}", {Error = Reason})
+					ShowToastMessage("Code save failed: {Error}", {Error = Reason})
 					ShakeCodeComponent()
 					if Editable and not Input:IsFocused() then Input:CaptureFocus() end
 					return false, Reason
@@ -9145,11 +8908,7 @@ function Library:MakeWindow(Configs)
 			function Code:IsErrorEnabled() return ErrorEnabled end
 			function Code:HasError() return #Shown > 0 end
 			function Code:GetErrors()
-				local Result = {}
-				for _, Diagnostic in ipairs(Shown) do
-					Result[#Result + 1] = {Line = Diagnostic.Line, Message = Diagnostic.Message, Kind = Diagnostic.Kind}
-				end
-				return Result
+				return ExportDiagnostics(Shown)
 			end
 			function Code:Check()
 				if Destroyed then return {} end
@@ -9158,11 +8917,7 @@ function Library:MakeWindow(Configs)
 					RunDiagnostics()
 					return self:GetErrors()
 				end
-				local Result = {}
-				for _, Diagnostic in ipairs(CollectDiagnostics(Input.Text)) do
-					Result[#Result + 1] = {Line = Diagnostic.Line, Message = Diagnostic.Message, Kind = Diagnostic.Kind}
-				end
-				return Result
+				return ExportDiagnostics(CollectDiagnostics(Input.Text))
 			end
 			function Code:SetExecuteEnabled(Value)
 				if Destroyed then return false end
@@ -9200,8 +8955,8 @@ function Library:MakeWindow(Configs)
 				if type(Hub) ~= "table" or type(Hub.SetClipboard) ~= "function" then return false, "Clipboard API is unavailable." end
 				FlushText()
 				local Called, Success, Error = pcall(Hub.SetClipboard, Hub, Input.Text)
-				if not Called then ShowCodeMessage("Code copy failed: {Error}", {Error = tostring(Success)}); return false, Success end
-				if not Success then ShowCodeMessage("Code copy failed: {Error}", {Error = tostring(Error or "Clipboard unavailable.")}) end
+				if not Called then ShowToastMessage("Code copy failed: {Error}", {Error = tostring(Success)}); return false, Success end
+				if not Success then ShowToastMessage("Code copy failed: {Error}", {Error = tostring(Error or "Clipboard unavailable.")}) end
 				if Success and CopyButton then
 					CopyToken += 1
 					local Token = CopyToken
@@ -9246,7 +9001,6 @@ function Library:MakeWindow(Configs)
 						Diagnostics, RuntimeDiagnostic = Found, nil
 						RebuildShown()
 						RedrawErrors()
-						ShowCodeMessage("Syntax error on line {Line}: {Error}", {Line = tostring(First.Line), Error = First.Message})
 						ShakeCodeComponent()
 						return false, First.Message
 					end
@@ -9257,7 +9011,7 @@ function Library:MakeWindow(Configs)
 				if SpinTween then SpinTween:Cancel() end
 				ExecuteButton.Icon.Rotation = 0
 				SpinTween = TweenService:Create(ExecuteButton.Icon,
-					TweenInfo.new(0.65, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1),
+					TweenInfo.new(ExecuteSpinDuration, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1),
 					{Rotation = -360})
 				SpinTween:Play()
 				local Called, Success, Result = pcall(Hub.Execute, Hub, Input.Text, TitleText)
@@ -9269,13 +9023,13 @@ function Library:MakeWindow(Configs)
 						if SpinTween then SpinTween:Cancel(); SpinTween = nil end
 						ExecuteButton.Icon.Rotation = 0
 					end
-					local Remaining = 0.65 - (os.clock() - Started)
+					local Remaining = ExecuteSpinDuration - (os.clock() - Started)
 					if Remaining > 0 then task.delay(Remaining, FinishAnimation) else FinishAnimation() end
 					if not Success then
 						local ErrorText = tostring(Result)
 						SetRuntimeError(ErrorText)
 						if #ErrorText > 120 then ErrorText = ErrorText:sub(1, 117) .. "..." end
-						ShowCodeMessage("Code execution failed: {Error}", {Error = ErrorText})
+						ShowToastMessage("Code execution failed: {Error}", {Error = ErrorText})
 						ShakeCodeComponent()
 					end
 				end
@@ -9288,7 +9042,6 @@ function Library:MakeWindow(Configs)
 					if not Holder.Visible then
 						self:EditClose()
 						HideErrorTip()
-						if Toast then Toast.Visible = false end
 					end
 				end
 			end
@@ -9329,15 +9082,21 @@ function Library:MakeWindow(Configs)
 
 			Input.InputChanged:Connect(function(InputObject)
 				if Destroyed or InputObject.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-				local Diagnostic = DiagnosticAt(InputObject.Position)
+				local Diagnostic = DiagnosticAtText(InputObject.Position)
 				if Diagnostic then ShowErrorTip(Diagnostic, InputObject.Position) else HideErrorTip() end
 			end)
 			Input.InputBegan:Connect(function(InputObject)
 				if Destroyed or not IsPointer(InputObject) then return end
-				local Diagnostic = DiagnosticAt(InputObject.Position)
-				if Diagnostic then ShowErrorTip(Diagnostic, InputObject.Position, 4) end
+				local Diagnostic = DiagnosticAtText(InputObject.Position)
+				if Diagnostic then ShowErrorTip(Diagnostic, InputObject.Position, CodeConfig.ErrorTip.Duration) end
 			end)
 			Input.MouseLeave:Connect(HideErrorTip)
+			ExternalConnections[#ExternalConnections + 1] = Container:GetPropertyChangedSignal("Visible"):Connect(function()
+				if not Container.Visible then HideErrorTip() end
+			end)
+			ExternalConnections[#ExternalConnections + 1] = Holder:GetPropertyChangedSignal("Visible"):Connect(function()
+				if not Holder.Visible then HideErrorTip() end
+			end)
 
 			ExternalConnections[#ExternalConnections + 1] = UserInputService.InputBegan:Connect(function(InputObject)
 				if Destroyed then return end
@@ -9377,21 +9136,13 @@ function Library:MakeWindow(Configs)
 				ActionPointer = false
 				if not Destroyed and Editable then Code:EditClose() end
 			end)
-			for _, Object in ipairs({MainFrame, ScreenGui, Header}) do
-				for _, Property in ipairs({"AbsolutePosition", "AbsoluteSize"}) do
-					ExternalConnections[#ExternalConnections + 1] = Object:GetPropertyChangedSignal(Property):Connect(PositionMessage)
-				end
-			end
 
 			local LanguageConnection = Connection.LanguageChanged:Connect(function()
 				task.defer(function()
 					if Destroyed then return end
 					TitleText = TranslateText(TitleSource)
 					FileName.Text = TitleText
-					if Toast and ToastSource then
-						ToastText.Text = TranslateText(ToastSource, ToastValues)
-						PositionMessage()
-					end
+					HideErrorTip()
 					DrawnVersion = -1
 					DrawVisibleLines()
 				end)
@@ -9403,7 +9154,6 @@ function Library:MakeWindow(Configs)
 				Scroll.ScrollBarImageColor3 = Theme["Color Theme"]
 				for _, Entry in ipairs(Buttons) do Entry.Update(true) end
 				for _, Frame in ipairs(SelectionFrames) do Frame.BackgroundColor3 = Theme["Color Theme"] end
-				LineHighlight.BackgroundColor3 = Theme["Color Theme"]
 				Input.TextColor3 = Theme["Color Text"]
 				Caret.BackgroundColor3 = Theme["Color Theme"]
 				ErrorBadge.BackgroundColor3 = ErrorColor
@@ -9415,12 +9165,11 @@ function Library:MakeWindow(Configs)
 			end)
 			Holder.Destroying:Connect(function()
 				Destroyed = true
+				if ErrorTip then ErrorTip:Destroy(); ErrorTip = nil end
 				ThemeConnection:Disconnect()
 				LanguageConnection:Disconnect()
 				for _, Link in ipairs(ExternalConnections) do Link:Disconnect() end
 				table.clear(ExternalConnections)
-				if Toast then Toast:Destroy() end
-				if ErrorTip then ErrorTip:Destroy() end
 				BlinkToken += 1
 				DiagToken += 1
 				ErrorTipToken += 1
@@ -9438,14 +9187,12 @@ function Library:MakeWindow(Configs)
 				for _, Entry in ipairs(Buttons) do
 					if Entry.TintTween then Entry.TintTween:Cancel() end
 					if Entry.ScaleTween then Entry.ScaleTween:Cancel() end
-					if Entry.GlowTween then Entry.GlowTween:Cancel() end
 				end
 				table.clear(HighlightCache)
 				table.clear(WidthCache)
 				table.clear(LineLabels)
 				table.clear(NumberLabels)
 				table.clear(SelectionFrames)
-				table.clear(SquiggleFrames)
 				table.clear(Measurements)
 				table.clear(MeasurementTexts)
 				table.clear(Lines)
@@ -9457,11 +9204,12 @@ function Library:MakeWindow(Configs)
 				table.clear(DiagByLine)
 			end)
 			ApplyLocked(Code, Holder, Configs, function(Locked)
+				if Locked then HideErrorTip() end
 				if Locked and Editable then Code:SetEditable(false) end
 			end)
 			function Code:NotifyLocked()
-				local Message = self.GetLockedMessage and self:GetLockedMessage() or Configs.LockedMessage or "This element is unavailable."
-				ShowCodeMessage(Message)
+				local Message = self.GetLockedMessage and self:GetLockedMessage() or Configs.LockedMessage or LibraryConfig.LockedMessage
+				ShowToastMessage(Message)
 			end
 			Refresh()
 			UpdateEditingAppearance()
@@ -9473,7 +9221,7 @@ function Library:MakeWindow(Configs)
 		end
 		function Tab:AddDiscordInvite(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
-			local Title = TranslateText(tostring(Configs[1] or Configs.Name or Configs.Title or "Discord"))
+			local Title = TranslateText(tostring(Configs[1] or Configs.Name or Configs.Title or ControlsConfig.Titles.Discord))
 			local Desc = TranslateText(tostring(Configs.Desc or Configs.Description or ""))
 			local Logo = Configs[2] or Configs.Logo or ""
 			local Invite = Configs[3] or Configs.Invite or ""
@@ -9486,7 +9234,7 @@ function Library:MakeWindow(Configs)
 			local InviteLabel = Create("TextLabel", InviteHolder, {
 				Size = UDim2.new(1, 0, 0, 15),
 				Position = UDim2.new(0, 5),
-				TextColor3 = Color3.fromRGB(40, 150, 255),
+				TextColor3 = ControlColors.Link,
 				Font = Enum.Font.GothamBold,
 				TextXAlignment = "Left",
 				BackgroundTransparency = 1,
@@ -9539,8 +9287,8 @@ function Library:MakeWindow(Configs)
 				Text = TranslateText("Join"),
 				Font = Enum.Font.GothamBold,
 				TextSize = 12,
-				TextColor3 = Color3.fromRGB(220, 220, 220),
-				BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+				TextColor3 = ControlColors.JoinText,
+				BackgroundColor3 = ControlColors.Join
 			})Make("Corner", JoinButton, UDim.new(0, 5))
 			
 			local ClickDelay
@@ -9556,15 +9304,15 @@ function Library:MakeWindow(Configs)
 				ClickDelay = true
 				SetProps(JoinButton, {
 					Text = TranslateText("Copied to Clipboard"),
-					BackgroundColor3 = Color3.fromRGB(100, 100, 100),
-					TextColor3 = Color3.fromRGB(150, 150, 150)
+					BackgroundColor3 = ControlColors.JoinDisabled,
+					TextColor3 = ControlColors.JoinDisabledText
 				})
 				task.delay(5, function()
 					if not JoinButton.Parent then return end
 					SetProps(JoinButton, {
 						Text = TranslateText("Join"),
-						BackgroundColor3 = Color3.fromRGB(50, 150, 50),
-						TextColor3 = Color3.fromRGB(220, 220, 220)
+						BackgroundColor3 = ControlColors.Join,
+						TextColor3 = ControlColors.JoinText
 					})
 					ClickDelay = false
 				end)
@@ -9788,15 +9536,13 @@ function Library:MakeWindow(Configs)
 			})
 			ExtraLabels[#ExtraLabels + 1] = {SoundEnabledControl, "UI sounds"}
 
-			local SoundPresetIndex = SoundPresetIndexById[tostring(Library:GetSoundId())] or 1
-			if not SoundPresetIndexById[tostring(Library:GetSoundId())] then
-				Library:SetSoundId(SoundPresets[SoundPresetIndex].Id)
-			end
+			local SoundPresetIndex = EnsureSoundPreset(tostring(Library:GetSoundId()))
 
 			local SoundPresetControl = ConfigTab:AddSelector({
 				Name = TranslateText("UI sound"),
 				Options = SoundPresetOptions,
-				Default = SoundPresetIndex,
+				Default = SoundPresetIndex or 0,
+                AllowNone = SoundPresetIndex == nil,
 				Callback = function(Value)
 					for _, Preset in ipairs(SoundPresets) do
 						if Preset.Name == Value then

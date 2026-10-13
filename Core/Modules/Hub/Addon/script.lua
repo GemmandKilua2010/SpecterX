@@ -55,7 +55,10 @@ local function Warn(Message)
     end
 end
 
-local Created = Hub:CreateFolder("Addon")
+local AddonConfig = assert(Config.Addon, "Config.Addon is required.")
+local AddonFolder = assert(type(AddonConfig.Folder) == "string" and AddonConfig.Folder ~= "" and AddonConfig.Folder,
+    "Config.Addon.Folder must be a nonempty path.")
+local Created = Hub:CreateFolder(AddonFolder)
 if not Created then
     return Addons
 end
@@ -75,7 +78,7 @@ if type(ReadApi) ~= "function" then
 end
 
 local function Load(Name)
-    local Path = "Addon/" .. Name .. ".lua"
+    local Path = AddonFolder .. "/" .. Name .. ".lua"
     local Source, ReadError = Hub:ReadFile(Path)
 
     if type(Source) ~= "string" then
@@ -132,7 +135,7 @@ if ThemeData then
     for Name, Definition in pairs(ThemeData) do
         if type(Name) == "string" and Name ~= "" and type(Definition) == "table" then
             local BasedOn = type(Definition.Base) == "string" and Definition.Base or Name
-            local Original = Config.Themes[BasedOn] or Config.Themes.MetalRed
+            local Original = Config.Themes[BasedOn] or Config.Themes[Config.Theme]
             local Palette = {}
 
             if type(Original) == "table" then

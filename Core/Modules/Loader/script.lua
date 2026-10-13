@@ -14,36 +14,12 @@ local FADE_PROPS = {
 
 local FONT_FAMILY = "rbxasset://fonts/families/GothamSSm.json"
 local FontCache = {}
-local FallbackRNG = Random.new()
-local FallbackCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-local FallbackCharacterCount = #FallbackCharacters
-
-local function FallbackGenerateName(Length)
-    Length = math.clamp(math.floor(tonumber(Length) or 12), 1, 256)
-    local Parts = table.create(Length)
-
-    for Index = 1, Length do
-        local Position = FallbackRNG:NextInteger(1, FallbackCharacterCount)
-        Parts[Index] = FallbackCharacters:sub(Position, Position)
-    end
-
-    return table.concat(Parts)
-end
-
-local GenerateName = FallbackGenerateName
+local RuntimeHub
 
 --// Helpers
 
 local function New(Class, Props, Parent)
-    local Obj = Instance.new(Class)
-
-    for Prop, Value in next, Props do
-        if Prop ~= "Name" then
-            Obj[Prop] = Value
-        end
-    end
-
-    Obj.Name = GenerateName(12)
+    local Obj = RuntimeHub:CreateInstance(Class, Props)
     Obj.Parent = Parent
     return Obj
 end
@@ -59,18 +35,6 @@ local function MakeFont(Weight)
     return Cached
 end
 
-local function Merge(Defaults, Config)
-    Config = Config or {}
-
-    local Final = {}
-
-    for Key, Value in next, Defaults do
-        local Provided = Config[Key]
-        Final[Key] = Provided == nil and Value or Provided
-    end
-
-    return Final
-end
 
 local function Tween(Obj, Time, Props, Style, Direction)
     local Animation = TweenService:Create(
@@ -244,24 +208,25 @@ function Loader:Run(Context, RawConfig)
     end
 
     local Hub = Context.Hub
+    RuntimeHub = Hub
     local Genv = Context.Genv or Hub:GetGenv()
-
-    GenerateName = Context.GenerateName or function(Length)
-        return Hub:GenerateName(Length)
-    end
+    local LibraryConfig = assert(Hub:GetConfig("Library"), "Config.Library is required.")
+    local FallbackViewportSize = assert(LibraryConfig.FallbackViewportSize,
+        "Config.Library.FallbackViewportSize is required.")
+    local FallbackViewport = Vector2.new(table.unpack(FallbackViewportSize))
 
     local Title = tostring(Context.Title or Hub:GetConfig("Title") or "Hub")
     local SubTitle = tostring(Context.SubTitle or Hub:GetConfig("SubTitle") or "")
     local Palette = type(Hub.GetThemeData) == "function" and Hub:GetThemeData() or nil
     Palette = type(Palette) == "table" and Palette or {}
 
-    local DarkPalette = type(Hub.GetThemeData) == "function" and (Hub:GetThemeData("Darker") or Hub:GetThemeData("Dark")) or {}
-    local HubGradient = DarkPalette["Color Hub 1"] or ColorSequence.new(Color3.fromRGB(20, 20, 20))
-    local HubColor = DarkPalette["Color Hub 2"] or Color3.fromRGB(20, 20, 20)
-    local StrokeColor = DarkPalette["Color Stroke"] or Color3.fromRGB(66, 66, 66)
-    local AccentColor = Palette["Color Theme"] or Color3.fromRGB(255, 255, 255)
-    local TextColor = DarkPalette["Color Text"] or Color3.fromRGB(255, 255, 255)
-    local DarkTextColor = DarkPalette["Color Dark Text"] or Color3.fromRGB(146, 146, 146)
+    assert(next(Palette), "Config.Theme must name a configured theme.")
+    local HubGradient = Palette["Color Hub 1"]
+    local HubColor = Palette["Color Hub 2"]
+    local StrokeColor = Palette["Color Stroke"]
+    local AccentColor = Palette["Color Theme"]
+    local TextColor = Palette["Color Text"]
+    local DarkTextColor = Palette["Color Dark Text"]
 
     local function Translate(Text, Values)
         local Result = type(Hub.Translate) == "function" and Hub:Translate(Text) or Text
@@ -271,30 +236,14 @@ function Loader:Run(Context, RawConfig)
         return Result
     end
 
-    local Defaults = {
-        Time = 4.3,
-        Steps = {
-            {Translate("Connecting to {Title}...", {Title = Title}), 15},
-            {Translate("Loading modules..."), 30},
-            {Translate("Initializing components..."), 50},
-            {Translate("Preparing interface..."), 70},
-            {Translate("Optimizing system..."), 85},
-            {Translate("Finalizing..."), 100},
-        },
-        Music = "rbxassetid://0",
-        MusicVolume = 0.5,
-        MusicLooped = true,
-        Blur = true,
-        BlurSize = 18,
-        BlurInTime = 0.35,
-        BlurFadeTime = 0.45,
-        MusicFadeTime = 1.2,
-        GuiFadeTime = 0.45,
-        Title = Title,
-        Subtitle = SubTitle,
-    }
+    local Defaults = assert(Hub:GetConfig("Loader"), "Config.Loader is required.")
+    local Cfg = Hub:MergeTables(Defaults, type(RawConfig) == "table" and RawConfig or {})
+    Cfg.Title = Translate(Cfg.Title or Title, {Title = Title})
+    Cfg.Subtitle = Translate(Cfg.Subtitle or SubTitle, {Title = Title})
 
-    local Cfg = Merge(Defaults, RawConfig)
+    for _, Step in ipairs(Cfg.Steps) do
+        Step[1] = Translate(Step[1], {Title = Title})
+    end
 
     Genv.Loading = Genv.Loading or {}
     local State = Genv.Loading
@@ -310,8 +259,7 @@ function Loader:Run(Context, RawConfig)
     self._closing = false
     self._animationDone = false
     self._finishRequested = false
-    self._done = Instance.new("BindableEvent")
-    self._done.Name = GenerateName(12)
+    self._done = Hub:CreateInstance("BindableEvent")
 
     local ScreenGui = New("ScreenGui", {
         IgnoreGuiInset = true,
@@ -363,7 +311,7 @@ function Loader:Run(Context, RawConfig)
 
     local function UpdateScale()
         local Camera = workspace.CurrentCamera
-        local Viewport = Camera and Camera.ViewportSize or Vector2.new(1280, 720)
+        local Viewport = Camera and Camera.ViewportSize or FallbackViewport
         UIScale.Scale = math.clamp(math.min(Viewport.X / 725, Viewport.Y / 380, 1), 0.55, 1)
     end
 

@@ -2,6 +2,7 @@
 
 local Players = game:GetService("Players")
 local LocalizationService = game:GetService("LocalizationService")
+local CoreGui = game:GetService("CoreGui")
 
 --// Context
 
@@ -247,11 +248,24 @@ TranslateLoaded = function(Text, Values)
     return Format(Translation:Translate(Text, Language), Values)
 end
 
+local DisplayConfigKeys = {
+    title = true,
+    subtitle = true,
+    desc = true,
+    description = true,
+    name = true,
+    text = true,
+    lockedmessage = true,
+    defaulttitle = true,
+    defaultdescription = true,
+}
+
 local function ResolveConfig(Value, Language, Key)
     local ValueType = type(Value)
 
     if ValueType == "string" then
-        return Translation:Translate(Value, Language)
+        -- Identifiers, enum values, source code and save paths must stay verbatim.
+        return DisplayConfigKeys[Lower(tostring(Key))] and Translation:Translate(Value, Language) or Value
     end
 
     if ValueType == "number" then
@@ -310,7 +324,7 @@ end
 --// Config
 
 function Main:GetConfig(Name)
-    return ResolveConfig(Configs[Lower(tostring(Name))], self:GetLanguage())
+    return ResolveConfig(Configs[Lower(tostring(Name))], self:GetLanguage(), Name)
 end
 
 function Main:GetGenv()
@@ -335,6 +349,49 @@ local function GetRuntime(Self)
     local Genv = Self:GetGenv()
     Genv.Runtime = Genv.Runtime or {}
     return Genv.Runtime
+end
+
+local function CreateRuntimeFolder(Self, Parent)
+    local Folder = Self:CreateInstance("Folder", {Archivable = false})
+    local Success = pcall(function()
+        Folder.Parent = Parent
+    end)
+    if not Success then
+        Folder:Destroy()
+        return nil
+    end
+    return Folder
+end
+
+function Main:GetGuiContainer()
+    local Runtime = GetRuntime(self)
+    Runtime.Library = Runtime.Library or {}
+    local LibraryRuntime = Runtime.Library
+    local Container = LibraryRuntime.GuiContainer
+    if typeof(Container) == "Instance" and Container:IsA("Folder") and Container.Parent then
+        return Container
+    end
+
+    local Gui = LibraryRuntime.Gui
+    if typeof(Gui) == "Instance" and Gui.Parent and Gui.Parent:IsA("Folder") then
+        LibraryRuntime.GuiContainer = Gui.Parent
+        return Gui.Parent
+    end
+
+    local Success, RobloxGui = pcall(CoreGui.FindFirstChild, CoreGui, "RobloxGui")
+    if not Success then RobloxGui = nil end
+    if not RobloxGui then
+        Success, RobloxGui = pcall(CoreGui.WaitForChild, CoreGui, "RobloxGui", 1)
+        if not Success then RobloxGui = nil end
+    end
+
+    local Parent = typeof(RobloxGui) == "Instance" and RobloxGui or CoreGui
+    Container = CreateRuntimeFolder(self, Parent)
+    if not Container and Parent ~= CoreGui then
+        Container = CreateRuntimeFolder(self, CoreGui)
+    end
+    LibraryRuntime.GuiContainer = Container or CoreGui
+    return LibraryRuntime.GuiContainer
 end
 
 local function ResolveLanguage(Config, Value)
@@ -427,8 +484,7 @@ function Main:OnLanguageChanged(Callback)
 
     local Runtime = GetRuntime(self)
     if typeof(Runtime.LanguageChanged) ~= "Instance" then
-        Runtime.LanguageChanged = Instance.new("BindableEvent")
-        Runtime.LanguageChanged.Name = self:GenerateName(12)
+        Runtime.LanguageChanged = self:CreateInstance("BindableEvent")
     end
 
     return Runtime.LanguageChanged.Event:Connect(Callback)
@@ -447,8 +503,8 @@ function Main:GetTheme()
         return Runtime.Theme
     end
 
-    local Default = tostring(Configs.theme or "MetalRed")
-    Runtime.Theme = type(Themes[Default]) == "table" and Default or next(Themes)
+    local Default = self:GetConfig("Theme")
+    Runtime.Theme = type(Default) == "string" and type(Themes[Default]) == "table" and Default or nil
     return Runtime.Theme
 end
 
@@ -484,8 +540,7 @@ function Main:OnThemeChanged(Callback)
 
     local Runtime = GetRuntime(self)
     if typeof(Runtime.ThemeChanged) ~= "Instance" then
-        Runtime.ThemeChanged = Instance.new("BindableEvent")
-        Runtime.ThemeChanged.Name = self:GenerateName(12)
+        Runtime.ThemeChanged = self:CreateInstance("BindableEvent")
     end
 
     return Runtime.ThemeChanged.Event:Connect(Callback)
@@ -623,6 +678,47 @@ function Main:IsGame(Name)
 end
 
 --// Utility
+
+function Main:CreateInstance(Class, Properties, Children)
+    local Object = Instance.new(Class)
+    Object.Name = self:GenerateName(12)
+    if Class == "UIListLayout" then
+        Object.SortOrder = Enum.SortOrder.LayoutOrder
+    end
+    for Key, Value in pairs(Properties or {}) do
+        if Key ~= "Name" then
+            Object[Key] = Value
+        end
+    end
+    for _, Child in ipairs(Children or {}) do
+        Child.Parent = Object
+    end
+    return Object
+end
+
+function Main:CopyTable(Value, Seen)
+    if type(Value) ~= "table" then return Value end
+    Seen = Seen or {}
+    if Seen[Value] then return Seen[Value] end
+    local Result = {}
+    Seen[Value] = Result
+    for Key, Item in pairs(Value) do
+        Result[Key] = self:CopyTable(Item, Seen)
+    end
+    return Result
+end
+
+function Main:MergeTables(Defaults, Values)
+    local Result = self:CopyTable(Defaults)
+    for Key, Value in pairs(Values or {}) do
+        if type(Value) == "table" and type(Result[Key]) == "table" and #Value == 0 and #Result[Key] == 0 then
+            Result[Key] = self:MergeTables(Result[Key], Value)
+        else
+            Result[Key] = self:CopyTable(Value)
+        end
+    end
+    return Result
+end
 
 function Main:Format(Text, Values)
     return Format(Text, Values)

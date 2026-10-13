@@ -32,11 +32,16 @@ Genv.State = Genv.State or {}
 local Addons = Hub:LoadRequire("Core/Modules/Hub/Addon/script.lua", nil, nil, Hub, ConfigData)
 Addons = type(Addons) == "table" and Addons or {}
 
+local ThemeReady, ThemeError = Hub:SetTheme(ConfigData.Theme)
+assert(ThemeReady, ThemeError or "Config.Theme must name a configured theme.")
+
 --// Preferences
 
-local LibraryConfig = type(ConfigData.Library) == "table" and ConfigData.Library or {}
-local SettingsFolder = type(LibraryConfig.SettingsFolder) == "string" and LibraryConfig.SettingsFolder or "Library"
-local SettingsFile = type(LibraryConfig.SettingsFile) == "string" and LibraryConfig.SettingsFile or "settings.json"
+local LibraryConfig = assert(type(ConfigData.Library) == "table" and ConfigData.Library, "Config.Library is required.")
+local SettingsFolder = assert(type(LibraryConfig.SettingsFolder) == "string" and LibraryConfig.SettingsFolder ~= "" and LibraryConfig.SettingsFolder,
+    "Config.Library.SettingsFolder must be a nonempty path.")
+local SettingsFile = assert(type(LibraryConfig.SettingsFile) == "string" and LibraryConfig.SettingsFile ~= "" and LibraryConfig.SettingsFile,
+    "Config.Library.SettingsFile must be a nonempty filename.")
 local SettingsPath = SettingsFolder .. "/" .. SettingsFile
 
 if Hub:FileExists(SettingsPath) then
@@ -109,8 +114,7 @@ end
 
 local Icons
 local IconsLoaded = false
-local IconsReady = Instance.new("BindableEvent")
-IconsReady.Name = Hub:GenerateName(12)
+local IconsReady = Hub:CreateInstance("BindableEvent")
 
 task.spawn(function()
     Icons = Load("Core/Library/Assets/icons.lua")

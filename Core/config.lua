@@ -2,9 +2,9 @@ local Config = {
     --// Hub
     Title = "SpecterX",
     SubTitle = "By Specter",
+    Theme = "Obsidian",
     Image = 121730327067473,
     LoadingScreen = false,
-    Theme = "MetalRed",
 
     --// Icon
     Icon = {
@@ -51,6 +51,7 @@ local Config = {
         MinTabSize = 140,
         MaxTabSize = 220,
         ScreenPadding = 16,
+        FallbackViewportSize = {1280, 720},
         Draggable = true,
         Resizable = true,
         TabResizable = true,
@@ -62,6 +63,10 @@ local Config = {
         LockedMessage = "This element is unavailable.",
         SettingsFolder = "Library",
         SettingsFile = "settings.json",
+        -- Legacy key: optional flags JSON file path, e.g. "Library/flags.json".
+        SaveFolder = false,
+        SettingsSaveDelay = 0.5,
+        FlagsSaveDelay = 0.1,
         ConfigButton = true,
         MinimizedWidth = 220,
         ColorPickerSmoothTime = 0.06,
@@ -71,7 +76,70 @@ local Config = {
             ElementCornerRadius = 6,
             StrokeThickness = 1,
             ButtonHoverTransparency = 0.4,
-            GradientRotation = 45
+            GradientRotation = 45,
+            ControlColors = {
+                White = Color3.fromRGB(255, 255, 255),
+                Light = Color3.fromRGB(220, 220, 220),
+                Handle = Color3.fromRGB(230, 230, 230),
+                Link = Color3.fromRGB(40, 150, 255),
+                JoinText = Color3.fromRGB(220, 220, 220),
+                Join = Color3.fromRGB(50, 150, 50),
+                JoinDisabled = Color3.fromRGB(100, 100, 100),
+                JoinDisabledText = Color3.fromRGB(150, 150, 150)
+            }
+        },
+
+        Controls = {
+            Titles = {
+                Dialog = "Dialog",
+                DialogText = "This is a Dialog",
+                Tab = "Tab!",
+                Section = "Section",
+                Paragraph = "Paragraph",
+                Button = "Button!",
+                Toggle = "Toggle",
+                Dropdown = "Dropdown",
+                Players = "Players",
+                Selector = "Selector",
+                Slider = "Slider!",
+                TextBox = "Text Box",
+                Keybind = "Keybind",
+                ColorPicker = "Custom color",
+                Discord = "Discord",
+                Locked = "Locked"
+            },
+            Slider = {
+                Min = 10,
+                Max = 100,
+                Step = 1,
+                Default = 25
+            },
+            TextBox = {
+                Default = "",
+                Placeholder = "Input",
+                ClearText = false
+            },
+            ColorPicker = {
+                Default = "#137D81",
+                MaxRecent = 8,
+                Display = "Hex",
+                ReturnFormat = "Color3",
+                Presets = {
+                    Color3.fromRGB(108, 99, 255),
+                    Color3.fromRGB(33, 150, 243),
+                    Color3.fromRGB(67, 181, 129),
+                    Color3.fromRGB(255, 193, 7),
+                    Color3.fromRGB(255, 107, 107),
+                    Color3.fromRGB(233, 30, 140),
+                    Color3.fromRGB(156, 106, 222),
+                    Color3.fromRGB(255, 255, 255)
+                }
+            },
+            Dropdown = {
+                Placeholder = "...",
+                MultiMin = 0
+            },
+            TopBarIcon = "circle"
         },
 
         TopBar = {
@@ -149,7 +217,117 @@ local Config = {
             Search = false,
             PrefixOnly = true,
             CloseOnSelect = false,
-            MaxVisibleOptions = 10
+            MaxVisibleOptions = 10,
+            SearchConfig = {
+                TextSize = 11,
+                MinTextSize = 8,
+                SearchFrameHeight = 21,
+                SearchFrameOffset = 5,
+                IconSize = 12,
+                IconPosition = 6,
+                InputOffset = 23,
+                NoResultTextSize = 9
+            }
+        },
+
+        Notification = {
+            Width = 300,
+            Height = 32,
+            MaxWidth = 420,
+            Margin = 8,
+            CornerRadius = 7,
+            StrokeTransparency = 0.4,
+            Duration = 3,
+            TextSize = 10,
+            TextPaddingX = 10,
+            TextPaddingY = 7,
+            TextHeightPadding = 16,
+            ZIndex = 2000
+        },
+
+        Code = {
+            Title = "Code",
+            Source = "",
+            Language = "Lua",
+            Edit = false,
+            Execute = false,
+            ExecuteSpinDuration = 0.55,
+            Copy = true,
+            Error = false,
+            BlockOnError = true,
+            MaxDiagnostics = 12,
+            SmoothCaret = true,
+            CaretWidth = 1,
+            CaretOffset = 0,
+            CaretColor = Color3.fromRGB(255, 255, 255),
+            CaretCornerRadius = 1,
+            CaretHeightPadding = 1,
+            CaretHeightRatio = 0.75,
+            CaretEndGap = 2,
+            CaretMoveDuration = 0.07,
+            CaretBlinkOnDuration = 0.55,
+            CaretBlinkOffDuration = 0.5,
+            CaretBlinkFadeDuration = 0.14,
+            IndentUnit = "\t",
+            FontSize = 13,
+            LineSpacing = 1.16,
+            MaxVisibleLines = 8,
+            HeaderHeight = 30,
+            Padding = 5,
+            BottomPadding = 6,
+            GutterWidth = 20,
+            GutterPaddingLeft = 3,
+            GutterPaddingRight = 5,
+            GutterNumberTransparency = 0.12,
+            GutterActiveNumberTransparency = 0,
+            GutterErrorNumberTransparency = 0.05,
+            GutterActiveLine = true,
+            PaletteLightThreshold = 0.55,
+            ErrorTip = {
+                MaxWidth = 280,
+                Margin = 4,
+                Padding = 8,
+                TextSize = 10,
+                Duration = 4,
+                CornerRadius = 6,
+                StrokeTransparency = 0
+            },
+            ErrorColor = {
+                Dark = Color3.fromRGB(255, 92, 92),
+                Light = Color3.fromRGB(205, 38, 38)
+            },
+            Palette = {
+                Dark = {
+                    Keyword = Color3.fromRGB(198, 120, 221),
+                    Global = Color3.fromRGB(86, 182, 194),
+                    Function = Color3.fromRGB(97, 175, 239),
+                    Property = Color3.fromRGB(171, 201, 229),
+                    Type = Color3.fromRGB(229, 192, 123),
+                    String = Color3.fromRGB(152, 195, 121),
+                    Escape = Color3.fromRGB(209, 154, 102),
+                    Number = Color3.fromRGB(209, 154, 102),
+                    Literal = Color3.fromRGB(209, 154, 102),
+                    Comment = Color3.fromRGB(127, 143, 159),
+                    Operator = Color3.fromRGB(198, 120, 221),
+                    Punctuation = Color3.fromRGB(171, 178, 191),
+                    Attribute = Color3.fromRGB(229, 192, 123)
+                },
+                Light = {
+                    Keyword = Color3.fromRGB(133, 55, 164),
+                    Global = Color3.fromRGB(0, 109, 125),
+                    Function = Color3.fromRGB(37, 100, 166),
+                    Property = Color3.fromRGB(42, 85, 125),
+                    Type = Color3.fromRGB(139, 86, 16),
+                    String = Color3.fromRGB(66, 121, 48),
+                    Escape = Color3.fromRGB(156, 80, 29),
+                    Number = Color3.fromRGB(156, 80, 29),
+                    Literal = Color3.fromRGB(156, 80, 29),
+                    Comment = Color3.fromRGB(92, 108, 120),
+                    Operator = Color3.fromRGB(133, 55, 164),
+                    Punctuation = Color3.fromRGB(65, 75, 90),
+                    Attribute = Color3.fromRGB(139, 86, 16)
+                }
+            }
         },
 
         Animation = {
@@ -176,6 +354,33 @@ local Config = {
             TouchTopbarButtonSize = 18,
             DesktopTopbarButtonSize = 14
         }
+    },
+
+    --// Loader
+    Loader = {
+        Time = 4.3,
+        Steps = {
+            {"Connecting to {Title}...", 15},
+            {"Loading modules...", 30},
+            {"Initializing components...", 50},
+            {"Preparing interface...", 70},
+            {"Optimizing system...", 85},
+            {"Finalizing...", 100}
+        },
+        Music = "rbxassetid://0",
+        MusicVolume = 0.5,
+        MusicLooped = true,
+        Blur = true,
+        BlurSize = 18,
+        BlurInTime = 0.35,
+        BlurFadeTime = 0.45,
+        MusicFadeTime = 1.2,
+        GuiFadeTime = 0.45
+    },
+
+    --// Addons
+    Addon = {
+        Folder = "Addon"
     },
 
     --// Themes
