@@ -4481,6 +4481,12 @@ function Library:MakeWindow(Configs)
 			local Destroyed = false
 			local Binding
 			local ToggleControl = {}
+			local DragInput, DragMoveConnection, DragEndConnection
+			local DragStartX, DragStartCenter
+			local Dragged, Scrolled = false, false
+			local SuppressActivation, ActivationToken = false, 0
+			local PositionTween, TransparencyTween
+			local FinishDrag
 			local Button, LabelFunc = ButtonFrame(Container, TName, TDesc, UDim2.new(1, -38))
 			
 			local ToggleHolder = InsertTheme(Create("Frame", Button, {
@@ -4497,38 +4503,152 @@ function Library:MakeWindow(Configs)
 				AnchorPoint = Vector2.new(0.5, 0.5)
 			})
 			
-			local Toggle = InsertTheme(Create("Frame", Slider, {
-				Size = UDim2.new(0, 12, 0, 12),
-				Position = UDim2.new(0, 0, 0.5),
-				AnchorPoint = Vector2.new(0, 0.5),
-				BackgroundColor3 = Theme["Color Theme"]
+			local Toggle = InsertTheme(Create("TextButton", Slider, {
+				Size = UDim2.fromOffset(12, 12),
+				Position = UDim2.new(0, 6, 0.5, 0),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundColor3 = Theme["Color Theme"],
+				Text = "",
+				AutoButtonColor = false,
+				Selectable = false,
+				Active = true
 			}), "Theme")Make("Corner", Toggle, UDim.new(0.5, 0))
+			local KnobHalfWidth = Toggle.Size.X.Offset / 2
 			
+			local function SetToggleVisual(Value, Instant)
+				if PositionTween then
+					PositionTween:Cancel()
+					PositionTween = nil
+				end
+				if TransparencyTween then
+					TransparencyTween:Cancel()
+					TransparencyTween = nil
+				end
+
+				local Target = UDim2.new(Value and 1 or 0, Value and -KnobHalfWidth or KnobHalfWidth, 0.5, 0)
+				local Transparency = Value and 0 or 0.8
+				if Instant then
+					Toggle.Position = Target
+					Toggle.BackgroundTransparency = Transparency
+				else
+					PositionTween = CreateTween({Toggle, "Position", Target, AnimationToggle})
+					TransparencyTween = CreateTween({Toggle, "BackgroundTransparency", Transparency, AnimationToggle})
+				end
+			end
+
 			local function SetToggle(Value, Force)
 				if Destroyed or type(Value) ~= "boolean" then return false end
 				if Default == Value and not Force then return true end
+				if DragInput and FinishDrag then FinishDrag(false) end
+
 				Default = Value
 				SetFlag(Flag, Default)
-				if Force then
-					Toggle.AnchorPoint = Vector2.new(Default and 1 or 0, 0.5)
-					Toggle.Position = UDim2.new(Default and 1 or 0, 0, 0.5)
-					Toggle.BackgroundTransparency = Default and 0 or 0.8
-				elseif Default then
-					Toggle.AnchorPoint = Vector2.new(1, 0.5)
-					CreateTween({Toggle, "Position", UDim2.new(1, 0, 0.5), AnimationToggle})
-					CreateTween({Toggle, "BackgroundTransparency", 0, AnimationToggle})
-				else
-					Toggle.AnchorPoint = Vector2.new(0, 0.5)
-					CreateTween({Toggle, "Position", UDim2.new(0, 0, 0.5), AnimationToggle})
-					CreateTween({Toggle, "BackgroundTransparency", 0.8, AnimationToggle})
-				end
+				SetToggleVisual(Default, Force)
 				if Binding then Binding:Refresh() end
 				Funcs:FireCallback(Callback, Default)
 				return true
 			end
 
+			FinishDrag = function(Restore)
+				if not DragInput then return end
+				DragInput = nil
+				if DragMoveConnection then
+					DragMoveConnection:Disconnect()
+					DragMoveConnection = nil
+				end
+				if DragEndConnection then
+					DragEndConnection:Disconnect()
+					DragEndConnection = nil
+				end
+				if Restore and not Destroyed then
+					SetToggleVisual(Default, false)
+				end
+
+				local Token = ActivationToken
+				task.delay(0.1, function()
+					if ActivationToken == Token then
+						SuppressActivation = false
+					end
+				end)
+			end
+
+			Toggle.InputBegan:Connect(function(Input)
+				local InputType = Input.UserInputType
+				if Destroyed or DragInput or ToggleControl.Locked or not Button.Interactable
+					or (InputType ~= Enum.UserInputType.MouseButton1 and InputType ~= Enum.UserInputType.Touch) then
+					return
+				end
+
+				if PositionTween then
+					PositionTween:Cancel()
+					PositionTween = nil
+				end
+				if TransparencyTween then
+					TransparencyTween:Cancel()
+					TransparencyTween = nil
+				end
+
+				DragInput = Input
+				DragStartX = Input.Position.X
+				DragStartCenter = Toggle.AbsolutePosition.X + Toggle.AbsoluteSize.X / 2 - Slider.AbsolutePosition.X
+				Dragged, Scrolled = false, false
+				SuppressActivation = true
+				ActivationToken += 1
+
+				DragMoveConnection = UserInputService.InputChanged:Connect(function(Changed)
+					if DragInput ~= Input or Scrolled then return end
+					if InputType == Enum.UserInputType.Touch then
+						if Changed ~= Input then return end
+					elseif Changed.UserInputType ~= Enum.UserInputType.MouseMovement then
+						return
+					end
+
+					local DeltaX = Changed.Position.X - DragStartX
+					local DeltaY = Changed.Position.Y - Input.Position.Y
+					if not Dragged then
+						if math.abs(DeltaY) > 10 and math.abs(DeltaY) > math.abs(DeltaX) then
+							Scrolled = true
+							return
+						end
+						if math.abs(DeltaX) <= 3 then return end
+						Dragged = true
+					end
+
+					local Travel = Slider.AbsoluteSize.X - KnobHalfWidth * 2
+					if Travel <= 0 then return end
+					local Center = math.clamp(DragStartCenter + DeltaX, KnobHalfWidth, KnobHalfWidth + Travel)
+					Toggle.Position = UDim2.new(0, Center, 0.5, 0)
+					Toggle.BackgroundTransparency = 0.8 * (1 - (Center - KnobHalfWidth) / Travel)
+				end)
+
+				DragEndConnection = UserInputService.InputEnded:Connect(function(Ended)
+					if DragInput ~= Input then return end
+					if InputType == Enum.UserInputType.Touch then
+						if Ended ~= Input then return end
+					elseif Ended.UserInputType ~= Enum.UserInputType.MouseButton1 then
+						return
+					end
+
+					local WasDragged, WasScrolled = Dragged, Scrolled
+					local NextValue = Toggle.Position.X.Offset >= Slider.AbsoluteSize.X / 2
+					FinishDrag(false)
+
+					if Destroyed or ToggleControl.Locked or not Button.Interactable or WasScrolled then
+						if not Destroyed then SetToggleVisual(Default, false) end
+					elseif WasDragged then
+						if NextValue == Default then
+							SetToggleVisual(Default, false)
+						elseif SetToggle(NextValue) then
+							PlayUISound()
+						end
+					elseif SetToggle(not Default) then
+						PlayUISound()
+					end
+				end)
+			end)
+
 			Button.Activated:Connect(function(Input)
-				if Destroyed or not Button.Interactable then return end
+				if Destroyed or SuppressActivation or DragInput or not Button.Interactable then return end
 				if Binding and (Binding.Waiting or Binding:ContainsInput(Input)) then return end
 				if SetToggle(not Default) then PlayUISound() end
 			end)
@@ -4536,6 +4656,7 @@ function Library:MakeWindow(Configs)
 			function ToggleControl:Visible(...) Funcs:ToggleVisible(Button, ...) end
 			function ToggleControl:Destroy()
 				if Destroyed then return end
+				if FinishDrag then FinishDrag(false) end
 				if Binding then Binding:Destroy() end
 				Destroyed = true
 				Button:Destroy()
@@ -4584,7 +4705,10 @@ function Library:MakeWindow(Configs)
 			end
 
 			ApplyLocked(ToggleControl, Button, Configs, function(IsLocked)
-				if IsLocked and Binding then Binding:SetWaiting(false) end
+				if IsLocked then
+					if FinishDrag then FinishDrag(true) end
+					if Binding then Binding:SetWaiting(false) end
+				end
 			end)
 			if HasKeybind then
 				Binding = CreateKeybindControl(ToggleControl, Button, LabelFunc, Configs, {
@@ -4600,6 +4724,7 @@ function Library:MakeWindow(Configs)
 				})
 			end
 			Button.Destroying:Connect(function()
+				if FinishDrag then FinishDrag(false) end
 				Destroyed = true
 				if Binding then Binding:Destroy() end
 			end)
