@@ -4615,11 +4615,12 @@ function Library:MakeWindow(Configs)
 						Dragged = true
 					end
 
-					local Travel = Slider.AbsoluteSize.X - KnobHalfWidth * 2
+					local HalfWidth = Toggle.AbsoluteSize.X / 2
+					local Travel = Slider.AbsoluteSize.X - HalfWidth * 2
 					if Travel <= 0 then return end
-					local Center = math.clamp(DragStartCenter + DeltaX, KnobHalfWidth, KnobHalfWidth + Travel)
-					Toggle.Position = UDim2.new(0, Center, 0.5, 0)
-					Toggle.BackgroundTransparency = 0.8 * (1 - (Center - KnobHalfWidth) / Travel)
+					local Center = math.clamp(DragStartCenter + DeltaX, HalfWidth, HalfWidth + Travel)
+					Toggle.Position = UDim2.new(Center / Slider.AbsoluteSize.X, 0, 0.5, 0)
+					Toggle.BackgroundTransparency = 0.8 * (1 - (Center - HalfWidth) / Travel)
 				end)
 
 				DragEndConnection = UserInputService.InputEnded:Connect(function(Ended)
@@ -4631,7 +4632,7 @@ function Library:MakeWindow(Configs)
 					end
 
 					local WasDragged, WasScrolled = Dragged, Scrolled
-					local NextValue = Toggle.Position.X.Offset >= Slider.AbsoluteSize.X / 2
+					local NextValue = Toggle.AbsolutePosition.X + Toggle.AbsoluteSize.X / 2 >= Slider.AbsolutePosition.X + Slider.AbsoluteSize.X / 2
 					FinishDrag(false)
 
 					if Destroyed or ToggleControl.Locked or not Button.Interactable or WasScrolled then
