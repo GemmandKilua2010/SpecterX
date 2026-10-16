@@ -1,4 +1,4 @@
-local BASE_URL, InjectedGames = ...
+local BASE_URL, InjectedGames, Game = ...
 assert(type(BASE_URL) == "string", "Translation base URL is required.")
 
 local Lower = string.lower
@@ -32,7 +32,7 @@ end
 local Games = type(InjectedGames) == "table" and InjectedGames or Fetch("Games/games.lua")
 Games = type(Games) == "table" and Games or {}
 
-local Game = Games[game.PlaceId] or Games[game.GameId]
+Game = type(Game) == "string" and Game ~= "Universal" and Game or nil
 
 local Translation = {}
 local Dictionaries = {}

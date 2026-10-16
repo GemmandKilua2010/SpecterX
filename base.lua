@@ -1,11 +1,12 @@
 --// Services
 
 local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
 
 --// Bootstrap
 
 local CONFIG_URL = "https://raw.githubusercontent.com/GemmandKilua2010/SpecterX/refs/heads/main/Core/config.lua"
-local ConfigData = assert(loadstring(game:HttpGet(CONFIG_URL)))()
+local ConfigData = assert(loadstring(game:HttpGet(CONFIG_URL .. "?sx=" .. HttpService:GenerateGUID(false))))()
 
 --// Repository
 
@@ -21,7 +22,7 @@ local BaseUrl = ("https://raw.githubusercontent.com/%s/%s/refs/heads/%s/"):forma
 
 --// Hub
 
-local HubChunk = assert(loadstring(game:HttpGet(BaseUrl .. "Core/Modules/Hub/script.lua")))
+local HubChunk = assert(loadstring(game:HttpGet(BaseUrl .. "Core/Modules/Hub/script.lua?sx=" .. HttpService:GenerateGUID(false))))
 local Hub = HubChunk(ConfigData, BaseUrl)
 
 --// Global
@@ -29,11 +30,10 @@ local Hub = HubChunk(ConfigData, BaseUrl)
 local Genv = Hub:GetGenv()
 Genv.State = Genv.State or {}
 
-local Addons = Hub:LoadRequire("Core/Modules/Hub/Addon/script.lua", nil, nil, Hub, ConfigData)
-Addons = type(Addons) == "table" and Addons or {}
-
-local ThemeReady, ThemeError = Hub:SetTheme(ConfigData.Theme)
-assert(ThemeReady, ThemeError or "Config.Theme must name a configured theme.")
+if Genv.State.Loading then
+    Hub:Warn("Script is already loading. Please wait until the current loading process is complete.")
+    return Genv.State.Base
+end
 
 --// Preferences
 
@@ -43,29 +43,125 @@ local SettingsFolder = assert(type(LibraryConfig.SettingsFolder) == "string" and
 local SettingsFile = assert(type(LibraryConfig.SettingsFile) == "string" and LibraryConfig.SettingsFile ~= "" and LibraryConfig.SettingsFile,
     "Config.Library.SettingsFile must be a nonempty filename.")
 local SettingsPath = SettingsFolder .. "/" .. SettingsFile
+local SavedSettings
 
 if Hub:FileExists(SettingsPath) then
     local Source = Hub:ReadFile(SettingsPath)
     if type(Source) == "string" then
         local Success, Saved = pcall(HttpService.JSONDecode, HttpService, Source)
         if Success and type(Saved) == "table" then
+            SavedSettings = Saved
             if type(Saved.Language) == "string" then
                 Hub:SetLanguage(Saved.Language)
-            end
-
-            if type(Saved.Theme) == "string" then
-                Hub:SetTheme(Saved.Theme)
             end
         end
     end
 end
 
---// State
+--// Whitelist
 
-if Genv.State.Loading then
-    Hub:Warn("Script is already loading. Please wait until the current loading process is complete.")
-    return Genv.State.Base
+local WhitelistEntries = Hub:LoadRequire("Core/Modules/whitelist.lua")
+local WhitelistManager
+local WhitelistSession = Genv.State.WhitelistSession
+if type(WhitelistSession) ~= "table" or WhitelistSession.JobId ~= game.JobId or WhitelistSession.PlaceId ~= game.PlaceId then
+    WhitelistSession = {JobId = game.JobId, PlaceId = game.PlaceId}
 end
+
+if type(WhitelistEntries) == "table" then
+    WhitelistManager = Hub:LoadRequire(
+        "Core/Modules/Hub/Whitelist/script.lua",
+        nil,
+        nil,
+        WhitelistEntries,
+        WhitelistSession
+    )
+end
+
+if type(WhitelistManager) ~= "table"
+    or type(WhitelistManager.Whitelist) ~= "function"
+    or type(WhitelistManager.AddWhitelist) ~= "function"
+    or type(WhitelistManager.RemoveWhitelist) ~= "function"
+    or type(WhitelistManager.ResetWhitelist) ~= "function"
+    or type(WhitelistManager.AddGroup) ~= "function"
+    or type(WhitelistManager.RemoveGroup) ~= "function"
+    or type(WhitelistManager.ResetGroups) ~= "function"
+    or type(WhitelistManager.WhitelistInfo) ~= "function"
+    or type(WhitelistManager.Group) ~= "function"
+    or type(WhitelistManager.Permission) ~= "function"
+    or type(WhitelistManager.CanManage) ~= "function"
+    or type(WhitelistManager.CanAccessAdminHub) ~= "function"
+    or type(WhitelistManager.ObserveAccess) ~= "function" then
+    if ConfigData.Whitelist == true then
+        local Player = Players.LocalPlayer
+        if Player then
+            pcall(Player.Kick, Player, Hub:Translate("Whitelist verification is unavailable. Please try again later."))
+        end
+        return nil
+    end
+    error("Failed to load the whitelist module.", 0)
+end
+
+if ConfigData.Whitelist == true then
+    local Success, Allowed = pcall(WhitelistManager.Whitelist, WhitelistManager, Players.LocalPlayer)
+    if not Success or Allowed ~= true then
+        local Player = Players.LocalPlayer
+        if Player then
+            local Message = Success and "You are not on the whitelist."
+                or "Whitelist verification is unavailable. Please try again later."
+            pcall(Player.Kick, Player, Hub:Translate(Message))
+        end
+        return nil
+    end
+end
+
+Genv.State.WhitelistSession = WhitelistSession
+
+local ActiveBase
+local AccessRevoked = false
+
+local function RevokeLocalAccess(Reason)
+    if AccessRevoked then return end
+    AccessRevoked = true
+
+    local RunningBase = ActiveBase or Genv.State.Base
+    if type(RunningBase) == "table" and type(RunningBase.Destroy) == "function" then
+        local Success, Error = pcall(RunningBase.Destroy, RunningBase)
+        if not Success then
+            warn("[SpecterX] Failed to close the hub: " .. tostring(Error))
+        end
+    else
+        local Window = Genv.State.Window
+        if typeof(Window) == "Instance" then
+            pcall(Window.Destroy, Window)
+        end
+    end
+
+    local Player = Players.LocalPlayer
+    if not Player then return end
+
+    local Message = Reason == "revoked" and "Your SpecterX access was revoked."
+        or "Your SpecterX access has expired."
+    local Success, Error = pcall(Player.Kick, Player, Hub:Translate(Message))
+    if not Success then
+        warn("[SpecterX] Could not kick the local player: " .. tostring(Error))
+    end
+end
+
+if ConfigData.Whitelist == true then
+    WhitelistManager:ObserveAccess(RevokeLocalAccess)
+end
+
+local Addons = Hub:LoadRequire("Core/Modules/Hub/Addon/script.lua", nil, nil, Hub, ConfigData)
+Addons = type(Addons) == "table" and Addons or {}
+
+local ThemeReady, ThemeError = Hub:SetTheme(ConfigData.Theme)
+assert(ThemeReady, ThemeError or "Config.Theme must name a configured theme.")
+
+if type(SavedSettings) == "table" and type(SavedSettings.Theme) == "string" then
+    Hub:SetTheme(SavedSettings.Theme)
+end
+
+--// State
 
 local PreviousBase = Genv.State.Base
 if type(PreviousBase) == "table" and type(PreviousBase.Destroy) == "function" then
@@ -92,7 +188,7 @@ UseLoader = UseLoader == nil and Config("LoadingScreen") or UseLoader
 local Loader
 
 if UseLoader then
-    Loader = Load("Core/Modules/Loader/script.lua")
+    Loader = Load("Core/Modules/Hub/Loader/script.lua")
 
     if type(Loader) == "table" and type(Loader.Run) == "function" then
         local Success = Loader:Run({
@@ -193,6 +289,7 @@ local Base = {
 }
 
 setmetatable(Base, {__index = Lib})
+ActiveBase = Base
 
 local Destroyed = false
 local OwnedRuntime = Genv.Runtime
@@ -207,6 +304,8 @@ end
 local function Cleanup()
     if Destroyed then return end
     Destroyed = true
+
+    WhitelistManager:Destroy()
 
     if type(Notify.Destroy) == "function" then
         pcall(Notify.Destroy, Notify)
@@ -278,6 +377,58 @@ Genv.State.Window = Lib.Window
 
 --// API
 
+Base.Whitelist = function(_, ...)
+    return WhitelistManager:Whitelist(...)
+end
+
+Base.AddWhitelist = function(_, ...)
+    return WhitelistManager:AddWhitelist(...)
+end
+
+Base.RemoveWhitelist = function(_, ...)
+    local Success, Error = WhitelistManager:RemoveWhitelist(...)
+    if Success and ConfigData.Whitelist == true and not WhitelistManager:Whitelist(Players.LocalPlayer) then
+        RevokeLocalAccess("revoked")
+    end
+    return Success, Error
+end
+
+Base.Group = function(_, ...)
+    return WhitelistManager:Group(...)
+end
+
+Base.AddGroup = function(_, ...)
+    return WhitelistManager:AddGroup(...)
+end
+
+Base.RemoveGroup = function(_, ...)
+    return WhitelistManager:RemoveGroup(...)
+end
+
+Base.ResetGroups = function(_, ...)
+    return WhitelistManager:ResetGroups(...)
+end
+
+Base.ResetWhitelist = function(_, ...)
+    return WhitelistManager:ResetWhitelist(...)
+end
+
+Base.WhitelistInfo = function(_, ...)
+    return WhitelistManager:WhitelistInfo(...)
+end
+
+Base.Permission = function(_, ...)
+    return WhitelistManager:Permission(...)
+end
+
+Base.CanManage = function(_, ...)
+    return WhitelistManager:CanManage(...)
+end
+
+Base.CanAccessAdminHub = function(_)
+    return WhitelistManager:CanAccessAdminHub()
+end
+
 Base.GetConfig = function(_, ...)
     return Config(...)
 end
@@ -296,6 +447,10 @@ end
 
 Base.GetGame = function(_, ...)
     return Hub:GetGame(...)
+end
+
+Base.GetGameInfo = function(_, ...)
+    return Hub:GetGameInfo(...)
 end
 
 Base.IsGame = function(_, ...)
@@ -423,6 +578,13 @@ end
 --// Finish
 
 Genv.State.Base = Base
+
+local GameInfo = Hub:GetGameInfo()
+local GameScript = GameInfo and GameInfo.Loadstring
+
+if type(GameScript) == "string" and GameScript:match("%S") and GameScript:lower() ~= "none" then
+    Load(GameScript, nil, nil, Base)
+end
 
 if Loader then
     Loader:Finish()

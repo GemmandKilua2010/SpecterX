@@ -3,6 +3,7 @@
 local Players = game:GetService("Players")
 local LocalizationService = game:GetService("LocalizationService")
 local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
 
 --// Context
 
@@ -59,7 +60,11 @@ local function LoadRequire(Url, Base, Retries, ...)
 
     for Attempt = 1, Retries do
         local Success, Result = pcall(function()
-            local Source = game:HttpGet((Base or BASE_URL) .. Url)
+            local Address = type(Url) == "string" and Url:match("^https?://") and Url or (Base or BASE_URL) .. Url
+            if Address:match("^https?://raw%.githubusercontent%.com/") then
+                Address = Address .. (Address:find("?", 1, true) and "&" or "?") .. "sx=" .. HttpService:GenerateGUID(false)
+            end
+            local Source = game:HttpGet(Address)
             local Chunk = assert(loadstring(Source))
             return Chunk(table.unpack(Arguments, 1, Arguments.n))
         end)
@@ -226,12 +231,44 @@ local Configs = BuildLookup(InjectedConfig)
 local Games = LoadRequire("Games/games.lua")
 Games = type(Games) == "table" and Games or {}
 
+local function AsGame(Entry)
+    if type(Entry) == "table" and type(Entry.Name) == "string" and Entry.Name ~= "" then
+        return Entry
+    end
+    if type(Entry) == "string" and Entry ~= "" then
+        return {Name = Entry}
+    end
+end
+
+local function ResolveGame(PlaceId, GameId)
+    PlaceId = tonumber(PlaceId) or game.PlaceId
+    GameId = tonumber(GameId) or game.GameId
+
+    local Entry = AsGame(Games[PlaceId]) or AsGame(Games[GameId])
+    if Entry then
+        return Entry
+    end
+
+    for _, Registered in pairs(Games) do
+        if type(Registered) == "table" and type(Registered.Places) == "table" then
+            for Key, SubPlaceId in pairs(Registered.Places) do
+                if tonumber(SubPlaceId) == PlaceId or tonumber(Key) == PlaceId and (type(SubPlaceId) == "string" or SubPlaceId == true) then
+                    return AsGame(Registered)
+                end
+            end
+        end
+    end
+end
+
+local CurrentGame = ResolveGame()
+
 local Translation = LoadRequire(
     "Core/Modules/Hub/Translation/script.lua",
     nil,
     nil,
     BASE_URL,
-    Games
+    Games,
+    CurrentGame and CurrentGame.Name
 )
 
 if type(Translation) ~= "table" then
@@ -666,11 +703,13 @@ function Main:GetGames()
     return Games
 end
 
-function Main:GetGame(PlaceId, GameId)
-    PlaceId = tonumber(PlaceId) or game.PlaceId
-    GameId = tonumber(GameId) or game.GameId
+function Main:GetGameInfo(PlaceId, GameId)
+    return ResolveGame(PlaceId, GameId)
+end
 
-    return Games[PlaceId] or Games[GameId] or "Universal"
+function Main:GetGame(PlaceId, GameId)
+    local Entry = self:GetGameInfo(PlaceId, GameId)
+    return Entry and Entry.Name or "Universal"
 end
 
 function Main:IsGame(Name)
