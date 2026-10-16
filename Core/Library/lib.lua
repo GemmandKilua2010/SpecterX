@@ -4482,7 +4482,7 @@ function Library:MakeWindow(Configs)
 			local Binding
 			local ToggleControl = {}
 			local DragInput, DragMoveConnection, DragEndConnection
-			local DragStartX, DragStartCenter
+			local DragStartX, DragStartY, DragStartCenter
 			local Dragged, Scrolled = false, false
 			local SuppressActivation, ActivationToken = false, 0
 			local PositionTween, TransparencyTween
@@ -4575,6 +4575,7 @@ function Library:MakeWindow(Configs)
 			Toggle.InputBegan:Connect(function(Input)
 				local InputType = Input.UserInputType
 				if Destroyed or DragInput or ToggleControl.Locked or not Button.Interactable
+					or (Binding and Binding.Waiting)
 					or (InputType ~= Enum.UserInputType.MouseButton1 and InputType ~= Enum.UserInputType.Touch) then
 					return
 				end
@@ -4589,7 +4590,7 @@ function Library:MakeWindow(Configs)
 				end
 
 				DragInput = Input
-				DragStartX = Input.Position.X
+				DragStartX, DragStartY = Input.Position.X, Input.Position.Y
 				DragStartCenter = Toggle.AbsolutePosition.X + Toggle.AbsoluteSize.X / 2 - Slider.AbsolutePosition.X
 				Dragged, Scrolled = false, false
 				SuppressActivation = true
@@ -4604,7 +4605,7 @@ function Library:MakeWindow(Configs)
 					end
 
 					local DeltaX = Changed.Position.X - DragStartX
-					local DeltaY = Changed.Position.Y - Input.Position.Y
+					local DeltaY = Changed.Position.Y - DragStartY
 					if not Dragged then
 						if math.abs(DeltaY) > 10 and math.abs(DeltaY) > math.abs(DeltaX) then
 							Scrolled = true
