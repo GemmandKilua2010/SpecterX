@@ -7209,7 +7209,7 @@ function Library:MakeWindow(Configs)
 			})
 			Create("UIListLayout", Content, {
 				SortOrder = Enum.SortOrder.LayoutOrder,
-				Padding = UDim.new(0, ElementSpacing)
+				Padding = UDim.new(0, math.max(ElementSpacing, 11))
 			})
 
 			local Header = Create("Frame", Content, {
@@ -7220,7 +7220,7 @@ function Library:MakeWindow(Configs)
 			})
 			Create("UIListLayout", Header, {
 				SortOrder = Enum.SortOrder.LayoutOrder,
-				Padding = UDim.new(0, 2)
+				Padding = UDim.new(0, 4)
 			})
 
 			local TitleLabel = InsertTheme(Create("TextLabel", Header, {
@@ -7262,7 +7262,7 @@ function Library:MakeWindow(Configs)
 			local Outline = InsertTheme(Create("UIStroke", Editor, {
 				Color = Theme["Color Theme"],
 				Thickness = 1,
-				Transparency = 0.82,
+				Enabled = false,
 				ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 			}), "Theme")
 
@@ -7374,11 +7374,11 @@ function Library:MakeWindow(Configs)
 			end)
 
 			Input.Focused:Connect(function()
-				TweenService:Create(Outline, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.24}):Play()
+				if not Destroyed and not TextArea.Locked then Outline.Enabled = true end
 			end)
 
 			Input.FocusLost:Connect(function()
-				TweenService:Create(Outline, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.82}):Play()
+				Outline.Enabled = false
 				if not TextArea.Locked then Submit(false) end
 			end)
 
@@ -7455,6 +7455,7 @@ function Library:MakeWindow(Configs)
 
 			ApplyLocked(TextArea, Frame, Configs, function(Locked)
 				Input.TextEditable = not Locked and not ReadOnly
+				if Locked then Outline.Enabled = false end
 			end)
 			return RegisterFlagObject(Flag, TextArea, Frame)
 		end
