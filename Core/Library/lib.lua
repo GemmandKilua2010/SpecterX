@@ -6413,6 +6413,214 @@ function Library:MakeWindow(Configs)
 			ApplyLocked(Selector, Button, Configs)
 			return RegisterFlagObject(Flag, Selector, Button)
 		end
+
+		function Tab:AddProgressBar(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
+			local Range = type(Configs.Value) == "table" and Configs.Value or {}
+
+			local function Finite(Value)
+				local Number = tonumber(Value)
+				if not Number or Number ~= Number or math.abs(Number) == math.huge then return nil end
+				return Number
+			end
+
+			local Min = Finite(Range.Min) or Finite(Configs.Min) or 0
+			local Max = Finite(Range.Max) or Finite(Configs.Max) or 100
+			if Min > Max then Min, Max = Max, Min end
+
+			local Default = (type(Configs.Value) == "number" and Finite(Configs.Value))
+				or Finite(Range.Default) or Finite(Configs.Default) or Min
+			local Value = math.clamp(Default, Min, Max)
+			local Indeterminate = Configs.Indeterminate == true
+			local IndeterminateText = tostring(Configs.IndeterminateText or "")
+			local ShowValue = Configs.ShowValue
+			if ShowValue == nil then ShowValue = not Indeterminate or IndeterminateText ~= "" end
+			ShowValue = ShowValue == true
+
+			local Width = math.max(Finite(Configs.Width) or 160, 0)
+			local ValueWidth = math.max(Finite(Configs.ValueWidth) or 44, 0)
+			local ControlGap = math.max(Finite(Configs.ControlGap) or 16, 0)
+			local Animate = Configs.Animate ~= false
+			local AnimationDuration = math.max(Finite(Configs.AnimationDuration) or 0.15, 0)
+			local ControlWidth = Width + (ShowValue and ValueWidth + 8 or 0)
+			local Title = Configs[1] or Configs.Name or Configs.Title or "ProgressBar"
+			local Desc = Configs.Desc or Configs.Description or ""
+
+			local Frame, LabelFunc = ButtonFrame(
+				Container, Title, Desc,
+				UDim2.new(1, -(ControlWidth + ControlGap + ElementHorizontalPadding)), false
+			)
+			local Holder = Create("Frame", Frame, {
+				Size = UDim2.fromOffset(ControlWidth, 24),
+				Position = UDim2.new(1, -ElementHorizontalPadding, 0.5, 0),
+				AnchorPoint = Vector2.new(1, 0.5),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0
+			})
+			local Track = InsertTheme(Create("Frame", Holder, {
+				Size = UDim2.fromOffset(Width, 6),
+				Position = UDim2.new(0, 0, 0.5, 0),
+				AnchorPoint = Vector2.new(0, 0.5),
+				BackgroundColor3 = Theme["Color Stroke"],
+				BorderSizePixel = 0,
+				ClipsDescendants = true
+			}), "Stroke")
+			Make("Corner", Track, UDim.new(1, 0))
+
+			local Fill = InsertTheme(Create("Frame", Track, {
+				Size = UDim2.fromScale(0, 1),
+				BackgroundColor3 = Theme["Color Theme"],
+				BorderSizePixel = 0
+			}), "Theme")
+			Make("Corner", Fill, UDim.new(1, 0))
+
+			local ValueLabel = InsertTheme(Create("TextLabel", Holder, {
+				Size = UDim2.fromOffset(ValueWidth, 20),
+				Position = UDim2.new(1, 0, 0.5, 0),
+				AnchorPoint = Vector2.new(1, 0.5),
+				BackgroundTransparency = 1,
+				TextColor3 = Theme["Color Text"],
+				TextTransparency = 0.15,
+				Font = Enum.Font.GothamMedium,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Text = "",
+				Visible = ShowValue
+			}), "Text")
+
+			local ProgressBar = {
+				__type = "ProgressBar",
+				Value = {Min = Min, Max = Max, Default = Value},
+				Indeterminate = Indeterminate,
+				IndeterminateText = IndeterminateText,
+				ShowValue = ShowValue,
+				DisplayMode = Configs.DisplayMode or "Percent",
+				Format = Configs.Format,
+				Animate = Animate,
+				AnimationDuration = AnimationDuration,
+				Speed = math.max(Finite(Configs.Speed) or 1, 0.01),
+				UIElements = {Container = Holder, Bar = Track, Fill = Fill, Value = ValueLabel}
+			}
+			local Destroyed = false
+			local ValueTween
+			local LoopTween
+
+			local function GetRatio(Number)
+				if Max == Min then return Number >= Max and 1 or 0 end
+				return math.clamp((Number - Min) / (Max - Min), 0, 1)
+			end
+
+			local function FormatNumber(Number)
+				if Number % 1 == 0 then return tostring(Number) end
+				return tostring(tonumber(string.format("%.2f", Number)))
+			end
+
+			local function FormatValue(Number, Percentage)
+				if Indeterminate then return ProgressBar.IndeterminateText end
+				if type(ProgressBar.Format) == "function" then
+					local Success, Result = pcall(ProgressBar.Format, Number, Percentage, Min, Max)
+					if Success and Result ~= nil then return tostring(Result) end
+				end
+				if ProgressBar.DisplayMode == "Value" then
+					return FormatNumber(Number)
+				elseif ProgressBar.DisplayMode == "Fraction" then
+					return FormatNumber(Number) .. "/" .. FormatNumber(Max)
+				end
+				return tostring(math.floor(Percentage + 0.5)) .. "%"
+			end
+
+			local function Refresh(Instant)
+				if Destroyed then return end
+				local Fraction = GetRatio(Value)
+				ValueLabel.Text = FormatValue(Value, Fraction * 100)
+				if Indeterminate then return end
+
+				if ValueTween then
+					ValueTween:Cancel()
+					ValueTween = nil
+				end
+				local Target = UDim2.fromScale(Fraction, 1)
+				if not Instant and ProgressBar.Animate and ProgressBar.AnimationDuration > 0 then
+					ValueTween = TweenService:Create(Fill,
+						TweenInfo.new(ProgressBar.AnimationDuration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+						{Size = Target})
+					ValueTween:Play()
+				else
+					Fill.Size = Target
+				end
+			end
+
+			local function SetValue(NewValue)
+				if Destroyed then return Value end
+				local Number = Finite(NewValue)
+				if not Number then return Value end
+				Value = math.clamp(Number, Min, Max)
+				ProgressBar.Value.Default = Value
+				Refresh(false)
+				return Value
+			end
+
+			function ProgressBar:Set(NewValue)
+				return SetValue(NewValue)
+			end
+			function ProgressBar:Get()
+				return Value
+			end
+			function ProgressBar:GetPercentage()
+				return GetRatio(Value) * 100
+			end
+			function ProgressBar:SetRange(NewMin, NewMax)
+				NewMin, NewMax = Finite(NewMin), Finite(NewMax)
+				if not NewMin or not NewMax then return Min, Max end
+				if NewMin > NewMax then NewMin, NewMax = NewMax, NewMin end
+				Min, Max = NewMin, NewMax
+				ProgressBar.Value.Min, ProgressBar.Value.Max = Min, Max
+				SetValue(Value)
+				return Min, Max
+			end
+			function ProgressBar:SetMin(NewMin)
+				NewMin = Finite(NewMin)
+				if not NewMin then return Min end
+				self:SetRange(NewMin, math.max(NewMin, Max))
+				return Min
+			end
+			function ProgressBar:SetMax(NewMax)
+				NewMax = Finite(NewMax)
+				if not NewMax then return Max end
+				self:SetRange(math.min(Min, NewMax), NewMax)
+				return Max
+			end
+			function ProgressBar:SetTitle(NewTitle)
+				LabelFunc:SetTitle(DisplayString(NewTitle))
+			end
+			function ProgressBar:SetDesc(NewDesc)
+				LabelFunc:SetDesc(DisplayString(NewDesc))
+			end
+			function ProgressBar:Visible(...)
+				if not Destroyed then Funcs:ToggleVisible(Frame, ...) end
+			end
+			function ProgressBar:Destroy()
+				if not Destroyed then Frame:Destroy() end
+			end
+
+			if Indeterminate then
+				Fill.Size = UDim2.fromScale(0.35, 1)
+				Fill.Position = UDim2.fromScale(-0.35, 0)
+				LoopTween = TweenService:Create(Fill,
+					TweenInfo.new(1 / ProgressBar.Speed, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1),
+					{Position = UDim2.fromScale(1, 0)})
+				LoopTween:Play()
+			end
+			Frame.Destroying:Connect(function()
+				Destroyed = true
+				if ValueTween then ValueTween:Cancel() ValueTween = nil end
+				if LoopTween then LoopTween:Cancel() LoopTween = nil end
+			end)
+			Refresh(true)
+
+			return RegisterFlagObject(Configs.Flag, ProgressBar, Frame)
+		end
 		function Tab:AddSlider(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local SName = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.Slider)
