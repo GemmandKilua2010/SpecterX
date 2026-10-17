@@ -33,6 +33,14 @@ local Library = {
 	Instances = {},
 	Elements = {},
 	Options = {},
+	SectionIndicators = setmetatable({}, {__mode = "k"}),
+	SectionRanges = {
+		SectionHeight = {16, 28},
+		SectionTextSize = {9, 16},
+		SectionThickness = {2, 8},
+		SectionIndicatorHeight = {6, 20},
+		SectionSpacing = {2, 14}
+	},
 	Flags = {},
 	Tabs = {},
 	Icons = {}
@@ -44,6 +52,14 @@ local IconSearchCache = {}
 local DropdownSearchListeners = setmetatable({}, {__mode = "k"})
 local DropdownPrefixListeners = setmetatable({}, {__mode = "k"})
 local DropdownSizeListeners = setmetatable({}, {__mode = "k"})
+Library._KeybindSettings = {Listeners = setmetatable({}, {__mode = "k"})}
+Library._PositionSettings = {Bindings = setmetatable({}, {__mode = "k"})}
+function Library._PositionSettings.Normalize(Value)
+    if type(Value) ~= "table" then return nil end
+    local X, Y = tonumber(Value.X), tonumber(Value.Y)
+    if not X or not Y or X ~= X or Y ~= Y or math.abs(X) == math.huge or math.abs(Y) == math.huge then return nil end
+    return {X = math.clamp(X, 0, 1), Y = math.clamp(Y, 0, 1)}
+end
 
 --// Config
 
@@ -129,6 +145,35 @@ local function ToAssetContentId(Value)
     return "rbxassetid://" .. Id
 end
 
+local GuiImageCache = {}
+
+local function ResolveGuiImage(Value)
+    local Id = NormalizeAssetId(Value)
+    if Id == "" then return "" end
+    if not Id then return type(Value) == "string" and Value or "" end
+
+    local Cached = GuiImageCache[Id]
+    if Cached then return Cached end
+
+    local Content = "rbxassetid://" .. Id
+    local Success, Objects = pcall(game.GetObjects, game, Content)
+
+    if Success and type(Objects) == "table" then
+        for _, Object in ipairs(Objects) do
+            if typeof(Object) == "Instance" then
+                local Decal = Object:IsA("Decal") and Object or Object:FindFirstChildWhichIsA("Decal", true)
+                if Decal and Decal.Texture ~= "" then
+                    Content = Decal.Texture
+                end
+                Object:Destroy()
+            end
+        end
+    end
+
+    GuiImageCache[Id] = Content
+    return Content
+end
+
 local BackgroundScaleTypes = {
     Crop = Enum.ScaleType.Crop,
     Fit = Enum.ScaleType.Fit,
@@ -192,6 +237,19 @@ local TabResizeHandleWidth = math.clamp(ConfigNumber(LibraryConfig, "TabResizeHa
 local AppearanceConfig = ConfigSection("Appearance")
 local ControlColors = AppearanceConfig.ControlColors
 local ControlsConfig = ConfigSection("Controls")
+function Library._KeybindSettings.NormalizeWidth(Value)
+    Value = tonumber(Value)
+    if not Value or Value ~= Value or math.abs(Value) == math.huge then return nil end
+    return math.clamp(math.floor(Value + 0.5), 32, 96)
+end
+do
+    local Defaults = type(ControlsConfig.Keybind) == "table" and ControlsConfig.Keybind or {}
+    local State = Library._KeybindSettings
+    State.DefaultIcon = Defaults.ShowIcon == true
+    State.DefaultWidth = State.NormalizeWidth(Defaults.Width) or 48
+    State.DefaultHighlight = Defaults.HighlightActive ~= false
+    State.DefaultRightClick = Defaults.RightClickCapture ~= false
+end
 local CornerRadius = math.max(0, ConfigNumber(AppearanceConfig, "CornerRadius"))
 local ElementCornerRadius = math.max(0, ConfigNumber(AppearanceConfig, "ElementCornerRadius"))
 local StrokeThickness = math.max(0, ConfigNumber(AppearanceConfig, "StrokeThickness"))
@@ -292,6 +350,10 @@ local AnimationDialogFade = math.max(0, ConfigNumber(AnimationConfig, "DialogFad
 Library.Save.UISize = {DefaultWidth, DefaultHeight}
 Library.Save.TabSize = DefaultTabSize
 Library.Save.Keybind = DefaultKeybind
+Library.Save.KeybindIcon = Library._KeybindSettings.DefaultIcon
+Library.Save.KeybindWidth = Library._KeybindSettings.DefaultWidth
+Library.Save.KeybindHighlight = Library._KeybindSettings.DefaultHighlight
+Library.Save.KeybindRightClick = Library._KeybindSettings.DefaultRightClick
 Library.Save.Transparency = DefaultTransparency
 Library.Save.Draggable = Draggable
 Library.Save.Resizable = Resizable
@@ -299,6 +361,15 @@ Library.Save.TabResizable = TabResizable
 Library.Save.MinimizedWidth = DefaultMinimizedWidth
 Library.Save.ScrollThickness = ScrollThickness
 Library.Save.ScrollTransparency = ScrollTransparency
+Library.Save.SectionIndicator = LibraryConfig.Section.Indicator == true
+Library.Save.ShowFloatingMinimizeButton = true
+Library.Save.SavePosition = LibraryConfig.SavePosition ~= false
+Library.Save.Positions = {}
+Library.Save.SectionHeight = math.clamp(ConfigNumber(LibraryConfig.Section, "Height"), 16, 28)
+Library.Save.SectionTextSize = math.clamp(ConfigNumber(LibraryConfig.Section, "TextSize"), 9, 16)
+Library.Save.SectionThickness = math.clamp(ConfigNumber(LibraryConfig.Section, "Thickness"), 2, 8)
+Library.Save.SectionIndicatorHeight = math.clamp(ConfigNumber(LibraryConfig.Section, "IndicatorHeight"), 6, 20)
+Library.Save.SectionSpacing = math.clamp(ConfigNumber(LibraryConfig.Section, "Spacing"), 2, 14)
 Library.Save.BackgroundImage = DefaultBackgroundImage
 Library.Save.BackgroundPreset = DefaultBackgroundPreset
 Library.Save.BackgroundImageTransparency = DefaultBackgroundImageTransparency
@@ -415,17 +486,33 @@ local SetProps, SetChildren, InsertTheme, Create do
             ScrollTransparency = {0, 1},
             BackgroundImageTransparency = {0, 100},
             SoundVolume = {0, 100},
-            DropdownMaxVisibleOptions = {3, 12}
+            DropdownMaxVisibleOptions = {3, 12},
+            KeybindWidth = {32, 96},
+            SectionHeight = Library.SectionRanges.SectionHeight,
+            SectionTextSize = Library.SectionRanges.SectionTextSize,
+            SectionThickness = Library.SectionRanges.SectionThickness,
+            SectionIndicatorHeight = Library.SectionRanges.SectionIndicatorHeight,
+            SectionSpacing = Library.SectionRanges.SectionSpacing
         }
         for Key, Range in pairs(NumericRanges) do
             local Value = tonumber(Decode[Key])
             if Value and Value == Value and math.abs(Value) < math.huge then
                 if Key == "DropdownMaxVisibleOptions" then Value = math.floor(Value) end
+                if Key == "KeybindWidth" then Value = math.floor(Value + 0.5) end
                 Accept(Key, math.clamp(Value, Range[1], Range[2]))
             end
         end
-        for _, Key in ipairs({"Draggable", "Resizable", "TabResizable", "SoundEnabled", "DropdownSearch", "DropdownPrefixOnly", "DropdownCloseOnSelect"}) do
+        for _, Key in ipairs({"Draggable", "Resizable", "TabResizable", "SoundEnabled", "DropdownSearch", "DropdownPrefixOnly", "DropdownCloseOnSelect", "SectionIndicator", "ShowFloatingMinimizeButton", "KeybindIcon", "KeybindHighlight", "KeybindRightClick", "SavePosition"}) do
             if type(Decode[Key]) == "boolean" then Accept(Key, Decode[Key]) end
+        end
+        if type(Decode.Positions) == "table" then
+            local Positions = {}
+            for Key, Value in pairs(Decode.Positions) do
+                if type(Key) == "string" and (Key == "Window" or Key:match("^Minimize%d+$")) then
+                    Positions[Key] = Library._PositionSettings.Normalize(Value)
+                end
+            end
+            Accept("Positions", Positions)
         end
         if type(Decode.UISize) == "table" then
             local Width, Height = GetPair(Decode.UISize)
@@ -460,6 +547,8 @@ local SetProps, SetChildren, InsertTheme, Create do
 	if type(Hub) == "table" and type(Hub.CreateFolder) == "function" then
 		Hub:CreateFolder(SettingsFolder)
 	end
+
+    Library.DefaultSettings = table.clone(Library.Save)
 
 	pcall(LoadSettings)
     EnsureSoundPreset(Library.Save.SoundId)
@@ -713,6 +802,7 @@ local GuiContainer = Hub:GetGuiContainer()
 local ScreenGui = Create("ScreenGui", GuiContainer, {
     Archivable = false,
     ResetOnSpawn = false,
+    ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 }, {
     ScreenScale
@@ -860,6 +950,7 @@ local function MakeDrag(Instance, Options)
     local CanStart = type(Options.CanStart) == "function" and Options.CanStart or nil
     local Threshold = math.max(0, tonumber(Options.Threshold) or DragThreshold)
     local GlobalInput = Options.GlobalInput == true
+    local ShouldCancel = type(Options.ShouldCancel) == "function" and Options.ShouldCancel or nil
 
     Handle.Active = true
     if Handle:IsA("GuiButton") then
@@ -882,6 +973,10 @@ local function MakeDrag(Instance, Options)
         if not Dragging or not DragStart or not StartPos then
             return
         end
+        if ShouldCancel and ShouldCancel() then
+            StopDrag()
+            return
+        end
 
         local Delta = Input.Position - DragStart
         if math.abs(Delta.X) < Threshold and math.abs(Delta.Y) < Threshold then
@@ -898,6 +993,10 @@ local function MakeDrag(Instance, Options)
 
     local function Begin(Input)
         if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+
+        if ShouldCancel and ShouldCancel() then
             return
         end
 
@@ -973,10 +1072,168 @@ local function QueueSettingsSave()
 end
 
 ScreenGui.Destroying:Connect(function()
+    for _, State in pairs(Library._PositionSettings.Bindings) do State:Remember() end
     if not SettingsSaveQueued then return end
     SettingsSaveQueued = false
     SaveJson(SettingsPath, Library.Save)
 end)
+
+-- Positions are stored as viewport fractions, independently of the interface scale.
+function Library._PositionSettings.GetBounds(Object, Padding, TopPadding)
+    local Origin, Available, Size = ScreenGui.AbsolutePosition, ScreenGui.AbsoluteSize, Object.AbsoluteSize
+    local function Bounds(Start, Length, Extent, LeadingPadding)
+        if Extent >= Length then
+            local Center = Start + (Length - Extent) / 2
+            return Center, Center
+        end
+        local Margin = math.min(Padding, (Length - Extent) / 2)
+        local LeadingMargin = math.min(LeadingPadding, (Length - Extent) / 2)
+        return Start + LeadingMargin, Start + Length - Extent - Margin
+    end
+    local MinX, MaxX = Bounds(Origin.X, Available.X, Size.X, Padding)
+    local MinY, MaxY = Bounds(Origin.Y, Available.Y, Size.Y, math.max(0, tonumber(TopPadding) or Padding))
+    return MinX, MinY, MaxX, MaxY
+end
+
+function Library._PositionSettings.Bind(Object, Key, Options)
+    Options = Options or {}
+    local State = {Object = Object, Initialized = false, Destroyed = false, Busy = false}
+    local Connections = {}
+    local InitialPosition = Object.Position
+    local Padding = math.max(0, tonumber(Options.Padding) or 6)
+
+    function State:Move(Target)
+        if self.Destroyed or not Object.Parent then return end
+        local Delta = Target - Object.AbsolutePosition
+        if Delta.Magnitude < 0.01 then return end
+        local Position, Scale = Object.Position, math.max(ScreenScale.Scale, 0.001)
+        self.Busy = true
+        Object.Position = UDim2.new(
+            Position.X.Scale, Position.X.Offset + Delta.X / Scale,
+            Position.Y.Scale, Position.Y.Offset + Delta.Y / Scale
+        )
+        self.Busy = false
+    end
+
+    function State:Clamp()
+        local MinX, MinY, MaxX, MaxY = Library._PositionSettings.GetBounds(Object, Padding, Options.TopPadding)
+        local Position = Object.AbsolutePosition
+        self:Move(Vector2.new(math.clamp(Position.X, MinX, MaxX), math.clamp(Position.Y, MinY, MaxY)))
+    end
+
+    function State:Remember()
+        if self.Destroyed or not self.Initialized or not Library.Save.SavePosition or not Object.Parent then return end
+        local Available, Origin, Position = ScreenGui.AbsoluteSize, ScreenGui.AbsolutePosition, Object.AbsolutePosition
+        if Available.X <= 0 or Available.Y <= 0 then return end
+        local Value = {
+            X = math.clamp((Position.X - Origin.X) / Available.X, 0, 1),
+            Y = math.clamp((Position.Y - Origin.Y) / Available.Y, 0, 1)
+        }
+        local Previous = Library.Save.Positions[Key]
+        if Previous and math.abs(Previous.X - Value.X) < 0.000001
+            and math.abs(Previous.Y - Value.Y) < 0.000001 then return end
+        Library.Save.Positions[Key] = Value
+        QueueSettingsSave()
+    end
+
+    function State:ScheduleRemember()
+        if self.Pending or self.Destroyed then return end
+        self.Pending = true
+        task.defer(function()
+            self.Pending = false
+            self:Remember()
+        end)
+    end
+
+    function State:Restore(Value)
+        local Available, Origin = ScreenGui.AbsoluteSize, ScreenGui.AbsolutePosition
+        self:Move(Vector2.new(Origin.X + Value.X * Available.X, Origin.Y + Value.Y * Available.Y))
+        self:Clamp()
+    end
+
+    function State:Reset()
+        if self.Destroyed or not Object.Parent then return end
+        if Options.Randomize and not Library.Save.SavePosition then
+            local MinX, MinY, MaxX, MaxY = Library._PositionSettings.GetBounds(Object, Padding, Options.TopPadding)
+            self:Move(Vector2.new(MinX + math.random() * (MaxX - MinX), MinY + math.random() * (MaxY - MinY)))
+        elseif Options.Center then
+            self:Move(ScreenGui.AbsolutePosition + (ScreenGui.AbsoluteSize - Object.AbsoluteSize) / 2)
+        else
+            self.Busy = true
+            Object.Position = InitialPosition
+            self.Busy = false
+        end
+        self:Clamp()
+        self:ScheduleRemember()
+    end
+
+    function State:Initialize()
+        if self.Initialized or self.Destroyed or not Object.Parent then return end
+        if ScreenGui.AbsoluteSize.X <= 0 or ScreenGui.AbsoluteSize.Y <= 0
+            or Object.AbsoluteSize.X <= 0 or Object.AbsoluteSize.Y <= 0 then return end
+        local Saved = Library.Save.SavePosition and Library.Save.Positions[Key]
+        if Saved then self:Restore(Saved) else self:Reset() end
+        self.Initialized = true
+        self:ScheduleRemember()
+    end
+
+    local function Refresh()
+        if State.Destroyed then return end
+        if not State.Initialized then
+            State:Initialize()
+            return
+        end
+        local Saved = Library.Save.SavePosition and Library.Save.Positions[Key]
+        if Saved then State:Restore(Saved) else State:Clamp() end
+    end
+    local function Connect(Signal, Callback)
+        table.insert(Connections, Signal:Connect(Callback))
+    end
+    function State:Destroy()
+        if self.Destroyed then return end
+        self:Remember()
+        self.Destroyed = true
+        Library._PositionSettings.Bindings[Object] = nil
+        for _, Item in ipairs(Connections) do Item:Disconnect() end
+        table.clear(Connections)
+    end
+
+    Connect(Object:GetPropertyChangedSignal("Position"), function()
+        if State.Busy or not State.Initialized then return end
+        State:Clamp()
+        State:ScheduleRemember()
+    end)
+    Connect(ScreenGui:GetPropertyChangedSignal("AbsoluteSize"), Refresh)
+    Connect(ScreenScale:GetPropertyChangedSignal("Scale"), Refresh)
+    Connect(Object:GetPropertyChangedSignal("AbsoluteSize"), Refresh)
+    Connect(Object.Destroying, function() State:Destroy() end)
+    Library._PositionSettings.Bindings[Object] = State
+    task.defer(function() State:Initialize() end)
+    return State
+end
+
+function Library:GetSavePosition()
+    return Library.Save.SavePosition == true
+end
+
+function Library:SetSavePosition(Value)
+    if type(Value) ~= "boolean" then return false end
+    if Library.Save.SavePosition == Value then return true end
+    Library.Save.SavePosition = Value
+    if Value then
+        for _, State in pairs(Library._PositionSettings.Bindings) do State:Remember() end
+    else
+        Library.Save.Positions = {}
+    end
+    QueueSettingsSave()
+    return true
+end
+
+function Library:ResetPositions()
+    Library.Save.Positions = {}
+    for _, State in pairs(Library._PositionSettings.Bindings) do State:Reset() end
+    QueueSettingsSave()
+end
 
 Library.Transparency = Library.Save.Transparency
 
@@ -1136,6 +1393,9 @@ local function ButtonFrame(Instance, Title, Description, HolderSize, Clickable)
 	
 	Label:SetTitle(Title)
 	Label:SetDesc(Description)
+	function Label:SetReservedWidth(Width)
+		LabelHolder.Size = UDim2.new(1, -Width, 0, 0)
+	end
 	return Frame, Label
 end
 
@@ -1811,6 +2071,55 @@ function Library:PreviewUISound()
     PreviewUISound()
 end
 
+function Library:ApplySectionStyle(Indicator)
+    local Info = self.SectionIndicators[Indicator]
+    if not Info then return end
+
+    local Label = Info.Label
+    local Frame = Indicator.Parent
+    if not Frame or not Label.Parent then
+        self.SectionIndicators[Indicator] = nil
+        return
+    end
+
+    local Enabled = Info.Override
+    if Enabled == nil then
+        Enabled = self.Save.SectionIndicator
+    end
+
+    local Offset = Enabled and (8 + self.Save.SectionThickness + self.Save.SectionSpacing) or 8
+    Frame.Size = UDim2.new(1, 0, 0, self.Save.SectionHeight)
+    Label.Position = UDim2.fromOffset(Offset, 0)
+    Label.Size = UDim2.new(1, -Offset - 8, 1, 0)
+    Label.TextSize = self.Save.SectionTextSize
+    Indicator.Size = UDim2.fromOffset(self.Save.SectionThickness, math.min(self.Save.SectionIndicatorHeight, self.Save.SectionHeight - 4))
+    Indicator.Visible = Enabled
+end
+
+function Library:RefreshSections()
+    for Indicator in pairs(self.SectionIndicators) do
+        self:ApplySectionStyle(Indicator)
+    end
+end
+
+function Library:SetSectionSetting(Key, Value)
+    if Key == "SectionIndicator" then
+        if type(Value) ~= "boolean" then return false end
+    else
+        local Range = self.SectionRanges[Key]
+        if not Range then return false end
+        Value = tonumber(Value)
+        if not Value or Value ~= Value then return false end
+        Value = math.clamp(math.floor(Value + 0.5), Range[1], Range[2])
+    end
+
+    if self.Save[Key] == Value then return true end
+    self.Save[Key] = Value
+    self:RefreshSections()
+    QueueSettingsSave()
+    return true
+end
+
 function Library:GetDropdownSearchDefault()
     return Library.Save.DropdownSearch == true
 end
@@ -1869,6 +2178,51 @@ function Library:SetDropdownMaxVisibleOptions(Value)
     Funcs:NotifyListeners(DropdownSizeListeners)
 
     return true
+end
+
+function Library._KeybindSettings.SetDefault(Key, Value)
+    if Library.Save[Key] == Value then return true end
+    Library.Save[Key] = Value
+    QueueSettingsSave()
+    Funcs:NotifyListeners(Library._KeybindSettings.Listeners)
+    return true
+end
+
+function Library:GetKeybindIconDefault()
+    return Library.Save.KeybindIcon == true
+end
+
+function Library:SetKeybindIconDefault(Value)
+    if type(Value) ~= "boolean" then return false end
+    return Library._KeybindSettings.SetDefault("KeybindIcon", Value)
+end
+
+function Library:GetKeybindWidth()
+    return Library._KeybindSettings.NormalizeWidth(Library.Save.KeybindWidth) or Library._KeybindSettings.DefaultWidth
+end
+
+function Library:SetKeybindWidth(Value)
+    Value = Library._KeybindSettings.NormalizeWidth(Value)
+    if not Value then return false end
+    return Library._KeybindSettings.SetDefault("KeybindWidth", Value)
+end
+
+function Library:GetKeybindHighlight()
+    return Library.Save.KeybindHighlight ~= false
+end
+
+function Library:SetKeybindHighlight(Value)
+    if type(Value) ~= "boolean" then return false end
+    return Library._KeybindSettings.SetDefault("KeybindHighlight", Value)
+end
+
+function Library:GetKeybindRightClick()
+    return Library.Save.KeybindRightClick ~= false
+end
+
+function Library:SetKeybindRightClick(Value)
+    if type(Value) ~= "boolean" then return false end
+    return Library._KeybindSettings.SetDefault("KeybindRightClick", Value)
 end
 
 function Library:SetTransparency(NewTransparency)
@@ -1961,6 +2315,131 @@ end
 function Library:GetViewportSize()
     return GetViewportSize()
 end
+
+-- Temporarily own the cursor; the camera keeps ownership of its underlying lock state.
+Library._MouseControl = {Frames = setmetatable({}, {__mode = "k"}), Connections = {}, Generation = 0}
+function Library._MouseControl.Initialize()
+    local Control = Library._MouseControl
+    local RunService = game:GetService("RunService")
+    local Actions = game:GetService("ContextActionService")
+    local BindingName = "SpecterXCursor_" .. Hub:GenerateName(12)
+    local Modal = Create("TextButton", {
+        Size = UDim2.fromOffset(1, 1), BackgroundTransparency = 1,
+        Text = "", AutoButtonColor = false, Active = false,
+        Selectable = false, Interactable = false, Modal = false, Visible = false
+    })
+    Modal.Parent = ScreenGui
+
+    function Control:IsVisible()
+        if self.Destroyed or self.Focused == false or not ScreenGui.Enabled
+            or not ScreenGui:IsDescendantOf(game) then return false end
+        for Frame in pairs(self.Frames) do
+            local Current, Visible = Frame, true
+            while Current and Current ~= ScreenGui do
+                if Current:IsA("GuiObject") and not Current.Visible then Visible = false; break end
+                Current = Current.Parent
+            end
+            if Visible and Current == ScreenGui then return true end
+        end
+        return false
+    end
+
+    function Control:Unlock()
+        if not self.Active or self.Destroyed then return end
+        if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        end
+        if not UserInputService.MouseIconEnabled then UserInputService.MouseIconEnabled = true end
+    end
+
+    function Control:Release()
+        local WasActive = self.Active
+        self.Active = false
+        self.Generation += 1
+        -- Also clean partial/stale registrations if release is called a second time.
+        RunService:UnbindFromRenderStep(BindingName)
+        Actions:UnbindAction(BindingName)
+        Modal.Modal = false
+        Modal.Visible = false
+        if WasActive then
+            -- A saved LockCurrentPosition/LockCenter may belong to a finished drag or an old
+            -- camera mode. Reapplying it can strand the cursor. Let the camera resume its
+            -- current first-person/shift-lock state on its next update instead.
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+            if UserInputService.MouseIconEnabled and self.PreviousIconEnabled ~= nil then
+                UserInputService.MouseIconEnabled = self.PreviousIconEnabled
+            end
+        end
+        self.PreviousIconEnabled = nil
+    end
+
+    function Control:Refresh()
+        if self.Destroyed then return end
+        if not self:IsVisible() then self:Release(); return end
+        if self.Active then return end
+        self.PreviousIconEnabled = UserInputService.MouseIconEnabled
+        self.Active = true
+        self.Generation += 1
+        local Generation = self.Generation
+        Modal.Visible = true
+        Modal.Modal = true
+        Actions:BindActionAtPriority(BindingName, function()
+            if self.Active and self.Generation == Generation and self:IsVisible() then
+                return Enum.ContextActionResult.Sink
+            end
+            return Enum.ContextActionResult.Pass
+        end, false, Enum.ContextActionPriority.High.Value + 1, Enum.KeyCode.CapsLock)
+        RunService:BindToRenderStep(BindingName, Enum.RenderPriority.Last.Value + 1, function()
+            -- Visibility events can be deferred, and an old callback may already be queued.
+            if self.Generation ~= Generation or not self.Active then return end
+            if not self:IsVisible() then self:Release(); return end
+            self:Unlock()
+        end)
+        self:Unlock()
+    end
+
+    function Control:Bind(Frame)
+        if self.Destroyed or self.Frames[Frame] then return end
+        local Connections = {}
+        self.Frames[Frame] = Connections
+        local function Refresh() self:Refresh() end
+        table.insert(Connections, Frame:GetPropertyChangedSignal("Visible"):Connect(Refresh))
+        table.insert(Connections, Frame.AncestryChanged:Connect(Refresh))
+        table.insert(Connections, Frame.Destroying:Connect(function()
+            self.Frames[Frame] = nil
+            for _, Connection in ipairs(Connections) do Connection:Disconnect() end
+            self:Refresh()
+        end))
+        self:Refresh()
+    end
+
+    function Control:Destroy()
+        if self.Destroyed then return end
+        self.Destroyed = true
+        self:Release()
+        for _, Connections in pairs(self.Frames) do
+            for _, Connection in ipairs(Connections) do Connection:Disconnect() end
+        end
+        for _, Connection in ipairs(self.Connections) do Connection:Disconnect() end
+        table.clear(self.Frames)
+        table.clear(self.Connections)
+        Modal:Destroy()
+    end
+
+    table.insert(Control.Connections, ScreenGui:GetPropertyChangedSignal("Enabled"):Connect(function() Control:Refresh() end))
+    table.insert(Control.Connections, ScreenGui.AncestryChanged:Connect(function() Control:Refresh() end))
+    table.insert(Control.Connections, UserInputService.WindowFocusReleased:Connect(function()
+        Control.Focused = false
+        Control:Refresh()
+    end))
+    table.insert(Control.Connections, UserInputService.WindowFocused:Connect(function()
+        Control.Focused = true
+        Control:Refresh()
+    end))
+    table.insert(Control.Connections, ScreenGui.Destroying:Connect(function() Control:Destroy() end))
+end
+
+Library._MouseControl.Initialize()
 
 function Library:MakeWindow(Configs)
     Configs = type(Configs) == "table" and Configs or {}
@@ -2063,6 +2542,8 @@ function Library:MakeWindow(Configs)
         ScaleType = BackgroundScaleTypes[Library.Save.BackgroundScale] or BackgroundScaleTypes[DefaultBackgroundScale],
     }), "Main")
     Library.MainFrame = MainFrame
+    Library._MouseControl:Bind(MainFrame)
+    Library._PositionSettings.Bind(MainFrame, "Window", {Center = true, Padding = GetResponsivePadding(), TopPadding = 0})
 	local MainGradient = InsertTheme(Create("UIGradient", MainFrame, {
 		Color = Theme["Color Hub 1"],
 		Rotation = GradientRotation,
@@ -2197,6 +2678,18 @@ function Library:MakeWindow(Configs)
 			and Position.Y <= AbsolutePosition.Y + AbsoluteSize.Y
 	end
 
+	local FloatingMinimizeButtons = setmetatable({}, {__mode = "k"})
+	local FloatingMinimizeCount = 0
+	local FloatingMinimizeHeld = 0
+	local function IsOverMinimizeButton(Position)
+		for Button in pairs(FloatingMinimizeButtons) do
+			if Button.Parent and Button.Active and Button.Interactable and IsPointInside(Button, Position) then
+				return true
+			end
+		end
+		return false
+	end
+
 	local function ApplyWindowSize(Width, Height)
 		Width = math.clamp(Width, MinWidth, MaxWidth)
 		Height = math.clamp(Height, MinHeight, MaxHeight)
@@ -2216,7 +2709,7 @@ function Library:MakeWindow(Configs)
 	end
 
 	local function BeginResize(Mode, Input)
-		if Minimized then
+		if Minimized or FloatingMinimizeHeld > 0 or IsOverMinimizeButton(Input.Position) then
 			return
 		end
 
@@ -2250,6 +2743,10 @@ function Library:MakeWindow(Configs)
 	TrackConnection(UserInputService.InputChanged:Connect(function(Input)
 		local State = ResizeState
 		if not State then
+			return
+		end
+		if FloatingMinimizeHeld > 0 then
+			ResizeState = nil
 			return
 		end
 
@@ -2295,7 +2792,7 @@ function Library:MakeWindow(Configs)
 		end
 
 		local Position = Input.Position
-		if not IsPointInside(MainFrame, Position) then
+		if IsOverMinimizeButton(Position) or not IsPointInside(MainFrame, Position) then
 			return false
 		end
 
@@ -2333,7 +2830,10 @@ function Library:MakeWindow(Configs)
 		DragInitialized = true
 		MakeDrag(MainFrame, {
 			CanStart = CanDragWindow,
-			GlobalInput = true
+			GlobalInput = true,
+			ShouldCancel = function()
+				return FloatingMinimizeHeld > 0
+			end
 		})
 	end
 
@@ -2348,9 +2848,291 @@ function Library:MakeWindow(Configs)
 	local KeybindRegistry = {}
 	local CapturingKeybind
 	local CapturedKeys = {}
-	local CancelKeybindCapture
 	local WindowKeybindControl
 	local TopbarButtons = {}
+
+	-- Both keybind controls share capture ownership, validation and presentation.
+	local KeybindBindings = {}
+	local function ResolveBindingKey(Key)
+		if type(Key) == "string" then
+			Key = Key:gsub("^%s*(.-)%s*$", "%1")
+		end
+		local Resolved = GetKeyCode(Key)
+		return Resolved ~= Enum.KeyCode.Unknown and Resolved or nil
+	end
+
+	local function IsEmptyBindingKey(Key)
+		if Key == nil or Key == false or Key == Enum.KeyCode.Unknown then return true end
+		return type(Key) == "string" and (Key:match("^%s*$") ~= nil or Key:match("^%s*(.-)%s*$"):lower() == "none")
+	end
+
+	local function CreateKeybindControl(Control, Button, LabelFunc, Configs, Options)
+		local Binding = {CurrentKey = nil, Waiting = false, Destroyed = false}
+		local Connections, AncestorConnections = {}, {}
+		local DisabledKeys = type(Configs.DisabledKeys) == "table" and Configs.DisabledKeys or {}
+		local PreventDuplicate = Configs.PreventDuplicate == true
+		local Hovered = false
+		local MouseCapturePending = false
+		local RightOffset = Options.RightOffset or 10
+		local Height = 18
+		local KeyIcon
+		local function GetBooleanOption(Key, Default)
+			if type(Configs[Key]) == "boolean" then return Configs[Key] end
+			return Default
+		end
+
+		local KeyButton = InsertTheme(Create("TextButton", Button, {
+			Size = UDim2.fromOffset(Library:GetKeybindWidth(), Height),
+			Position = UDim2.new(1, -RightOffset, 0.5, 0),
+			AnchorPoint = Vector2.new(1, 0.5),
+			BackgroundColor3 = Theme["Color Stroke"],
+			AutoButtonColor = false,
+			Text = "",
+			ClipsDescendants = true
+		}), "Stroke")
+		Make("Corner", KeyButton, UDim.new(0, 4))
+		local Accent = InsertTheme(Create("Frame", KeyButton, {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = Theme["Color Theme"],
+			BackgroundTransparency = 1
+		}), "Theme")
+		Make("Corner", Accent, UDim.new(0, 4))
+		local KeyLabel = InsertTheme(Create("TextLabel", KeyButton, {
+			Size = UDim2.new(1, -36, 1, 0),
+			Position = UDim2.fromOffset(18, 0),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBold,
+			TextSize = 10,
+			TextColor3 = Theme["Color Text"],
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Text = "...",
+			ZIndex = 2
+		}), "Text")
+
+		local function Connect(Signal, Callback)
+			local NewConnection = Signal:Connect(Callback)
+			table.insert(Connections, NewConnection)
+			return NewConnection
+		end
+
+		local function IsCaptureVisible()
+			if not ScreenGui.Enabled or Minimized or not Button:IsDescendantOf(ScreenGui) then return false end
+			local Ancestor = Button
+			while Ancestor and Ancestor ~= ScreenGui do
+				if Ancestor:IsA("GuiObject") and not Ancestor.Visible then return false end
+				Ancestor = Ancestor.Parent
+			end
+			return true
+		end
+
+		function Binding:Refresh()
+			if self.Destroyed then return end
+			local ShowIcon = Configs.KeybindIcon ~= false and Library:GetKeybindIconDefault()
+			local BaseWidth = Library._KeybindSettings.NormalizeWidth(Configs.KeybindWidth) or Library:GetKeybindWidth()
+			local MinWidth = BaseWidth + (ShowIcon and 14 or 0)
+			local TextPadding = ShowIcon and 50 or 36
+			if ShowIcon and not KeyIcon then
+				KeyIcon = InsertTheme(Create("ImageLabel", KeyButton, {
+					Size = UDim2.fromOffset(10, 10),
+					Position = UDim2.new(0, 6, 0.5, 0),
+					AnchorPoint = Vector2.new(0, 0.5),
+					BackgroundTransparency = 1,
+					Image = Library:GetIcon("keyboard"),
+					ImageColor3 = Theme["Color Dark Text"],
+					ZIndex = 2
+				}), "DarkText")
+			end
+			if KeyIcon then KeyIcon.Visible = ShowIcon end
+			local Text = self.Waiting and "..." or (self.CurrentKey and self.CurrentKey.Name or TranslateText("None"))
+			local MaxWidth = math.max(MinWidth, math.min(Options.MaxWidth or 150, Button.AbsoluteSize.X - RightOffset - 90))
+			local Width = math.clamp(TextService:GetTextSize(Text, 10, Enum.Font.GothamBold, Vector2.new(1000, Height)).X + TextPadding, MinWidth, MaxWidth)
+			KeyLabel.Text = Text
+			KeyLabel.Size = UDim2.new(1, -TextPadding, 1, 0)
+			KeyLabel.Position = UDim2.fromOffset(ShowIcon and 32 or 18, 0)
+			KeyButton.Size = UDim2.fromOffset(Width, Height)
+			LabelFunc:SetReservedWidth(RightOffset + Width + 8)
+			local Active = Options.IsActive() and GetBooleanOption("KeybindHighlight", Library:GetKeybindHighlight())
+			local Transparency = self.Waiting and 0.82 or (Hovered and 0.94 or 1)
+			if Active then
+				local Color = Theme["Color Theme"]
+				local Brightness = Color.R * 0.299 + Color.G * 0.587 + Color.B * 0.114
+				Transparency = math.clamp(0.25 + math.max(0, Brightness - 0.45) * 0.75, 0.25, 0.6)
+			end
+			CreateTween({Accent, "BackgroundTransparency", Transparency, AnimationToggle})
+		end
+
+		function Binding:ContainsInput(Input)
+			if Input and Input == self.CaptureInput then return true end
+			if not Input or (Input.UserInputType ~= Enum.UserInputType.MouseButton1
+				and Input.UserInputType ~= Enum.UserInputType.Touch) then return false end
+			local Point, Position, Size = Input.Position, KeyButton.AbsolutePosition, KeyButton.AbsoluteSize
+			return Point.X >= Position.X and Point.X <= Position.X + Size.X
+				and Point.Y >= Position.Y and Point.Y <= Position.Y + Size.Y
+		end
+
+		function Binding:SetWaiting(Value)
+			if self.Destroyed then return false end
+			Value = Value == true
+			if Value and (Control:IsLocked() or not IsCaptureVisible()) then return false end
+			if Value and CapturingKeybind and CapturingKeybind ~= self then
+				CapturingKeybind:SetWaiting(false)
+			end
+			self.Waiting = Value
+			if Value then
+				CapturingKeybind = self
+			elseif CapturingKeybind == self then
+				CapturingKeybind = nil
+			end
+			self:Refresh()
+			return true
+		end
+
+		local function UnregisterKey()
+			local Owners = KeybindRegistry[Binding.CurrentKey]
+			if Owners then
+				Owners[Binding] = nil
+				if next(Owners) == nil then KeybindRegistry[Binding.CurrentKey] = nil end
+			end
+		end
+
+		function Binding:SetKey(Key, Notify)
+			if self.Destroyed then return false end
+			local Resolved = ResolveBindingKey(Key)
+			if not Resolved and not (Options.AllowNone and IsEmptyBindingKey(Key)) then return false end
+			if Resolved then
+				for _, DisabledKey in ipairs(DisabledKeys) do
+					if ResolveBindingKey(DisabledKey) == Resolved then return false end
+				end
+				for Owner in pairs(KeybindRegistry[Resolved] or {}) do
+					if Owner ~= self and (PreventDuplicate or Owner.PreventDuplicate) then return false end
+				end
+			end
+			local Changed = self.CurrentKey ~= Resolved
+			UnregisterKey()
+			self.CurrentKey = Resolved
+			if Resolved then
+				KeybindRegistry[Resolved] = KeybindRegistry[Resolved] or {}
+				KeybindRegistry[Resolved][self] = true
+			end
+			self:Refresh()
+			if Changed and Notify and type(Options.OnChanged) == "function" then
+				Funcs:FireCallback({Options.OnChanged}, self.CurrentKey)
+			end
+			return true
+		end
+
+		function Binding:Capture(Key)
+			if self.Destroyed or Control:IsLocked() or not IsCaptureVisible() then
+				self:SetWaiting(false)
+				return
+			end
+			if Key == Enum.KeyCode.Escape then
+				self:SetWaiting(false)
+				if Options.AllowNone then self:SetKey(nil, true) end
+			elseif Key == Enum.KeyCode.Backspace and Options.AllowNone then
+				self:SetWaiting(false)
+				self:SetKey(nil, true)
+			elseif self:SetKey(Key, false) then
+				self:SetWaiting(false)
+				if type(Options.OnChanged) == "function" then
+					Funcs:FireCallback({Options.OnChanged}, self.CurrentKey)
+				end
+			end
+		end
+
+		function Binding:Trigger()
+			if self.Destroyed then return end
+			if Control:IsLocked() then
+				Control:NotifyLocked()
+				return
+			end
+			Options.OnTriggered()
+		end
+
+		function Binding:Destroy()
+			if self.Destroyed then return end
+			self.Destroyed = true
+			self.Waiting = false
+			self.CaptureInput = nil
+			if CapturingKeybind == self then CapturingKeybind = nil end
+			UnregisterKey()
+			KeybindBindings[self] = nil
+			Library._KeybindSettings.Listeners[self] = nil
+			for _, Item in ipairs(AncestorConnections) do Item:Disconnect() end
+			for _, Item in ipairs(Connections) do Item:Disconnect() end
+			table.clear(AncestorConnections)
+			table.clear(Connections)
+		end
+
+		local function CancelHiddenCapture()
+			if Binding.Waiting and not IsCaptureVisible() then Binding:SetWaiting(false) end
+		end
+		local function WatchAncestors()
+			for _, Item in ipairs(AncestorConnections) do Item:Disconnect() end
+			table.clear(AncestorConnections)
+			local Ancestor = Button
+			while Ancestor and Ancestor ~= ScreenGui do
+				if Ancestor:IsA("GuiObject") then
+					table.insert(AncestorConnections, Ancestor:GetPropertyChangedSignal("Visible"):Connect(CancelHiddenCapture))
+				end
+				Ancestor = Ancestor.Parent
+			end
+			CancelHiddenCapture()
+		end
+
+		Connect(KeyButton.Activated, function(Input)
+			if Input and (Input.UserInputType == Enum.UserInputType.MouseButton1
+				or Input.UserInputType == Enum.UserInputType.MouseButton2) then
+				MouseCapturePending = false
+				return
+			end
+			if not Input and MouseCapturePending then
+				MouseCapturePending = false
+				return
+			end
+			MouseCapturePending = false
+			if Control:IsLocked() then
+				Control:NotifyLocked()
+				return
+			end
+			Binding:SetWaiting(not Binding.Waiting)
+		end)
+		Connect(KeyButton.InputBegan, function(Input)
+			if Input.UserInputType == Enum.UserInputType.MouseButton1
+				or (Input.UserInputType == Enum.UserInputType.MouseButton2
+					and GetBooleanOption("KeybindRightClick", Library:GetKeybindRightClick())) then
+				if Control:IsLocked() then
+					Control:NotifyLocked()
+					return
+				end
+				MouseCapturePending = Input.UserInputType == Enum.UserInputType.MouseButton1
+				Binding.CaptureInput = Input
+				Binding:SetWaiting(not Binding.Waiting)
+			end
+		end)
+		Connect(KeyButton.MouseEnter, function()
+			Hovered = true
+			Binding:Refresh()
+		end)
+		Connect(KeyButton.MouseLeave, function()
+			Hovered = false
+			Binding:Refresh()
+		end)
+		Connect(Button:GetPropertyChangedSignal("AbsoluteSize"), function() Binding:Refresh() end)
+		Connect(Button.AncestryChanged, WatchAncestors)
+		Connect(ScreenGui:GetPropertyChangedSignal("Enabled"), CancelHiddenCapture)
+		Connect(Connection.LanguageChanged, function() Binding:Refresh() end)
+		Connect(Connection.ThemeChanged, function() Binding:Refresh() end)
+		Connect(Button.Destroying, function() Binding:Destroy() end)
+		Binding.PreventDuplicate = PreventDuplicate
+		KeybindBindings[Binding] = true
+		Library._KeybindSettings.Listeners[Binding] = function() Binding:Refresh() end
+		WatchAncestors()
+		Binding:SetKey(Options.InitialKey, false)
+		Binding:Refresh()
+		return Binding
+	end
+
 
 	local TopbarControls = Create("Frame", TopBar, {
 		Size = UDim2.new(0, 0, 1, 0),
@@ -2810,6 +3592,7 @@ function Library:MakeWindow(Configs)
         end
 
         MainFrame.Visible = NewVisibility
+        Library._MouseControl:Refresh()
     end
 
 	function Window:Visible()
@@ -2847,10 +3630,10 @@ function Library:MakeWindow(Configs)
 			return false
 		end
 
-		WindowKeybind = Resolved
 		if WindowKeybindControl and WindowKeybindControl:GetKeybind() ~= Resolved then
-			WindowKeybindControl:SetKeybind(Resolved)
+			if not WindowKeybindControl:SetKeybind(Resolved) then return false end
 		end
+		WindowKeybind = Resolved
 		Library.Save.Keybind = Resolved.Name
 		QueueSettingsSave()
 		return true
@@ -2860,54 +3643,228 @@ function Library:MakeWindow(Configs)
 		return WindowKeybind
 	end
 
+	-- Route capture before shortcuts so connection order cannot activate a captured key.
+	local HeldBindingKeys = {}
 	TrackConnection(UserInputService.InputBegan:Connect(function(Input, GameProcessed)
-		if GameProcessed then return end
-		if WindowKeybindCooldown or CapturingKeybind or CapturedKeys[Input.KeyCode] then return end
-		if Input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-		if Input.KeyCode ~= WindowKeybind then return end
-		if not WindowKeybindEnabled then return end
+		if Input.UserInputType ~= Enum.UserInputType.Keyboard or Input.KeyCode == Enum.KeyCode.Unknown then return end
+		local Key = Input.KeyCode
+		if HeldBindingKeys[Key] then return end
+		HeldBindingKeys[Key] = true
+		if UserInputService:GetFocusedTextBox() then
+			if CapturingKeybind then CapturingKeybind:SetWaiting(false) end
+			return
+		end
+		if CapturingKeybind then
+			CapturedKeys[Key] = true
+			CapturingKeybind:Capture(Key)
+			return
+		end
+		-- Our CapsLock sink blocks the game, while hub shortcuts remain usable.
+		local HubOwnsCapsLock = Key == Enum.KeyCode.CapsLock and Library._MouseControl.Active
+		if (GameProcessed and not HubOwnsCapsLock) or CapturedKeys[Key] then return end
 
-		WindowKeybindCooldown = true
-		Window:Visible()
-
-		task.delay(0.15, function()
-			WindowKeybindCooldown = false
-		end)
+		local Matching = {}
+		for Binding in pairs(KeybindBindings) do
+			if Binding.CurrentKey == Key then table.insert(Matching, Binding) end
+		end
+		if Key == WindowKeybind and WindowKeybindEnabled and not WindowKeybindCooldown then
+			WindowKeybindCooldown = true
+			Window:Visible()
+			task.delay(0.15, function() WindowKeybindCooldown = false end)
+		end
+		for _, Binding in ipairs(Matching) do
+			if Binding.CurrentKey == Key then Binding:Trigger() end
+		end
 	end))
 
 	TrackConnection(UserInputService.InputEnded:Connect(function(Input)
 		if Input.UserInputType == Enum.UserInputType.Keyboard then
 			CapturedKeys[Input.KeyCode] = nil
+			HeldBindingKeys[Input.KeyCode] = nil
 		end
 	end))
+	TrackConnection(UserInputService.TextBoxFocused:Connect(function()
+		if CapturingKeybind then CapturingKeybind:SetWaiting(false) end
+	end))
+	TrackConnection(UserInputService.WindowFocusReleased:Connect(function()
+		if CapturingKeybind then CapturingKeybind:SetWaiting(false) end
+		table.clear(CapturedKeys)
+		table.clear(HeldBindingKeys)
+	end))
+	ScreenGui.Destroying:Connect(function()
+		for Binding in pairs(table.clone(KeybindBindings)) do Binding:Destroy() end
+		table.clear(CapturedKeys)
+		table.clear(HeldBindingKeys)
+	end)
 
 	--- 
 
+    function Window:SetFloatingMinimizeButtonVisible(Value)
+        if type(Value) ~= "boolean" then return false end
+        Library.Save.ShowFloatingMinimizeButton = Value
+        for Button in pairs(FloatingMinimizeButtons) do
+            if Button.Parent then
+                Button.Visible = Value
+            else
+                FloatingMinimizeButtons[Button] = nil
+            end
+        end
+        QueueSettingsSave()
+        return true
+    end
+
 	function Window:AddMinimizeButton(Configs)
-		local Button = MakeDrag(Create("ImageButton", ScreenGui, {
+		Configs = type(Configs) == "table" and Configs or {}
+		local IconConfig = type(RootConfig.Icon) == "table" and RootConfig.Icon or {}
+		local ButtonProps = {
+			Image = RootConfig.Image,
+			ImageTransparency = math.clamp((tonumber(IconConfig.Transparency) or 0) / 100, 0, 1)
+		}
+		if type(Configs.Button) == "table" then
+			for Key, Value in pairs(Configs.Button) do
+				ButtonProps[Key] = Value
+			end
+		end
+		ButtonProps.Image = ResolveGuiImage(ButtonProps.Image)
+
+		local Button = Create("ImageButton", ScreenGui, {
 			Size = UDim2.fromOffset(35, 35),
 			Position = UDim2.fromScale(0.15, 0.15),
 			BackgroundTransparency = 1,
 			BackgroundColor3 = Theme["Color Hub 2"],
-			AutoButtonColor = false
-		}))
+			AutoButtonColor = false,
+			Active = true,
+			ZIndex = 100
+		})
 		InsertTheme(Button, "IconSurface")
-		
-		local Stroke, Corner
-		if Configs.Corner then
-			Corner = Make("Corner", Button)
-			SetProps(Corner, Configs.Corner)
+
+		local CornerConfig = Configs.Corner
+		if CornerConfig == nil then
+			CornerConfig = {
+				CornerRadius = UDim.new(0, math.max(0, tonumber(IconConfig.Corner) or 0))
+			}
 		end
-		if Configs.Stroke then
+
+		local Stroke, Corner
+		if type(CornerConfig) == "table" then
+			Corner = Make("Corner", Button)
+			SetProps(Corner, CornerConfig)
+		end
+		if type(Configs.Stroke) == "table" then
 			Stroke = Make("Stroke", Button)
 			SetProps(Stroke, Configs.Stroke)
 		end
-		
-		SetProps(Button, Configs.Button)
-		Button.Activated:Connect(function()
-		    Window:Visible()
+
+		SetProps(Button, ButtonProps)
+        Button.Visible = Library.Save.ShowFloatingMinimizeButton ~= false
+		FloatingMinimizeButtons[Button] = true
+
+		local PointerType, TouchInput, StartPointer, StartPosition, StartAbsolute
+		local Dragged = false
+		local Padding = math.max(0, tonumber(Configs.DragPadding) or 6)
+		local Threshold = math.max(5, tonumber(Configs.DragThreshold) or DragThreshold)
+
+		local function ClampToScreen(Position)
+			local Origin = ScreenGui.AbsolutePosition
+			local Available = ScreenGui.AbsoluteSize
+			local Size = Button.AbsoluteSize
+			local MinX, MinY = Origin.X + Padding, Origin.Y + Padding
+			local MaxX = math.max(MinX, Origin.X + Available.X - Size.X - Padding)
+			local MaxY = math.max(MinY, Origin.Y + Available.Y - Size.Y - Padding)
+			return Vector2.new(math.clamp(Position.X, MinX, MaxX), math.clamp(Position.Y, MinY, MaxY))
+		end
+
+		local function SetAbsolutePosition(Target, Origin, Position)
+			local Delta = Target - Origin
+			local Scale = math.max(ScreenScale.Scale, 0.001)
+			Button.Position = UDim2.new(
+				Position.X.Scale, Position.X.Offset + Delta.X / Scale,
+				Position.Y.Scale, Position.Y.Offset + Delta.Y / Scale
+			)
+		end
+
+		Button.InputBegan:Connect(function(Input)
+			local Kind = Input.UserInputType
+			if PointerType or (Kind ~= Enum.UserInputType.MouseButton1 and Kind ~= Enum.UserInputType.Touch) then
+				return
+			end
+
+			PointerType = Kind
+			FloatingMinimizeHeld += 1
+			TouchInput = Kind == Enum.UserInputType.Touch and Input or nil
+			StartPointer = Vector2.new(Input.Position.X, Input.Position.Y)
+			StartPosition = Button.Position
+			StartAbsolute = Button.AbsolutePosition
+			Dragged = false
 		end)
-		
+
+		local InputChangedConnection = UserInputService.InputChanged:Connect(function(Input)
+			if not PointerType then return end
+
+			if TouchInput then
+				if Input ~= TouchInput then return end
+			elseif Input.UserInputType ~= Enum.UserInputType.MouseMovement then
+				return
+			end
+
+			local Pointer = Vector2.new(Input.Position.X, Input.Position.Y)
+			local Delta = Pointer - StartPointer
+			local MinMovement = PointerType == Enum.UserInputType.Touch and math.max(10, Threshold) or Threshold
+			if not Dragged and Delta.Magnitude < MinMovement then return end
+
+			Dragged = true
+			SetAbsolutePosition(ClampToScreen(StartAbsolute + Delta), StartAbsolute, StartPosition)
+		end)
+
+		local InputEndedConnection = UserInputService.InputEnded:Connect(function(Input)
+			if not PointerType then return end
+			if TouchInput then
+				if Input ~= TouchInput then return end
+			elseif Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+				return
+			end
+
+			local Delta = Vector2.new(Input.Position.X, Input.Position.Y) - StartPointer
+			local MinMovement = PointerType == Enum.UserInputType.Touch and math.max(10, Threshold) or Threshold
+			if Delta.Magnitude >= MinMovement then
+				Dragged = true
+				SetAbsolutePosition(ClampToScreen(StartAbsolute + Delta), StartAbsolute, StartPosition)
+			end
+
+			FloatingMinimizeHeld = math.max(0, FloatingMinimizeHeld - 1)
+			PointerType, TouchInput, StartPointer, StartPosition, StartAbsolute = nil, nil, nil, nil, nil
+		end)
+
+		local FocusConnection = UserInputService.WindowFocusReleased:Connect(function()
+			if PointerType then
+				Dragged = true
+				FloatingMinimizeHeld = math.max(0, FloatingMinimizeHeld - 1)
+			end
+			PointerType, TouchInput, StartPointer, StartPosition, StartAbsolute = nil, nil, nil, nil, nil
+		end)
+
+		Button.Destroying:Connect(function()
+			if PointerType then
+				FloatingMinimizeHeld = math.max(0, FloatingMinimizeHeld - 1)
+				PointerType = nil
+			end
+			FloatingMinimizeButtons[Button] = nil
+			InputChangedConnection:Disconnect()
+			InputEndedConnection:Disconnect()
+			FocusConnection:Disconnect()
+		end)
+
+		Button.Activated:Connect(function(Input)
+			local Kind = Input and Input.UserInputType
+			if Kind == Enum.UserInputType.Touch or Kind == Enum.UserInputType.MouseButton1 then
+				if Dragged then return end
+			end
+			Window:Visible()
+		end)
+
+		FloatingMinimizeCount += 1
+		Library._PositionSettings.Bind(Button, "Minimize" .. FloatingMinimizeCount, {Randomize = true, Padding = Padding})
+
 		return {
 			Stroke = Stroke,
 			Corner = Corner,
@@ -2925,112 +3882,199 @@ function Library:MakeWindow(Configs)
 	local ActiveDialog
 
 	function Window:Dialog(Configs)
-		if ActiveDialog and ActiveDialog.Parent then return end
-		if Minimized then
-			Window:MinimizeBtn()
-		end
-		
-		local DTitle = TranslateText(tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Dialog))
-		local DText = TranslateText(tostring(Configs[2] or Configs.Text or ControlsConfig.Titles.DialogText))
-		local DOptions = Configs[3] or Configs.Options or {}
-		
-		local Frame = Create("Frame", {
-			Active = true,
-			Size = UDim2.fromOffset(250 * 1.08, 150 * 1.08),
-			Position = UDim2.fromScale(0.5, 0.5),
-			AnchorPoint = Vector2.new(0.5, 0.5)
-		}, {
-			InsertTheme(Create("TextLabel", {
-				Font = Enum.Font.GothamBold,
-				Size = UDim2.new(1, 0, 0, 20),
-				Text = DTitle,
-				TextXAlignment = "Left",
-				TextColor3 = Theme["Color Text"],
-				TextSize = 15,
-				Position = UDim2.fromOffset(15, 5),
-				BackgroundTransparency = 1
-			}), "Text"),
-			InsertTheme(Create("TextLabel", {
-				Font = Enum.Font.GothamMedium,
-				Size = UDim2.new(1, -25),
-				AutomaticSize = "Y",
-				Text = DText,
-				TextXAlignment = "Left",
-				TextColor3 = Theme["Color Dark Text"],
-				TextSize = 12,
-				Position = UDim2.fromOffset(15, 25),
-				BackgroundTransparency = 1,
-				TextWrapped = true
-			}), "DarkText")
-		})Make("Gradient", Frame, {Rotation = 270})Make("Corner", Frame)
-		
-		local ButtonsHolder = Create("Frame", Frame, {
-			Size = UDim2.fromScale(1, 0.35),
-			Position = UDim2.fromScale(0, 1),
-			AnchorPoint = Vector2.new(0, 1),
-			BackgroundColor3 = Theme["Color Hub 2"],
-			BackgroundTransparency = 1
-		}, {
-			Create("UIListLayout", {
-				Padding = UDim.new(0, 10),
-				VerticalAlignment = "Center",
-				FillDirection = "Horizontal",
-				HorizontalAlignment = "Center"
-			})
-		})
-		
-		local Screen = InsertTheme(Create("Frame", MainFrame, {
-			BackgroundTransparency = 0.6,
-			Active = true,
-			BackgroundColor3 = Theme["Color Stroke"],
-			Size = UDim2.new(1, 0, 1, 0),
-		}), "Stroke")
-		ActiveDialog = Screen
-		
-		local DialogCorner = MainCorner:Clone()
-		DialogCorner.Parent = Screen
-		Frame.Parent = Screen
-		CreateTween({Frame, "Size", UDim2.fromOffset(250, 150), AnimationDialog})
-		CreateTween({Frame, "Transparency", 0, AnimationDialogFade})
-		CreateTween({Screen, "Transparency", 0.3, AnimationDialogFade})
-		
-		local ButtonCount, Dialog = 1, {}
-		function Dialog:Button(Configs)
-			local Name = TranslateText(tostring(Configs[1] or Configs.Name or Configs.Title or ""))
-			local Callback = Configs[2] or Configs.Callback or function()end
-			
-			ButtonCount = ButtonCount + 1
-			local Button = Make("Button", ButtonsHolder)
-			Make("Corner", Button)
-			SetProps(Button, {
-				Text = Name,
-				Font = Enum.Font.GothamBold,
-				TextColor3 = Theme["Color Text"],
-				TextSize = 12
-			})
-			
-			for _,Button in pairs(ButtonsHolder:GetChildren()) do
-				if Button:IsA("TextButton") then
-					Button.Size = UDim2.new(1 / ButtonCount, -(((ButtonCount - 1) * 20) / ButtonCount), 0, 32)
-				end
-			end
-			Button.Activated:Connect(Dialog.Close)
-			Button.Activated:Connect(Callback)
-		end
-		function Dialog:Close()
-			CreateTween({Frame, "Size", UDim2.fromOffset(250 * 1.08, 150 * 1.08), AnimationDialog})
-			CreateTween({Screen, "Transparency", 1, AnimationDialogFade})
-			CreateTween({Frame, "Transparency", 1, AnimationDialogFade, true})
-			if ActiveDialog == Screen then
-				ActiveDialog = nil
-			end
-			Screen:Destroy()
-		end
-		for _, Button in pairs(DOptions) do
-			Dialog:Button(Button)
-		end
-		return Dialog
-	end
+        if ActiveDialog and ActiveDialog.Parent then return end
+        if Minimized then Window:MinimizeBtn() end
+        Configs = type(Configs) == "table" and Configs or {}
+
+        local Title = TranslateText(tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Dialog))
+        local Message = TranslateText(tostring(Configs[2] or Configs.Text or ControlsConfig.Titles.DialogText))
+        local Options = Configs[3] or Configs.Options or {}
+        local Width = math.min(286, math.max(230, MainFrame.Size.X.Offset - 32))
+        local TitleHeight = math.max(24, TextService:GetTextSize(Title, 18, Enum.Font.GothamBold, Vector2.new(Width - 32, 2000)).Y + 4)
+        local MessageHeight = math.max(25, TextService:GetTextSize(Message, 15, Enum.Font.GothamMedium, Vector2.new(Width - 38, 4000)).Y + 6)
+        local Height = math.clamp(TitleHeight + math.min(MessageHeight, 105) + 68, 146, math.min(194, math.max(146, MainFrame.Size.Y.Offset - 22)))
+        local ViewHeight = math.max(25, Height - TitleHeight - 68)
+        local OpenTween = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+        local FadeTween = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local CloseTween = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        local ButtonTween = TweenInfo.new(0.11, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+        local Overlay = InsertTheme(Create("Frame", MainFrame, {
+            Size = UDim2.fromScale(1, 1),
+            BackgroundColor3 = Theme["Color Stroke"],
+            BackgroundTransparency = 1,
+            Active = true,
+            BorderSizePixel = 0
+        }), "Stroke")
+        ActiveDialog = Overlay
+        MainCorner:Clone().Parent = Overlay
+
+        local Panel = InsertTheme(Create("Frame", Overlay, {
+            Size = UDim2.fromOffset(Width, Height),
+            Position = UDim2.fromScale(0.5, 0.5),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundColor3 = Theme["Color Hub 2"],
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            ClipsDescendants = true
+        }), "Frame")
+        Make("Corner", Panel, UDim.new(0, 10))
+        Make("Stroke", Panel, {Thickness = 1, Transparency = 0.45})
+        local Scale = Create("UIScale", Panel, {Scale = 0.9})
+
+        local TitleLabel = InsertTheme(Create("TextLabel", Panel, {
+            Size = UDim2.new(1, -32, 0, TitleHeight),
+            Position = UDim2.fromOffset(16, 15),
+            BackgroundTransparency = 1,
+            Text = Title,
+            TextSize = 18,
+            Font = Enum.Font.GothamBold,
+            TextWrapped = true,
+            TextTransparency = 1,
+            TextColor3 = Theme["Color Text"],
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Top
+        }), "Text")
+
+        local TextScroll = Create("ScrollingFrame", Panel, {
+            Size = UDim2.new(1, -32, 0, ViewHeight),
+            Position = UDim2.fromOffset(16, 12 + TitleHeight),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            CanvasSize = UDim2.fromOffset(0, MessageHeight),
+            ScrollingDirection = Enum.ScrollingDirection.Y,
+            ScrollBarThickness = MessageHeight > ViewHeight and 3 or 0,
+            ScrollBarImageColor3 = Theme["Color Theme"]
+        })
+        local MessageLabel = InsertTheme(Create("TextLabel", TextScroll, {
+            Size = UDim2.new(1, -8, 0, MessageHeight),
+            BackgroundTransparency = 1,
+            Text = Message,
+            TextWrapped = true,
+            TextSize = 15,
+            Font = Enum.Font.GothamMedium,
+            TextTransparency = 1,
+            TextColor3 = Theme["Color Text"],
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Top
+        }), "Text")
+
+        local ButtonsHolder = Create("Frame", Panel, {
+            Size = UDim2.new(1, -32, 0, 36),
+            Position = UDim2.new(0, 16, 1, -11),
+            AnchorPoint = Vector2.new(0, 1),
+            BackgroundTransparency = 1
+        }, {
+            Create("UIListLayout", {
+                Padding = UDim.new(0, 8),
+                FillDirection = Enum.FillDirection.Horizontal,
+                HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                VerticalAlignment = Enum.VerticalAlignment.Center
+            })
+        })
+
+        local ButtonEntries, Dialog = {}, {}
+        function Dialog:Close()
+            if self.Closing or not Overlay.Parent then return end
+            self.Closing = true
+            TweenService:Create(Scale, CloseTween, {Scale = 0.93}):Play()
+            TweenService:Create(Panel, CloseTween, {BackgroundTransparency = 1}):Play()
+            TweenService:Create(Overlay, CloseTween, {BackgroundTransparency = 1}):Play()
+            TweenService:Create(TitleLabel, CloseTween, {TextTransparency = 1}):Play()
+            TweenService:Create(MessageLabel, CloseTween, {TextTransparency = 1}):Play()
+            for _, Entry in ipairs(ButtonEntries) do
+                TweenService:Create(Entry.Button, CloseTween, {TextTransparency = 1, BackgroundTransparency = 1}):Play()
+            end
+            task.delay(0.19, function()
+                if ActiveDialog == Overlay then ActiveDialog = nil end
+                if Overlay.Parent then Overlay:Destroy() end
+            end)
+        end
+
+        function Dialog:Button(Option)
+            Option = type(Option) == "table" and Option or {Option}
+            local Name = TranslateText(tostring(Option[1] or Option.Name or Option.Title or ""))
+            local Callback = Option[2] or Option.Callback or function() end
+            local IsPrimary = Option.Primary == true or (Option.Primary == nil and #ButtonEntries + 1 == #Options)
+            local ButtonColor = IsPrimary and Theme["Color Theme"] or Theme["Color Stroke"]
+            local Contrast = ButtonColor.R * 0.299 + ButtonColor.G * 0.587 + ButtonColor.B * 0.114
+            local Button = InsertTheme(Create("TextButton", ButtonsHolder, {
+                BackgroundColor3 = ButtonColor,
+                BackgroundTransparency = 1,
+                AutoButtonColor = false,
+                BorderSizePixel = 0,
+                Text = Name,
+                Font = Enum.Font.GothamBold,
+                TextSize = 14,
+                TextWrapped = false,
+                TextScaled = false,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                TextTransparency = 1,
+                TextColor3 = IsPrimary and (Contrast >= 0.62 and Color3.fromRGB(22, 22, 26) or Color3.new(1, 1, 1)) or Theme["Color Text"]
+            }), IsPrimary and "Theme" or "Stroke")
+            Make("Corner", Button, UDim.new(0, 7))
+            if IsPrimary then
+                local ThemeConnection = Connection.ThemeChanged:Connect(function()
+                    if not Button.Parent then return end
+                    local Color = Theme["Color Theme"]
+                    local Brightness = Color.R * 0.299 + Color.G * 0.587 + Color.B * 0.114
+                    Button.TextColor3 = Brightness >= 0.62 and Color3.fromRGB(22, 22, 26) or Color3.new(1, 1, 1)
+                end)
+                Button.Destroying:Connect(function() ThemeConnection:Disconnect() end)
+            end
+            local ButtonScale = Create("UIScale", Button, {Scale = 1})
+            ButtonEntries[#ButtonEntries + 1] = {
+                Button = Button,
+                Width = TextService:GetTextSize(Name, 14, Enum.Font.GothamBold, Vector2.new(1000, 50)).X + 26
+            }
+            local AvailableWidth = Width - 32 - 8 * (#ButtonEntries - 1)
+            local DesiredWidth = 0
+            for _, Entry in ipairs(ButtonEntries) do
+                DesiredWidth += Entry.Width
+            end
+            for _, Entry in ipairs(ButtonEntries) do
+                Entry.Button.Size = UDim2.fromOffset(math.max(1, AvailableWidth * Entry.Width / math.max(1, DesiredWidth)), 34)
+            end
+            Button.MouseEnter:Connect(function()
+                if Dialog.Closing or Dialog.Pending then return end
+                TweenService:Create(ButtonScale, ButtonTween, {Scale = 1.025}):Play()
+                TweenService:Create(Button, ButtonTween, {BackgroundTransparency = IsPrimary and 0 or 0.16}):Play()
+            end)
+            Button.MouseLeave:Connect(function()
+                if Dialog.Closing or Dialog.Pending then return end
+                TweenService:Create(ButtonScale, ButtonTween, {Scale = 1}):Play()
+                TweenService:Create(Button, ButtonTween, {BackgroundTransparency = IsPrimary and 0.07 or 0.32}):Play()
+            end)
+            Button.MouseButton1Down:Connect(function()
+                if not Dialog.Closing and not Dialog.Pending then
+                    TweenService:Create(ButtonScale, ButtonTween, {Scale = 0.95}):Play()
+                end
+            end)
+            Button.MouseButton1Up:Connect(function()
+                if not Dialog.Closing and not Dialog.Pending then
+                    TweenService:Create(ButtonScale, ButtonTween, {Scale = 1.02}):Play()
+                end
+            end)
+            Button.Activated:Connect(function()
+                if Dialog.Closing or Dialog.Pending then return end
+                Dialog.Pending = true
+                TweenService:Create(ButtonScale, ButtonTween, {Scale = 0.95}):Play()
+                task.delay(0.09, function()
+                    Dialog:Close()
+                    task.delay(0.2, Callback)
+                end)
+            end)
+            TweenService:Create(Button, FadeTween, {TextTransparency = 0, BackgroundTransparency = IsPrimary and 0.07 or 0.32}):Play()
+        end
+
+        for _, Option in ipairs(Options) do Dialog:Button(Option) end
+        TweenService:Create(Scale, OpenTween, {Scale = 1}):Play()
+        TweenService:Create(Panel, FadeTween, {BackgroundTransparency = 0}):Play()
+        TweenService:Create(Overlay, FadeTween, {BackgroundTransparency = 0.4}):Play()
+        TweenService:Create(TitleLabel, FadeTween, {TextTransparency = 0, Position = UDim2.fromOffset(16, 13)}):Play()
+        TweenService:Create(MessageLabel, FadeTween, {TextTransparency = 0.16}):Play()
+        return Dialog
+    end
 	function Window:SelectTab(TabSelect)
 		if type(TabSelect) == "number" then
 			TabSelect = Library.Tabs[TabSelect] and Library.Tabs[TabSelect].func
@@ -3282,32 +4326,45 @@ function Library:MakeWindow(Configs)
 			return LabelTitle and LabelTitle.Text or TName
 		end
 		
-		function Tab:AddSection(Configs)
+		function Tab:AddSection(Configs, UseIndicator)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
-			local SectionFlag = type(Configs) == "table" and Configs.Flag or nil
-			local SectionName = type(Configs) == "string" and Configs or Configs[1] or Configs.Name or Configs.Title or Configs.Section
-			SectionName = TranslateText(DisplayString(SectionName))
-			
-			local SectionFrame = InsertTheme(Create("Frame", Container, {
-				Size = UDim2.new(1, 0, 0, 20),
-				BackgroundColor3 = Theme["Color Hub 2"],
-				BackgroundTransparency = 0.48,
+			local SectionFlag = Configs.Flag
+			local SectionName = TranslateText(DisplayString(Configs[1] or Configs.Name or Configs.Title or Configs.Section or ControlsConfig.Titles.Section))
+			local Override
+			if type(UseIndicator) == "boolean" then
+				Override = UseIndicator
+			elseif type(Configs.Indicator) == "boolean" then
+				Override = Configs.Indicator
+			end
+
+			local SectionFrame = Create("Frame", Container, {
+				Size = UDim2.new(1, 0, 0, Library.Save.SectionHeight),
+				BackgroundTransparency = 1,
 				BorderSizePixel = 0
-			}), "Frame")
-			Make("Corner", SectionFrame, UDim.new(0, ElementCornerRadius))
-			
+			})
+
 			local SectionLabel = InsertTheme(Create("TextLabel", SectionFrame, {
 				Font = Enum.Font.GothamBold,
 				Text = SectionName,
 				TextColor3 = Theme["Color Text"],
-				Size = UDim2.new(1, -25, 1, 0),
-				Position = UDim2.new(0, 8),
 				BackgroundTransparency = 1,
 				TextTruncate = "AtEnd",
-				TextSize = 12,
-				TextXAlignment = "Left"
+				TextSize = Library.Save.SectionTextSize,
+				TextXAlignment = "Left",
+				TextYAlignment = "Center"
 			}), "Text")
-			
+
+			local Indicator = InsertTheme(Create("Frame", SectionFrame, {
+				Size = UDim2.fromOffset(Library.Save.SectionThickness, Library.Save.SectionIndicatorHeight),
+				Position = UDim2.new(0, 8, 0.5, 0),
+				AnchorPoint = Vector2.new(0, 0.5),
+				BackgroundColor3 = Theme["Color Theme"],
+				BorderSizePixel = 0
+			}), "Theme")
+			Make("Corner", Indicator, UDim.new(1, 0))
+			Library.SectionIndicators[Indicator] = {Label = SectionLabel, Override = Override}
+			Library:ApplySectionStyle(Indicator)
+
 			local Section = {}
 			local SectionOption = {type = "Section", Name = SectionName, func = Section}
 			table.insert(Library.Options, SectionOption)
@@ -3317,9 +4374,8 @@ function Library:MakeWindow(Configs)
 			end
 			function Section:Destroy()
 				local Index = table.find(Library.Options, SectionOption)
-				if Index then
-					table.remove(Library.Options, Index)
-				end
+				if Index then table.remove(Library.Options, Index) end
+				Library.SectionIndicators[Indicator] = nil
 				SectionFrame:Destroy()
 			end
 			function Section:Set(New)
@@ -3419,7 +4475,18 @@ function Library:MakeWindow(Configs)
 			local Flag = Configs[4] or Configs.Flag or false
 			local Default = FirstDefined(Configs[2], Configs.Default, false)
 			if CheckFlag(Flag) then Default = GetFlag(Flag) end
+			Default = Default == true
 			
+			local HasKeybind = Configs.Keybind ~= nil and Configs.Keybind ~= false and UserInputService.KeyboardEnabled
+			local Destroyed = false
+			local Binding
+			local ToggleControl = {}
+			local DragInput, DragMoveConnection, DragEndConnection
+			local DragStartX, DragStartY, DragStartCenter
+			local Dragged, Scrolled = false, false
+			local SuppressActivation, ActivationToken = false, 0
+			local PositionTween, TransparencyTween
+			local FinishDrag
 			local Button, LabelFunc = ButtonFrame(Container, TName, TDesc, UDim2.new(1, -38))
 			
 			local ToggleHolder = InsertTheme(Create("Frame", Button, {
@@ -3436,48 +4503,181 @@ function Library:MakeWindow(Configs)
 				AnchorPoint = Vector2.new(0.5, 0.5)
 			})
 			
-			local Toggle = InsertTheme(Create("Frame", Slider, {
-				Size = UDim2.new(0, 12, 0, 12),
-				Position = UDim2.new(0, 0, 0.5),
-				AnchorPoint = Vector2.new(0, 0.5),
-				BackgroundColor3 = Theme["Color Theme"]
+			local Toggle = InsertTheme(Create("TextButton", Slider, {
+				Size = UDim2.fromOffset(12, 12),
+				Position = UDim2.new(0, 6, 0.5, 0),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundColor3 = Theme["Color Theme"],
+				Text = "",
+				AutoButtonColor = false,
+				Selectable = false,
+				Active = true
 			}), "Theme")Make("Corner", Toggle, UDim.new(0.5, 0))
+			local KnobHalfWidth = Toggle.Size.X.Offset / 2
 			
+			local function SetToggleVisual(Value, Instant)
+				if PositionTween then
+					PositionTween:Cancel()
+					PositionTween = nil
+				end
+				if TransparencyTween then
+					TransparencyTween:Cancel()
+					TransparencyTween = nil
+				end
+
+				local Target = UDim2.new(Value and 1 or 0, Value and -KnobHalfWidth or KnobHalfWidth, 0.5, 0)
+				local Transparency = Value and 0 or 0.8
+				if Instant then
+					Toggle.Position = Target
+					Toggle.BackgroundTransparency = Transparency
+				else
+					PositionTween = CreateTween({Toggle, "Position", Target, AnimationToggle})
+					TransparencyTween = CreateTween({Toggle, "BackgroundTransparency", Transparency, AnimationToggle})
+				end
+			end
+
 			local function SetToggle(Value, Force)
-				if type(Value) ~= "boolean" then return false end
+				if Destroyed or type(Value) ~= "boolean" then return false end
 				if Default == Value and not Force then return true end
+				if DragInput and FinishDrag then FinishDrag(false) end
+
 				Default = Value
 				SetFlag(Flag, Default)
-				if Default then
-					Toggle.AnchorPoint = Vector2.new(1, 0.5)
-					CreateTween({Toggle, "Position", UDim2.new(1, 0, 0.5), AnimationToggle})
-					CreateTween({Toggle, "BackgroundTransparency", 0, AnimationToggle})
-				else
-					Toggle.AnchorPoint = Vector2.new(0, 0.5)
-					CreateTween({Toggle, "Position", UDim2.new(0, 0, 0.5), AnimationToggle})
-					CreateTween({Toggle, "BackgroundTransparency", 0.8, AnimationToggle})
-				end
+				SetToggleVisual(Default, Force)
+				if Binding then Binding:Refresh() end
 				Funcs:FireCallback(Callback, Default)
 				return true
 			end
-			SetToggle(Default == true, true)
 
-			Button.Activated:Connect(function()
-				if not Button.Interactable then return end
+			FinishDrag = function(Restore)
+				if not DragInput then return end
+				DragInput = nil
+				if DragMoveConnection then
+					DragMoveConnection:Disconnect()
+					DragMoveConnection = nil
+				end
+				if DragEndConnection then
+					DragEndConnection:Disconnect()
+					DragEndConnection = nil
+				end
+				if Restore and not Destroyed then
+					SetToggleVisual(Default, false)
+				end
+
+				local Token = ActivationToken
+				task.delay(0.1, function()
+					if ActivationToken == Token then
+						SuppressActivation = false
+					end
+				end)
+			end
+
+			Toggle.InputBegan:Connect(function(Input)
+				local InputType = Input.UserInputType
+				if Destroyed or DragInput or ToggleControl.Locked or not Button.Interactable
+					or (Binding and Binding.Waiting)
+					or (InputType ~= Enum.UserInputType.MouseButton1 and InputType ~= Enum.UserInputType.Touch) then
+					return
+				end
+
+				if PositionTween then
+					PositionTween:Cancel()
+					PositionTween = nil
+				end
+				if TransparencyTween then
+					TransparencyTween:Cancel()
+					TransparencyTween = nil
+				end
+
+				DragInput = Input
+				DragStartX, DragStartY = Input.Position.X, Input.Position.Y
+				DragStartCenter = Toggle.AbsolutePosition.X + Toggle.AbsoluteSize.X / 2 - Slider.AbsolutePosition.X
+				Dragged, Scrolled = false, false
+				SuppressActivation = true
+				ActivationToken += 1
+
+				DragMoveConnection = UserInputService.InputChanged:Connect(function(Changed)
+					if DragInput ~= Input or Scrolled then return end
+					if InputType == Enum.UserInputType.Touch then
+						if Changed ~= Input then return end
+					elseif Changed.UserInputType ~= Enum.UserInputType.MouseMovement then
+						return
+					end
+
+					local DeltaX = Changed.Position.X - DragStartX
+					local DeltaY = Changed.Position.Y - DragStartY
+					if not Dragged then
+						if math.abs(DeltaY) > 10 and math.abs(DeltaY) > math.abs(DeltaX) then
+							Scrolled = true
+							return
+						end
+						if math.abs(DeltaX) <= 3 then return end
+						Dragged = true
+					end
+
+					local HalfWidth = Toggle.AbsoluteSize.X / 2
+					local Travel = Slider.AbsoluteSize.X - HalfWidth * 2
+					if Travel <= 0 then return end
+					local Center = math.clamp(DragStartCenter + DeltaX, HalfWidth, HalfWidth + Travel)
+					Toggle.Position = UDim2.new(Center / Slider.AbsoluteSize.X, 0, 0.5, 0)
+					Toggle.BackgroundTransparency = 0.8 * (1 - (Center - HalfWidth) / Travel)
+				end)
+
+				DragEndConnection = UserInputService.InputEnded:Connect(function(Ended)
+					if DragInput ~= Input then return end
+					if InputType == Enum.UserInputType.Touch then
+						if Ended ~= Input then return end
+					elseif Ended.UserInputType ~= Enum.UserInputType.MouseButton1 then
+						return
+					end
+
+					local WasDragged, WasScrolled = Dragged, Scrolled
+					local NextValue = Toggle.AbsolutePosition.X + Toggle.AbsoluteSize.X / 2 >= Slider.AbsolutePosition.X + Slider.AbsoluteSize.X / 2
+					FinishDrag(false)
+
+					if Destroyed or ToggleControl.Locked or not Button.Interactable or WasScrolled then
+						if not Destroyed then SetToggleVisual(Default, false) end
+					elseif WasDragged then
+						if NextValue == Default then
+							SetToggleVisual(Default, false)
+						elseif SetToggle(NextValue) then
+							PlayUISound()
+						end
+					elseif SetToggle(not Default) then
+						PlayUISound()
+					end
+				end)
+			end)
+
+			Button.Activated:Connect(function(Input)
+				if Destroyed or SuppressActivation or DragInput or not Button.Interactable then return end
+				if Binding and (Binding.Waiting or Binding:ContainsInput(Input)) then return end
 				if SetToggle(not Default) then PlayUISound() end
 			end)
 
-			local ToggleControl = {}
 			function ToggleControl:Visible(...) Funcs:ToggleVisible(Button, ...) end
-			function ToggleControl:Destroy() Button:Destroy() end
+			function ToggleControl:Destroy()
+				if Destroyed then return end
+				if FinishDrag then FinishDrag(false) end
+				if Binding then Binding:Destroy() end
+				Destroyed = true
+				Button:Destroy()
+			end
 			function ToggleControl:Callback(...)
 				local Added = Funcs:InsertCallback(Callback, ...)
 				if type(Added) == "function" then Added(Default) end
 			end
 			function ToggleControl:SetEnabled(Value)
-				if type(Value) ~= "boolean" then return false end
+				if Destroyed or type(Value) ~= "boolean" then return false end
 				SetToggle(Value)
 				return Default
+			end
+			function ToggleControl:SetKeybind(Key)
+				if not Binding then return false end
+				return Binding:SetKey(Key, true)
+			end
+			function ToggleControl:GetKeybind()
+				return Binding and Binding.CurrentKey or nil
 			end
 			function ToggleControl:GetEnabled()
 				return Default
@@ -3506,8 +4706,33 @@ function Library:MakeWindow(Configs)
 				LabelFunc:SetDesc(DisplayString(Value))
 			end
 
-			ApplyLocked(ToggleControl, Button, Configs)
-			return RegisterFlagObject(Flag, ToggleControl, Button)
+			ApplyLocked(ToggleControl, Button, Configs, function(IsLocked)
+				if IsLocked then
+					if FinishDrag then FinishDrag(true) end
+					if Binding then Binding:SetWaiting(false) end
+				end
+			end)
+			if HasKeybind then
+				Binding = CreateKeybindControl(ToggleControl, Button, LabelFunc, Configs, {
+					RightOffset = 51,
+					MaxWidth = 120,
+					AllowNone = true,
+					InitialKey = Configs.Keybind,
+					IsActive = function() return Default == true end,
+					OnChanged = Configs.OnKeybindChanged,
+					OnTriggered = function()
+						if SetToggle(not Default) then PlayUISound() end
+					end
+				})
+			end
+			Button.Destroying:Connect(function()
+				if FinishDrag then FinishDrag(false) end
+				Destroyed = true
+				if Binding then Binding:Destroy() end
+			end)
+			local Registered = RegisterFlagObject(Flag, ToggleControl, Button)
+			SetToggle(Default == true, true)
+			return Registered
 		end
 		function Tab:AddDropdown(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
@@ -3791,6 +5016,7 @@ function Library:MakeWindow(Configs)
 				if SearchInput then SearchInput:ReleaseFocus() end
 			end
 
+
 			local function GetFrameSize()
 				return UDim2.fromOffset(152, ScrollSize)
 			end
@@ -3875,6 +5101,19 @@ function Library:MakeWindow(Configs)
 					end
 				end
 			end
+
+            TrackDropdownConnection(Container:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+                if not NoClickFrame.Visible then return end
+                local Top = Container.AbsolutePosition.Y
+                local Bottom = Top + Container.AbsoluteSize.Y
+                local AnchorTop = SelectedFrame.AbsolutePosition.Y
+                local AnchorBottom = AnchorTop + SelectedFrame.AbsoluteSize.Y
+                if AnchorBottom <= Top or AnchorTop >= Bottom then
+                    HideInstantly()
+                else
+                    CalculatePos()
+                end
+            end))
 
 			local AddNewOptions, GetOptions, AddOption, RemoveOption, Selected, SetSearchEnabled, SetPrefixOnly
 
@@ -5174,6 +6413,399 @@ function Library:MakeWindow(Configs)
 			ApplyLocked(Selector, Button, Configs)
 			return RegisterFlagObject(Flag, Selector, Button)
 		end
+
+		function Tab:AddProgressBar(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
+			local Range = type(Configs.Value) == "table" and Configs.Value or {}
+
+			local function Finite(Input)
+				local Number = tonumber(Input)
+				if not Number or Number ~= Number or math.abs(Number) == math.huge then return nil end
+				return Number
+			end
+
+			local Min = Finite(Range.Min) or Finite(Configs.Min) or 0
+			local Max = Finite(Range.Max) or Finite(Configs.Max) or 100
+			if Min > Max then Min, Max = Max, Min end
+
+			local Default = (type(Configs.Value) == "number" and Finite(Configs.Value))
+				or Finite(Range.Default) or Finite(Configs.Default) or Min
+			local Flag = NormalizeObjectFlag(Configs.Flag)
+			local SavedValue = CheckFlag(Flag) and Finite(GetFlag(Flag)) or nil
+			local Value = math.clamp(SavedValue or Default, Min, Max)
+			local Indeterminate = Configs.Indeterminate == true
+			local IndeterminateText = tostring(Configs.IndeterminateText or "")
+			local ShowValue = Configs.ShowValue
+			if ShowValue == nil then ShowValue = not Indeterminate or IndeterminateText ~= "" end
+			ShowValue = ShowValue == true
+
+			local Callback = Funcs:GetCallback(Configs, 3)
+			local CompleteCallbacks = {}
+			local ResetCallbacks = {}
+			local MilestoneCallbacks = {}
+			if type(Configs.OnComplete) == "function" then table.insert(CompleteCallbacks, Configs.OnComplete) end
+			if type(Configs.OnReset) == "function" then table.insert(ResetCallbacks, Configs.OnReset) end
+			if type(Configs.OnMilestone) == "function" then table.insert(MilestoneCallbacks, Configs.OnMilestone) end
+
+			local Milestones = {}
+			if type(Configs.Milestones) == "table" then
+				for _, Entry in ipairs(Configs.Milestones) do
+					local Threshold = Finite(Entry)
+					if Threshold and Threshold >= 0 and Threshold <= 100 and not table.find(Milestones, Threshold) then
+						table.insert(Milestones, Threshold)
+					end
+				end
+				table.sort(Milestones)
+			end
+
+			local Width = math.max(Finite(Configs.Width) or 160, 0)
+			local ValueWidth = math.max(Finite(Configs.ValueWidth) or 44, 0)
+			local ControlGap = math.max(Finite(Configs.ControlGap) or 16, 0)
+			local ControlWidth = Width + (ShowValue and ValueWidth + 8 or 0)
+			local Title = Configs[1] or Configs.Name or Configs.Title or "ProgressBar"
+			local Desc = Configs.Desc or Configs.Description or ""
+
+			local Frame, LabelFunc = ButtonFrame(
+				Container, Title, Desc,
+				UDim2.new(1, -(ControlWidth + ControlGap + ElementHorizontalPadding)), false
+			)
+			local Holder = Create("Frame", Frame, {
+				Size = UDim2.fromOffset(ControlWidth, 24),
+				Position = UDim2.new(1, -ElementHorizontalPadding, 0.5, 0),
+				AnchorPoint = Vector2.new(1, 0.5),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0
+			})
+			local Track = InsertTheme(Create("Frame", Holder, {
+				Size = UDim2.fromOffset(Width, 6),
+				Position = UDim2.new(0, 0, 0.5, 0),
+				AnchorPoint = Vector2.new(0, 0.5),
+				BackgroundColor3 = Theme["Color Stroke"],
+				BorderSizePixel = 0,
+				ClipsDescendants = true
+			}), "Stroke")
+			Make("Corner", Track, UDim.new(1, 0))
+
+			local Fill = InsertTheme(Create("Frame", Track, {
+				Size = UDim2.fromScale(0, 1),
+				BackgroundColor3 = Theme["Color Theme"],
+				BorderSizePixel = 0
+			}), "Theme")
+			Make("Corner", Fill, UDim.new(1, 0))
+
+			local ValueLabel = InsertTheme(Create("TextLabel", Holder, {
+				Size = UDim2.fromOffset(ValueWidth, 20),
+				Position = UDim2.new(1, 0, 0.5, 0),
+				AnchorPoint = Vector2.new(1, 0.5),
+				BackgroundTransparency = 1,
+				TextColor3 = Theme["Color Text"],
+				TextTransparency = 0.15,
+				Font = Enum.Font.GothamMedium,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Text = "",
+				Visible = ShowValue
+			}), "Text")
+
+			local ProgressBar = {
+				__type = "ProgressBar",
+				Value = {Min = Min, Max = Max, Default = Value},
+				Indeterminate = Indeterminate,
+				IndeterminateText = IndeterminateText,
+				ShowValue = ShowValue,
+				DisplayMode = Configs.DisplayMode or "Percent",
+				Format = Configs.Format,
+				Animate = Configs.Animate ~= false,
+				AnimationDuration = math.max(Finite(Configs.AnimationDuration) or 0.15, 0),
+				Speed = math.max(Finite(Configs.Speed) or 1, 0.01),
+				Paused = false,
+				Locked = Configs.Locked == true,
+				UIElements = {Container = Holder, Bar = Track, Fill = Fill, Value = ValueLabel}
+			}
+			local Destroyed = false
+			local ValueTween
+			local LoopTween
+			local VisibilityConnection
+			local FrameVisibilityConnection
+			local FlagConnection
+
+			local function GetRatio(Number)
+				if Max == Min then return Number >= Max and 1 or 0 end
+				return math.clamp((Number - Min) / (Max - Min), 0, 1)
+			end
+
+			local function FormatNumber(Number)
+				if Number % 1 == 0 then return tostring(Number) end
+				return tostring(tonumber(string.format("%.2f", Number)))
+			end
+
+			local function FormatValue(Number, Percentage)
+				if Indeterminate then return ProgressBar.IndeterminateText end
+				if type(ProgressBar.Format) == "function" then
+					local Success, Result = pcall(ProgressBar.Format, Number, Percentage, Min, Max)
+					if Success and Result ~= nil then return tostring(Result) end
+				end
+				if ProgressBar.DisplayMode == "Value" then
+					return FormatNumber(Number)
+				elseif ProgressBar.DisplayMode == "Fraction" then
+					return FormatNumber(Number) .. "/" .. FormatNumber(Max)
+				end
+				return tostring(math.floor(Percentage + 0.5)) .. "%"
+			end
+
+			local function StopValueTween()
+				if ValueTween then
+					ValueTween:Cancel()
+					ValueTween:Destroy()
+					ValueTween = nil
+				end
+			end
+
+			local function StopLoop()
+				if LoopTween then
+					LoopTween:Cancel()
+					LoopTween:Destroy()
+					LoopTween = nil
+				end
+			end
+
+			local function SyncLoop()
+				if Destroyed or not Indeterminate then return end
+				if not LoopTween then
+					Fill.Size = UDim2.fromScale(0.35, 1)
+					Fill.Position = UDim2.fromScale(-0.35, 0)
+					LoopTween = TweenService:Create(Fill,
+						TweenInfo.new(1 / ProgressBar.Speed, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1),
+						{Position = UDim2.fromScale(1, 0)})
+				end
+				if ProgressBar.Paused or ProgressBar.Locked or not Frame.Visible or not Container.Visible then
+					LoopTween:Pause()
+				else
+					LoopTween:Play()
+				end
+			end
+
+			local function Refresh(Instant)
+				if Destroyed then return end
+				local Fraction = GetRatio(Value)
+				ValueLabel.Text = FormatValue(Value, Fraction * 100)
+				if Indeterminate then return end
+
+				StopValueTween()
+				local Target = UDim2.fromScale(Fraction, 1)
+				if not Instant and ProgressBar.Animate and ProgressBar.AnimationDuration > 0 then
+					ValueTween = TweenService:Create(Fill,
+						TweenInfo.new(ProgressBar.AnimationDuration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+						{Size = Target})
+					ValueTween:Play()
+				else
+					Fill.Size = Target
+				end
+			end
+
+			local function SetValue(NewValue, Silent, Instant)
+				if Destroyed then return Value end
+				local Number = Finite(NewValue)
+				if not Number then return Value end
+				Number = math.clamp(Number, Min, Max)
+				if Number == Value then return Value end
+
+				local Previous = Value
+				local PreviousPercentage = GetRatio(Previous) * 100
+				Value = Number
+				ProgressBar.Value.Default = Value
+				Refresh(Instant)
+				SetFlag(Flag, Value)
+
+				if not Silent then
+					local Percentage = GetRatio(Value) * 100
+					Funcs:FireCallback(Callback, Value, Percentage)
+					for _, Threshold in ipairs(Milestones) do
+						if PreviousPercentage < Threshold and Percentage >= Threshold then
+							Funcs:FireCallback(MilestoneCallbacks, Threshold, Value)
+						end
+					end
+					if Previous < Max and Value >= Max then
+						Funcs:FireCallback(CompleteCallbacks, Value)
+					end
+					if Previous > Min and Value <= Min then
+						Funcs:FireCallback(ResetCallbacks, Value)
+					end
+				end
+				return Value
+			end
+
+			function ProgressBar:Set(NewValue, Silent)
+				return SetValue(NewValue, Silent == true)
+			end
+			ProgressBar.SetValue = ProgressBar.Set
+
+			function ProgressBar:Get()
+				return Value
+			end
+			function ProgressBar:GetPercentage()
+				return GetRatio(Value) * 100
+			end
+			function ProgressBar:IsComplete()
+				return Value >= Max
+			end
+			function ProgressBar:IsIndeterminate()
+				return Indeterminate
+			end
+			function ProgressBar:SetPercentage(Percentage, Silent)
+				local Number = Finite(Percentage)
+				if not Number then return Value end
+				return SetValue(Min + (Max - Min) * math.clamp(Number / 100, 0, 1), Silent == true)
+			end
+			function ProgressBar:Increment(Amount, Silent)
+				local Number = Finite(Amount)
+				if not Number then return Value end
+				return SetValue(Value + Number, Silent == true)
+			end
+			ProgressBar.Add = ProgressBar.Increment
+
+			function ProgressBar:Reset(Silent)
+				return SetValue(Min, Silent == true)
+			end
+			function ProgressBar:Complete(Silent)
+				if Indeterminate then self:SetIndeterminate(false) end
+				return SetValue(Max, Silent == true)
+			end
+			function ProgressBar:SetRange(NewMin, NewMax)
+				NewMin, NewMax = Finite(NewMin), Finite(NewMax)
+				if not NewMin or not NewMax then return Min, Max end
+				if NewMin > NewMax then NewMin, NewMax = NewMax, NewMin end
+				if Min == NewMin and Max == NewMax then return Min, Max end
+				Min, Max = NewMin, NewMax
+				ProgressBar.Value.Min, ProgressBar.Value.Max = Min, Max
+				local Clamped = math.clamp(Value, Min, Max)
+				if Clamped ~= Value then
+					SetValue(Clamped)
+				else
+					Refresh(true)
+				end
+				return Min, Max
+			end
+			function ProgressBar:SetMin(NewMin)
+				NewMin = Finite(NewMin)
+				if not NewMin then return Min end
+				self:SetRange(NewMin, math.max(NewMin, Max))
+				return Min
+			end
+			function ProgressBar:SetMax(NewMax)
+				NewMax = Finite(NewMax)
+				if not NewMax then return Max end
+				self:SetRange(math.min(Min, NewMax), NewMax)
+				return Max
+			end
+
+			function ProgressBar:SetIndeterminate(Enabled)
+				if Destroyed or type(Enabled) ~= "boolean" or Indeterminate == Enabled then return Indeterminate end
+				Indeterminate = Enabled
+				self.Indeterminate = Enabled
+				StopValueTween()
+				if Indeterminate then
+					SyncLoop()
+				else
+					StopLoop()
+					Fill.Position = UDim2.fromScale(0, 0)
+				end
+				Refresh(true)
+				return Indeterminate
+			end
+			function ProgressBar:SetIndeterminateText(Text)
+				self.IndeterminateText = tostring(Text or "")
+				Refresh(true)
+			end
+			function ProgressBar:SetSpeed(NewSpeed)
+				local Number = Finite(NewSpeed)
+				if not Number or Number <= 0 then return self.Speed end
+				self.Speed = Number
+				if Indeterminate then
+					StopLoop()
+					SyncLoop()
+				end
+				return self.Speed
+			end
+			function ProgressBar:Pause()
+				self.Paused = true
+				if LoopTween then LoopTween:Pause() end
+			end
+			function ProgressBar:Resume()
+				self.Paused = false
+				SyncLoop()
+			end
+			function ProgressBar:SetDisplayMode(Mode)
+				if type(Mode) ~= "string" then return end
+				self.DisplayMode = Mode
+				Refresh(true)
+			end
+			function ProgressBar:SetFormat(Formatter)
+				if Formatter ~= nil and type(Formatter) ~= "function" then return end
+				self.Format = Formatter
+				Refresh(true)
+			end
+			function ProgressBar:SetAnimation(Enabled, Duration)
+				if type(Enabled) == "boolean" then self.Animate = Enabled end
+				local Number = Finite(Duration)
+				if Number and Number >= 0 then self.AnimationDuration = Number end
+				if not self.Animate then Refresh(true) end
+			end
+			function ProgressBar:SetTitle(NewTitle)
+				LabelFunc:SetTitle(DisplayString(NewTitle))
+			end
+			function ProgressBar:SetDesc(NewDesc)
+				LabelFunc:SetDesc(DisplayString(NewDesc))
+			end
+			function ProgressBar:Callback(Func)
+				Funcs:InsertCallback(Callback, Func)
+			end
+			function ProgressBar:OnComplete(Func)
+				Funcs:InsertCallback(CompleteCallbacks, Func)
+			end
+			function ProgressBar:OnReset(Func)
+				Funcs:InsertCallback(ResetCallbacks, Func)
+			end
+			function ProgressBar:OnMilestone(Func)
+				Funcs:InsertCallback(MilestoneCallbacks, Func)
+			end
+			function ProgressBar:Visible(...)
+				if not Destroyed then Funcs:ToggleVisible(Frame, ...) end
+			end
+			function ProgressBar:Destroy()
+				if not Destroyed then Frame:Destroy() end
+			end
+
+			VisibilityConnection = Container:GetPropertyChangedSignal("Visible"):Connect(SyncLoop)
+			FrameVisibilityConnection = Frame:GetPropertyChangedSignal("Visible"):Connect(SyncLoop)
+			if Flag then
+				FlagConnection = Connection.FlagsChanged:Connect(function(Name, NewValue)
+					if Destroyed or Name ~= Flag or GetFlag(Flag) ~= NewValue then return end
+					local Number = Finite(NewValue)
+					if Number then SetValue(Number, true) end
+				end)
+			end
+
+			Frame.Destroying:Connect(function()
+				Destroyed = true
+				StopValueTween()
+				StopLoop()
+				VisibilityConnection:Disconnect()
+				FrameVisibilityConnection:Disconnect()
+				if FlagConnection then FlagConnection:Disconnect() end
+			end)
+
+			Refresh(true)
+			if Indeterminate then SyncLoop() end
+			SetFlag(Flag, Value)
+			if Configs.FireOnInit == true then
+				Funcs:FireCallback(Callback, Value, GetRatio(Value) * 100)
+				if Value >= Max then Funcs:FireCallback(CompleteCallbacks, Value) end
+			end
+			ApplyLocked(ProgressBar, Frame, Configs, SyncLoop)
+			return RegisterFlagObject(Flag, ProgressBar, Frame)
+		end
 		function Tab:AddSlider(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local SName = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.Slider)
@@ -5538,419 +7170,607 @@ function Library:MakeWindow(Configs)
 			ApplyLocked(TextBox, Button, Configs)
 			return RegisterFlagObject(Flag, TextBox, Button)
 		end
+
+		function Tab:AddTextArea(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
+			local Title = Configs[1] or Configs.Name or Configs.Title or "TextArea"
+			local Description = Configs.Desc or Configs.Description or ""
+			local Flag = NormalizeObjectFlag(Configs.Flag)
+			local Default = FirstDefined(Configs[2], Configs.Default, ControlsConfig.TextBox.Default, "")
+			if CheckFlag(Flag) then Default = GetFlag(Flag) end
+			if type(Default) ~= "string" then Default = DisplayString(Default) end
+			local Placeholder = Configs[5] or Configs.PlaceholderText or ControlsConfig.TextBox.Placeholder or ""
+			local ClearOnFocus = FirstDefined(Configs[3], Configs.ClearText, false) == true
+			local Callback = Funcs:GetCallback(Configs, 4)
+			local Mod = Configs.Mod
+			local ReadOnly = Configs.ReadOnly == true or Configs.TextEditable == false
+			local Height = math.clamp(tonumber(Configs.Height) or 96, 64, 360)
+			local MinHeight = math.clamp(tonumber(Configs.MinHeight) or 64, 48, Height)
+			local AutoResize = Configs.AutoResize ~= false
+			local TextSize = math.clamp(tonumber(Configs.TextSize) or 12, 10, 28)
+			local function NormalizeMaxLength(Value)
+				if Value == nil or Value == false then return nil end
+				local Number = tonumber(Value)
+				if not Number or Number ~= Number or Number < 0 or Number == math.huge then return nil end
+				return math.floor(Number)
+			end
+			local MaxLength = NormalizeMaxLength(Configs.MaxLength)
+			local EditorPadding = 20
+			local CounterPadding = 16
+			local Destroyed = false
+			local Connections = {}
+
+			local function Track(Signal, Handler)
+				local Connection = Signal:Connect(Handler)
+				Connections[#Connections + 1] = Connection
+				return Connection
+			end
+
+			local Frame = InsertTheme(Create("Frame", Container, {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundColor3 = Theme["Color Hub 2"],
+				BorderSizePixel = 0
+			}), "Frame")
+			Make("Corner", Frame, UDim.new(0, ElementCornerRadius))
+			local Content = Create("Frame", Frame, {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0
+			})
+			Create("UIPadding", Content, {
+				PaddingLeft = UDim.new(0, ElementHorizontalPadding),
+				PaddingRight = UDim.new(0, ElementHorizontalPadding),
+				PaddingTop = UDim.new(0, ElementVerticalPadding),
+				PaddingBottom = UDim.new(0, ElementVerticalPadding)
+			})
+			Create("UIListLayout", Content, {
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, math.max(ElementSpacing, 11))
+			})
+
+			local Header = Create("Frame", Content, {
+				LayoutOrder = 1,
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1
+			})
+			Create("UIListLayout", Header, {
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, ElementSpacing)
+			})
+
+			local TitleLabel = InsertTheme(Create("TextLabel", Header, {
+				LayoutOrder = 1,
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamMedium,
+				TextSize = ElementTitleTextSize,
+				TextColor3 = Theme["Color Text"],
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Center,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Text = TranslateText(DisplayString(Title))
+			}), "Text")
+
+			local DescLabel = InsertTheme(Create("TextLabel", Header, {
+				LayoutOrder = 2,
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				TextSize = ElementDescriptionTextSize,
+				TextColor3 = Theme["Color Dark Text"],
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				Text = "",
+				Visible = false
+			}), "DarkText")
+
+			local function EditorColor()
+				return Theme["Color Hub 2"]:Lerp(Theme["Color Stroke"], 0.13)
+			end
+
+			local Editor = Create("Frame", Content, {
+				LayoutOrder = 2,
+				Size = UDim2.new(1, 0, 0, Height),
+				BackgroundColor3 = EditorColor(),
+				BorderSizePixel = 0,
+				ClipsDescendants = true
+			})
+			Make("Corner", Editor, UDim.new(0, 5))
+			local Outline = InsertTheme(Create("UIStroke", Editor, {
+				Color = Theme["Color Theme"],
+				Thickness = 0.65,
+				Enabled = false,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			}), "Theme")
+
+			local Scroll = InsertTheme(Create("ScrollingFrame", Editor, {
+				Size = UDim2.new(1, -24, 1, -(EditorPadding + (MaxLength and CounterPadding or 0))),
+				Position = UDim2.fromOffset(12, 10),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				CanvasSize = UDim2.new(),
+				AutomaticCanvasSize = Enum.AutomaticSize.None,
+				ScrollingDirection = Enum.ScrollingDirection.Y,
+				ScrollingEnabled = false,
+				Active = true,
+				ScrollBarThickness = 0,
+				ScrollBarImageColor3 = Theme["Color Theme"],
+				ScrollBarImageTransparency = 0.48
+			}), "ScrollBar")
+
+			local Input = InsertTheme(Create("TextBox", Scroll, {
+				Size = UDim2.new(1, -3, 0, Height - EditorPadding),
+				AutomaticSize = Enum.AutomaticSize.None,
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				MultiLine = true,
+				TextWrapped = true,
+				TextScaled = false,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				Font = Enum.Font.Gotham,
+				TextSize = TextSize,
+				TextColor3 = Theme["Color Text"],
+				PlaceholderColor3 = Theme["Color Dark Text"],
+				PlaceholderText = TranslateText(DisplayString(Placeholder)),
+				ClearTextOnFocus = ClearOnFocus,
+				TextEditable = not ReadOnly,
+				Text = ""
+			}), "Text")
+
+			local Counter = Create("TextLabel", Editor, {
+				AnchorPoint = Vector2.new(1, 1),
+				Position = UDim2.new(1, -12, 1, -4),
+				Size = UDim2.new(1, -24, 0, 12),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				TextSize = 10,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				TextYAlignment = Enum.TextYAlignment.Bottom,
+				TextColor3 = Theme["Color Dark Text"],
+				Text = "",
+				Visible = MaxLength ~= nil
+			})
+
+			local LineHeight = TextService:GetTextSize("Mg", TextSize, Input.Font, Vector2.new(1000, 1000)).Y
+
+			local TextArea = {OnChanging = false}
+			local Changing = false
+			local LastSubmitted
+			local Hovering = false
+			local SavedTabScroll
+			-- Touch devices retain native scrolling even when a keyboard is present.
+			local ManualWheel = UserInputService.MouseEnabled and not UserInputService.TouchEnabled
+			local Overflow = false
+			local LastContentHeight = 0
+			local CaretScheduled = false
+
+			local function EffectiveScale()
+				return math.max(0.01, ScreenScale.Scale)
+			end
+
+			local function CountCharacters(Text)
+				return utf8.len(Text) or #Text
+			end
+
+			local function EnforceMaxLength(Text)
+				if MaxLength == nil or CountCharacters(Text) <= MaxLength then return Text end
+				local Offset = utf8.offset(Text, MaxLength + 1)
+				return Text:sub(1, (Offset or MaxLength + 1) - 1)
+			end
+
+			local function UpdateCounter()
+				Counter.Visible = MaxLength ~= nil
+				if MaxLength == nil then return end
+				local Count = CountCharacters(Input.Text)
+				Counter.Text = string.format("%d/%d", Count, MaxLength)
+				Counter.TextColor3 = Count >= MaxLength and Theme["Color Theme"] or Theme["Color Dark Text"]
+			end
+
+			local function MeasureText(Text)
+				local Width = Input.AbsoluteSize.X / EffectiveScale()
+				if Width < 1 then return end
+				return TextService:GetTextSize(Text, TextSize, Input.Font, Vector2.new(math.floor(Width), 100000)).Y
+			end
+
+			local function MaxScroll()
+				return math.max(0, Scroll.AbsoluteCanvasSize.Y - Scroll.AbsoluteWindowSize.Y)
+			end
+
+			local function ClampScroll(Value)
+				return Vector2.new(0, math.clamp(Value, 0, MaxScroll()))
+			end
+
+			local function UpdateScrollOwnership()
+				local Capture = not Destroyed and Hovering and Overflow and Frame.Visible and Container.Visible
+				if Capture and SavedTabScroll == nil then
+					SavedTabScroll = Container.ScrollingEnabled
+					Container.ScrollingEnabled = false
+				elseif not Capture and SavedTabScroll ~= nil then
+					Container.ScrollingEnabled = SavedTabScroll
+					SavedTabScroll = nil
+				end
+			end
+
+			local function UpdateCanvas()
+				if Destroyed then return end
+				UpdateCounter()
+				local Padding = EditorPadding + (MaxLength and CounterPadding or 0)
+				if Scroll.Size.Y.Offset ~= -Padding then
+					Scroll.Size = UDim2.new(1, -24, 1, -Padding)
+				end
+				local Text = Input.Text
+				local Measured = Text == "" and " " or Text
+				if Measured:sub(-1) == "\n" then Measured ..= " " end
+				local RealHeight = MeasureText(Measured)
+				if not RealHeight then return end
+				local Lines = select(2, Text:gsub("\n", "")) + 1
+				local ContentHeight = math.max(math.ceil(RealHeight), Lines * LineHeight) + 6
+				local TargetHeight = AutoResize and math.clamp(ContentHeight + Padding, MinHeight, Height) or Height
+				if Editor.Size.Y.Offset ~= TargetHeight then
+					Editor.Size = UDim2.new(1, 0, 0, TargetHeight)
+				end
+				local ViewHeight = TargetHeight - Padding
+				LastContentHeight = ContentHeight
+				Overflow = ContentHeight > ViewHeight + 2
+				local CanvasHeight = math.max(ViewHeight, ContentHeight)
+				if Input.Size.Y.Offset ~= CanvasHeight then
+					Input.Size = UDim2.new(1, -3, 0, CanvasHeight)
+				end
+				Scroll.CanvasSize = UDim2.fromOffset(0, CanvasHeight)
+				Scroll.ScrollBarThickness = Overflow and 2 or 0
+				Scroll.ScrollingEnabled = Overflow and not (ManualWheel and Input:IsFocused())
+				if not Overflow then
+					Scroll.CanvasPosition = Vector2.zero
+				else
+					Scroll.CanvasPosition = ClampScroll(Scroll.CanvasPosition.Y)
+				end
+				UpdateScrollOwnership()
+			end
+
+			local function KeepCaretVisible()
+				if Destroyed or not Overflow or not Input:IsFocused() then return end
+				local Cursor = Input.CursorPosition
+				if Cursor < 1 then return end
+				local Prefix = Input.Text:sub(1, Cursor - 1)
+				if Prefix == "" or Prefix:sub(-1) == "\n" then Prefix ..= " " end
+				local RealHeight = MeasureText(Prefix)
+				if not RealHeight then return end
+				local Scale = EffectiveScale()
+				local CaretBottom = math.min(LastContentHeight * Scale, RealHeight * Scale)
+				local Top = Scroll.CanvasPosition.Y
+				local ViewHeight = math.max(1, Scroll.AbsoluteWindowSize.Y)
+				local Margin = 6 * Scale
+				if CaretBottom > Top + ViewHeight - Margin then
+					Scroll.CanvasPosition = ClampScroll(CaretBottom - ViewHeight + Margin)
+				elseif CaretBottom < Top + TextSize * Scale then
+					Scroll.CanvasPosition = ClampScroll(CaretBottom - (TextSize + 4) * Scale)
+				end
+			end
+
+			local function ScheduleCaretFollow()
+				if Destroyed or CaretScheduled then return end
+				CaretScheduled = true
+				task.defer(function()
+					CaretScheduled = false
+					if not Destroyed then KeepCaretVisible() end
+				end)
+			end
+
+			local function Refresh()
+				UpdateCanvas()
+				ScheduleCaretFollow()
+			end
+
+			local function SetDescription(Value)
+				local Text = DisplayString(Value)
+				DescLabel.Text = TranslateText(Text)
+				DescLabel.Visible = Text:match("%S") ~= nil
+			end
+
+			local function ApplyMod(Text)
+				if type(Mod) == "function" then
+					local Result = Mod(Text)
+					return type(Result) == "string" and Result or Text
+				end
+				if type(Mod) ~= "table" then return Text end
+
+				local Space = Mod.Space ~= false
+				local Number = Mod.Number ~= false
+				local Letter = Mod.Letter ~= false
+				local Symbol = Mod.Symbol == true
+				local Result = table.create(#Text)
+				for Index = 1, #Text do
+					local Character = Text:sub(Index, Index)
+					local Allowed
+					if Character == "\n" or Character == "\r" then
+						Allowed = true
+					elseif Character == " " or Character == "\t" then
+						Allowed = Space
+					elseif Character:match("%a") then
+						Allowed = Letter
+					elseif Character:match("%d") then
+						Allowed = Number
+					else
+						Allowed = Symbol
+					end
+					if Allowed then Result[#Result + 1] = Character end
+				end
+				return table.concat(Result)
+			end
+
+			local function SetInput(Text)
+				Text = EnforceMaxLength(Text)
+				if Input.Text == Text then return Text end
+				local Cursor = Input.CursorPosition
+				local Selection = Input.SelectionStart
+				Changing = true
+				Input.Text = Text
+				local CursorLimit = CountCharacters(Text) + 1
+				if Cursor > 0 then Input.CursorPosition = math.min(Cursor, CursorLimit) end
+				if Selection > 0 then Input.SelectionStart = math.min(Selection, CursorLimit) end
+				Changing = false
+				Refresh()
+				return Text
+			end
+
+			local function Submit(Silent)
+				if Destroyed then return end
+				local Text = ApplyMod(Input.Text)
+				if type(TextArea.OnChanging) == "function" and not Silent then
+					local Changed = TextArea.OnChanging(Text)
+					if type(Changed) == "string" then Text = Changed end
+				end
+				Text = SetInput(Text)
+				if LastSubmitted == Text then return end
+				LastSubmitted = Text
+				SetFlag(Flag, Text)
+				if not Silent then Funcs:FireCallback(Callback, Text) end
+			end
+
+			Track(Input:GetPropertyChangedSignal("Text"), function()
+				if Destroyed or Changing then return end
+				local NewText = Input.Text
+				if Mod ~= nil then NewText = ApplyMod(NewText) end
+				NewText = EnforceMaxLength(NewText)
+				if NewText ~= Input.Text then SetInput(NewText) end
+				Refresh()
+			end)
+			Track(Input:GetPropertyChangedSignal("CursorPosition"), ScheduleCaretFollow)
+			Track(Scroll:GetPropertyChangedSignal("AbsoluteSize"), Refresh)
+			Track(Scroll:GetPropertyChangedSignal("AbsoluteWindowSize"), Refresh)
+			Track(Scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"), function()
+				if not Overflow then return end
+				Scroll.CanvasPosition = ClampScroll(Scroll.CanvasPosition.Y)
+				ScheduleCaretFollow()
+			end)
+			Track(ScreenScale:GetPropertyChangedSignal("Scale"), Refresh)
+			Track(Container:GetPropertyChangedSignal("Visible"), function()
+				UpdateScrollOwnership()
+				if Container.Visible then Refresh() end
+			end)
+			Track(Frame:GetPropertyChangedSignal("Visible"), UpdateScrollOwnership)
+
+			Track(Editor.MouseEnter, function()
+				Hovering = true
+				UpdateScrollOwnership()
+			end)
+			Track(Editor.MouseLeave, function()
+				Hovering = false
+				UpdateScrollOwnership()
+			end)
+
+			Track(UserInputService.InputChanged, function(InputObject)
+				if Destroyed or not ManualWheel or not Hovering or not Overflow
+					or InputObject.UserInputType ~= Enum.UserInputType.MouseWheel
+					or not Input:IsFocused() then return end
+				local Movement = InputObject.Position.Z
+				if Movement == 0 then return end
+				Scroll.CanvasPosition = ClampScroll(
+					Scroll.CanvasPosition.Y - Movement * math.max(TextSize * 3, 30) * EffectiveScale()
+				)
+			end)
+
+			Track(Input.Focused, function()
+				if Destroyed then return end
+				if not TextArea.Locked then Outline.Enabled = true end
+				Refresh()
+			end)
+			Track(Input.FocusLost, function()
+				if Destroyed then return end
+				Outline.Enabled = false
+				Scroll.ScrollingEnabled = Overflow
+				if not TextArea.Locked then Submit(false) end
+			end)
+
+			SetDescription(Description)
+			SetInput(ApplyMod(Default))
+			UpdateCanvas()
+			Submit(false)
+
+			function TextArea:Get()
+				return Input.Text
+			end
+			function TextArea:GetPlaceholder()
+				return Input.PlaceholderText
+			end
+			function TextArea:Set(Text)
+				if type(Text) ~= "string" or Destroyed then return end
+				SetInput(ApplyMod(Text))
+				Submit(false)
+			end
+			function TextArea:Clear()
+				self:Set("")
+			end
+			function TextArea:SetPlaceholder(Text)
+				if type(Text) == "string" and not Destroyed then
+					Input.PlaceholderText = TranslateText(Text)
+				end
+			end
+			function TextArea:SetTitle(Value)
+				if not Destroyed then TitleLabel.Text = TranslateText(DisplayString(Value)) end
+			end
+			function TextArea:SetDesc(Value)
+				if not Destroyed then SetDescription(Value) end
+			end
+			function TextArea:SetHeight(Value)
+				local NewHeight = tonumber(Value)
+				if not NewHeight or NewHeight ~= NewHeight or math.abs(NewHeight) == math.huge or Destroyed then return end
+				Height = math.clamp(NewHeight, 64, 360)
+				MinHeight = math.min(MinHeight, Height)
+				Refresh()
+			end
+			function TextArea:GetHeight()
+				return Editor.Size.Y.Offset
+			end
+			function TextArea:GetTextLength()
+				return CountCharacters(Input.Text)
+			end
+			function TextArea:GetMaxLength()
+				return MaxLength
+			end
+			function TextArea:SetMaxLength(Value)
+				if Destroyed then return end
+				if Value ~= nil and Value ~= false and NormalizeMaxLength(Value) == nil then return end
+				local NewLength = NormalizeMaxLength(Value)
+				if MaxLength == NewLength then return end
+				MaxLength = NewLength
+				local OldText = Input.Text
+				SetInput(OldText)
+				Refresh()
+				if Input.Text ~= OldText and not Input:IsFocused() then Submit(false) end
+			end
+			function TextArea:SetAutoResize(Enabled)
+				if Destroyed or type(Enabled) ~= "boolean" then return end
+				AutoResize = Enabled
+				Refresh()
+			end
+			function TextArea:Focus()
+				if not Destroyed and not self.Locked and Input.TextEditable then Input:CaptureFocus() end
+			end
+			function TextArea:Callback(Func)
+				Funcs:InsertCallback(Callback, Func)
+			end
+			function TextArea:Mod(NewMod)
+				Mod = NewMod
+				SetInput(ApplyMod(Input.Text))
+			end
+			function TextArea:Visible(...)
+				if not Destroyed then
+					Funcs:ToggleVisible(Frame, ...)
+					UpdateScrollOwnership()
+					if Frame.Visible then Refresh() end
+				end
+			end
+			function TextArea:Destroy()
+				if not Destroyed then Frame:Destroy() end
+			end
+
+			if Flag then
+				Track(Connection.FlagsChanged, function(Name, Value)
+					if Destroyed or Name ~= Flag or type(Value) ~= "string" or GetFlag(Flag) ~= Value then return end
+					if Input:IsFocused() or Input.Text == Value then return end
+					local Limited = SetInput(Value)
+					LastSubmitted = Limited
+					if Limited ~= Value then SetFlag(Flag, Limited) end
+				end)
+			end
+			Track(Connection.ThemeChanged, function()
+				if Destroyed then return end
+				Editor.BackgroundColor3 = EditorColor()
+				Input.PlaceholderColor3 = Theme["Color Dark Text"]
+				UpdateCounter()
+			end)
+			Track(Frame.Destroying, function()
+				Hovering = false
+				UpdateScrollOwnership()
+				Destroyed = true
+				for _, Connection in ipairs(Connections) do
+					Connection:Disconnect()
+				end
+				table.clear(Connections)
+			end)
+
+			ApplyLocked(TextArea, Frame, Configs, function(Locked)
+				Input.TextEditable = not Locked and not ReadOnly
+				if Locked then Outline.Enabled = false end
+			end)
+			return RegisterFlagObject(Flag, TextArea, Frame)
+		end
 		function Tab:AddKeybind(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			if not UserInputService.KeyboardEnabled then return end
-
 			local KName = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.Keybind)
 			local KDesc = Configs.Desc or Configs.Description or ""
 			local DefaultValue = Configs.Default
 			local KDefault = Configs.Value or Configs.Key or Configs.Keybind or Configs[2]
-
 			if KDefault == nil and (type(DefaultValue) == "string" or typeof(DefaultValue) == "EnumItem") then
 				KDefault = DefaultValue
 			end
-
 			KDefault = KDefault or Enum.KeyCode.LeftShift
-
-			local Default = Configs.Enabled == true or Configs.State == true or DefaultValue == true
 			local Toggle = Configs.Toggle ~= false
-			local PreventDuplicate = Configs.PreventDuplicate == true
-			local DisabledKeys = Configs.DisabledKeys or {}
+			local Enabled = Toggle and (Configs.Enabled == true or Configs.State == true or DefaultValue == true) or false
 			local Callback = Funcs:GetCallback(Configs, 3)
-
 			local Keybind = {}
-			local CurrentKey
-			local Enabled = Toggle and Default or false
-			local Waiting = false
-			local Destroyed = false
-
-			local function ResolveKey(Key)
-				if typeof(Key) == "EnumItem" and Key.EnumType == Enum.KeyCode then
-					return Key
-				end
-
-				if type(Key) == "string" then
-					Key = Key:gsub("^%s*(.-)%s*$", "%1")
-
-					for _, EnumKey in ipairs(Enum.KeyCode:GetEnumItems()) do
-						if EnumKey.Name:lower() == Key:lower() then
-							return EnumKey
-						end
-					end
-				end
-
-				return nil
-			end
-
-			local function IsDisabled(Key)
-				for _, DisabledKey in ipairs(DisabledKeys) do
-					if ResolveKey(DisabledKey) == Key then
-						return true
-					end
-				end
-
-				return false
-			end
-
-			local function IsDuplicate(Key)
-				if not PreventDuplicate then
-					return false
-				end
-
-				local Registered = KeybindRegistry[Key]
-				return Registered and Registered ~= Keybind
-			end
-
-			local function RegisterKey(Key)
-				if not Key or Key == Enum.KeyCode.Unknown or IsDisabled(Key) or IsDuplicate(Key) then
-					return false
-				end
-
-				if CurrentKey and KeybindRegistry[CurrentKey] == Keybind then
-					KeybindRegistry[CurrentKey] = nil
-				end
-
-				CurrentKey = Key
-
-				if PreventDuplicate then
-					KeybindRegistry[CurrentKey] = Keybind
-				end
-
-				return true
-			end
-
-			local Button, LabelFunc = ButtonFrame(
-				Container,
-				KName,
-				KDesc,
-				UDim2.new(1, -38),
-				false
-			)
-
-			local SelectedFrame = InsertTheme(Create("Frame", Button, {
-				Size = UDim2.fromOffset(30, 18),
-				Position = UDim2.new(1, -10, 0.5),
-				AnchorPoint = Vector2.new(1, 0.5),
-				BackgroundColor3 = Theme["Color Stroke"]
-			}), "Stroke")
-
-			Make("Corner", SelectedFrame, UDim.new(0, 4))
-
-			local KeyButton = InsertTheme(Create("TextButton", SelectedFrame, {
-				Size = UDim2.fromScale(1, 1),
-				BackgroundTransparency = 1,
-				AutoButtonColor = false,
-				Font = Enum.Font.GothamBold,
-				TextSize = 10,
-				TextColor3 = Theme["Color Text"],
-				TextTruncate = Enum.TextTruncate.AtEnd,
-				Text = "..."
-			}), "Text")
-
-			local SizeConstraint = Create("UISizeConstraint", SelectedFrame, {
-				MinSize = Vector2.new(25, 18)
-			})
-
-			local function GetDisplayText()
-				if Waiting then
-					return "..."
-				end
-
-				return CurrentKey and CurrentKey.Name or "None"
-			end
-
-			local function UpdateSize()
-				if Destroyed then
-					return
-				end
-
-				local Text = GetDisplayText()
-				local MaxWidth = math.max(25, Button.AbsoluteSize.X - 100)
-
-				local TextWidth = TextService:GetTextSize(
-					Text,
-					10,
-					Enum.Font.GothamBold,
-					Vector2.new(1000, 18)
-				).X + 16
-
-				KeyButton.Text = Text
-				SizeConstraint.MaxSize = Vector2.new(MaxWidth, 18)
-
-				SelectedFrame.Size = UDim2.fromOffset(
-					math.clamp(TextWidth, 25, MaxWidth),
-					18
-				)
-			end
-
-			local function UpdateState()
-				if not Toggle then
-					return
-				end
-
-				CreateTween({
-					SelectedFrame,
-					"BackgroundColor3",
-					Enabled and Theme["Color Theme"] or Theme["Color Stroke"],
-					0.2
-				})
-			end
-
-			local function SetWaiting(Value)
-				if Value and CapturingKeybind ~= Keybind and CancelKeybindCapture then
-					CancelKeybindCapture()
-				end
-
-				Waiting = Value
-
-				if Value then
-					CapturingKeybind = Keybind
-
-					CancelKeybindCapture = function()
-						if not Destroyed and Waiting then
-							SetWaiting(false)
-						end
-					end
-				elseif CapturingKeybind == Keybind then
-					CapturingKeybind = nil
-					CancelKeybindCapture = nil
-				end
-
-				UpdateSize()
-			end
+			local Binding
+			local Button, LabelFunc = ButtonFrame(Container, KName, KDesc, UDim2.new(1, -38), false)
 
 			local function SetState(State, Fire)
-				if not Toggle or type(State) ~= "boolean" then
-					return
-				end
-
+				if not Binding or Binding.Destroyed or not Toggle or type(State) ~= "boolean" then return false end
 				Enabled = State
-				UpdateState()
-
-				if Fire then
-					Funcs:FireCallback(Callback, Enabled)
-				end
-			end
-
-			local function SetKey(Key)
-				Key = ResolveKey(Key)
-
-				if not RegisterKey(Key) then
-					return false
-				end
-
-				UpdateSize()
+				Binding:Refresh()
+				if Fire then Funcs:FireCallback(Callback, Enabled) end
 				return true
 			end
 
-			local InitialKey = ResolveKey(KDefault) or Enum.KeyCode.LeftShift
-
-			if not RegisterKey(InitialKey) and not RegisterKey(Enum.KeyCode.LeftShift) then
-				for _, Key in ipairs(Enum.KeyCode:GetEnumItems()) do
-					if Key ~= Enum.KeyCode.Unknown and RegisterKey(Key) then
-						break
-					end
-				end
-			end
-
-			UpdateState()
-			UpdateSize()
-
 			ApplyLocked(Keybind, Button, Configs, function(IsLocked)
-				if IsLocked and Waiting then
-					SetWaiting(false)
-				end
+				if IsLocked and Binding then Binding:SetWaiting(false) end
 			end)
-
-			local MouseConnection = KeyButton.InputBegan:Connect(function(Input)
-				if Input.UserInputType ~= Enum.UserInputType.MouseButton1
-					and Input.UserInputType ~= Enum.UserInputType.MouseButton2 then
-					return
+			Binding = CreateKeybindControl(Keybind, Button, LabelFunc, Configs, {
+				InitialKey = ResolveBindingKey(KDefault) or Enum.KeyCode.LeftShift,
+				IsActive = function() return Toggle and Enabled end,
+				OnChanged = Configs.OnChanged,
+				OnTriggered = function()
+					if Toggle then SetState(not Enabled, true) else Funcs:FireCallback(Callback, true) end
 				end
-
-				if Keybind:IsLocked() then
-					Keybind:NotifyLocked()
-					return
-				end
-
-				SetWaiting(true)
-			end)
-
-			local InputConnection = TrackConnection(UserInputService.InputBegan:Connect(function(Input, GameProcessed)
-				if Input.UserInputType ~= Enum.UserInputType.Keyboard then
-					return
-				end
-
-				if Keybind:IsLocked() then
-					if Waiting or Input.KeyCode == CurrentKey then
-						Keybind:NotifyLocked()
-					end
-
-					return
-				end
-
-				if Waiting then
-					if Input.KeyCode ~= Enum.KeyCode.Unknown and SetKey(Input.KeyCode) then
-						CapturedKeys[Input.KeyCode] = true
-
-						SetWaiting(false)
-
-						if type(Configs.OnChanged) == "function" then
-							Configs.OnChanged(CurrentKey)
-						end
-					end
-
-					return
-				end
-
-				if GameProcessed then
-					return
-				end
-
-				if Input.KeyCode ~= CurrentKey then
-					return
-				end
-
-				if Toggle then
-					SetState(not Enabled, true)
-				else
-					Funcs:FireCallback(Callback, true)
-				end
-			end))
-
-			local SizeConnection = Button:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateSize)
-
-			local function CancelHiddenCapture()
-				if not Waiting then
-					return
-				end
-
-				if not Button.Visible
-					or not Container.Visible
-					or not MainFrame.Visible
-					or Minimized
-					or not Container:IsDescendantOf(ScreenGui) then
-					SetWaiting(false)
+			})
+			if not Binding.CurrentKey and not Binding:SetKey(Enum.KeyCode.LeftShift, false) then
+				for _, Key in ipairs(Enum.KeyCode:GetEnumItems()) do
+					if Binding:SetKey(Key, false) then break end
 				end
 			end
-
-			local AncestryConnection = Container.AncestryChanged:Connect(CancelHiddenCapture)
-			local TabVisibilityConnection = Container:GetPropertyChangedSignal("Visible"):Connect(CancelHiddenCapture)
-
-			local VisibilityConnection = MainFrame:GetPropertyChangedSignal("Visible"):Connect(
-				CancelHiddenCapture
-			)
-
-			local ContentConnection = Containers:GetPropertyChangedSignal("Visible"):Connect(function()
-				if Waiting and not Containers.Visible then
-					SetWaiting(false)
-				end
-			end)
-
-			local ButtonVisibilityConnection = Button:GetPropertyChangedSignal("Visible"):Connect(
-				CancelHiddenCapture
-			)
-
-			local function Cleanup()
-				if Destroyed then
-					return
-				end
-
-				Destroyed = true
-
-				if CapturingKeybind == Keybind then
-					CapturingKeybind = nil
-					CancelKeybindCapture = nil
-				end
-
-				Waiting = false
-
-				if CurrentKey and KeybindRegistry[CurrentKey] == Keybind then
-					KeybindRegistry[CurrentKey] = nil
-				end
-
-				MouseConnection:Disconnect()
-				InputConnection:Disconnect()
-				SizeConnection:Disconnect()
-				AncestryConnection:Disconnect()
-				TabVisibilityConnection:Disconnect()
-				VisibilityConnection:Disconnect()
-				ContentConnection:Disconnect()
-				ButtonVisibilityConnection:Disconnect()
-
-				UntrackConnection(InputConnection)
-			end
-
-			local DestroyingConnection
-
-			DestroyingConnection = Button.Destroying:Connect(function()
-				Cleanup()
-
-				if DestroyingConnection then
-					DestroyingConnection:Disconnect()
-					DestroyingConnection = nil
-				end
-			end)
-
-			task.defer(UpdateSize)
 
 			function Keybind:Set(Value)
+				if Binding.Destroyed then return end
 				if Toggle and type(Value) == "boolean" then
 					SetState(Value, true)
 				elseif type(Value) == "string" then
 					LabelFunc:SetTitle(Value)
 				end
 			end
-
 			function Keybind:Get()
-				if not Toggle then
-					return nil
-				end
-
-				return Enabled
+				if Toggle then return Enabled end
+				return nil
 			end
-
 			function Keybind:SetKeybind(Key)
-				return SetKey(Key)
+				return Binding:SetKey(Key, false)
 			end
-
-			function Keybind:SetTitle(Value)
-				LabelFunc:SetTitle(DisplayString(Value))
-			end
-
-			function Keybind:SetDesc(Value)
-				LabelFunc:SetDesc(DisplayString(Value))
-			end
-
-			function Keybind:GetKeybind()
-				return CurrentKey
-			end
-
-			function Keybind:Callback(Func)
-				Funcs:InsertCallback(Callback, Func)
-			end
-
-			function Keybind:Visible(...)
-				Funcs:ToggleVisible(Button, ...)
-			end
-
+			function Keybind:GetKeybind() return Binding.CurrentKey end
+			function Keybind:SetTitle(Value) LabelFunc:SetTitle(DisplayString(Value)) end
+			function Keybind:SetDesc(Value) LabelFunc:SetDesc(DisplayString(Value)) end
+			function Keybind:Callback(Func) Funcs:InsertCallback(Callback, Func) end
+			function Keybind:Visible(...) Funcs:ToggleVisible(Button, ...) end
 			function Keybind:Destroy()
-				if Destroyed then
-					return
-				end
-
-				Cleanup()
-
-				if Button.Parent then
-					Button:Destroy()
-				end
+				if Binding.Destroyed then return end
+				Binding:Destroy()
+				Button:Destroy()
 			end
-
-			if PreventDuplicate and CurrentKey then
-				KeybindRegistry[CurrentKey] = Keybind
-			end
-
 			return RegisterFlagObject(Configs.Flag, Keybind, Button)
 		end
 		function Tab:AddColorPicker(Configs)
@@ -8512,6 +10332,14 @@ function Library:MakeWindow(Configs)
 				end
 				return Stack[#Stack] == Character
 			end
+			local function ExpectedCloser(Source, Position)
+				local Character = Source:sub(Position, Position)
+				if Character == "[" then
+					local Equals = Source:sub(1, Position - 1):match("%[(=*)$")
+					if Equals then return "]" .. Equals .. "]" end
+				end
+				return PairOpen[Character]
+			end
 			local function MoveAutoClosers(Previous, Text)
 				if Previous == Text then return end
 				local First = 1
@@ -8660,12 +10488,10 @@ function Library:MakeWindow(Configs)
 									Text, Cursor, Selection, QuoteEdit = Previous, Position + 1, -1, true
 									AutoClosers[Position] = nil
 								elseif PairOpen[Character] and (Mode == "code" or Mode == "string" and Delimiter == "`" and Character == "{" and not Escaped) then
-									local Closing = PairOpen[Character]
-									local TrackedClosing = Closing
-									local Equals = Character == "[" and Previous:sub(1, Position - 1):match("%[(=*)$")
-									if Equals then
-										TrackedClosing = "]" .. Equals .. "]"
-										Closing = Previous:sub(Position, Position) == "]" and "]" .. Equals or TrackedClosing
+									local TrackedClosing = ExpectedCloser(Text, Position)
+									local Closing = TrackedClosing
+									if Character == "[" and TrackedClosing ~= "]" and Previous:sub(Position, Position) == "]" then
+										Closing = TrackedClosing:sub(1, -2)
 									end
 									Text = Text:sub(1, Position) .. Closing .. Text:sub(Position + 1)
 									Cursor, Selection, QuoteEdit = Position + 1, -1, true
@@ -8674,21 +10500,26 @@ function Library:MakeWindow(Configs)
 							end
 						end
 					elseif #Text == #Previous - 1 then
-						local Position = 1
-						while Position <= #Text and Previous:sub(Position, Position) == Text:sub(Position, Position) do Position += 1 end
-						local Deleted = Previous:sub(Position, Position)
-						local Closing = PairOpen[Deleted]
-						if Closing and Previous:sub(Position + 1, Position + #Closing) == Closing then
-							local Tracked = true
-							for Offset = 1, #Closing do
-								if AutoClosers[Position + Offset] ~= Closing:sub(Offset, Offset) then
-									Tracked = false
-									break
-								end
-							end
-							if Tracked then
+						local Position = Cursor
+						local function IsDeletion(Index)
+							return Index >= 1 and Index <= #Previous
+								and Previous:sub(1, Index - 1) .. Previous:sub(Index + 1) == Text
+						end
+						if not IsDeletion(Position) then
+							Position = 1
+							while Position <= #Text and Previous:byte(Position) == Text:byte(Position) do Position += 1 end
+						end
+						if IsDeletion(Position) then
+							local Closing = ExpectedCloser(Previous, Position)
+							if Closing and Previous:sub(Position + 1, Position + #Closing) == Closing then
 								Text = Previous:sub(1, Position - 1) .. Previous:sub(Position + #Closing + 1)
 								Cursor, Selection, QuoteEdit = Position, -1, true
+							elseif Position > 1 then
+								Closing = ExpectedCloser(Previous, Position - 1)
+								if Closing and Previous:sub(Position, Position + #Closing - 1) == Closing then
+									Text = Previous:sub(1, Position - 2) .. Previous:sub(Position + #Closing)
+									Cursor, Selection, QuoteEdit = Position - 1, -1, true
+								end
 							end
 						end
 					end
@@ -9223,7 +11054,7 @@ function Library:MakeWindow(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local Title = TranslateText(tostring(Configs[1] or Configs.Name or Configs.Title or ControlsConfig.Titles.Discord))
 			local Desc = TranslateText(tostring(Configs.Desc or Configs.Description or ""))
-			local Logo = Configs[2] or Configs.Logo or ""
+			local Logo = ResolveGuiImage(Configs[2] or Configs.Logo or RootConfig.Image)
 			local Invite = Configs[3] or Configs.Invite or ""
 			
 			local InviteHolder = Create("Frame", Container, {
@@ -9507,6 +11338,62 @@ function Library:MakeWindow(Configs)
 			})
 			ExtraLabels[#ExtraLabels + 1] = {TabResizableControl, "Resizable tabs"}
 
+			local KeybindSection = ConfigTab:AddSection(TranslateText("Keybinds"))
+			ExtraLabels[#ExtraLabels + 1] = {KeybindSection, "Keybinds"}
+			local KeybindIconControl = ConfigTab:AddToggle({
+				Name = TranslateText("Show keybind icons"),
+				Default = Library:GetKeybindIconDefault(),
+				Callback = function(Value) Library:SetKeybindIconDefault(Value) end
+			})
+			ExtraLabels[#ExtraLabels + 1] = {KeybindIconControl, "Show keybind icons"}
+			local KeybindWidthControl = ConfigTab:AddSlider({
+				Name = TranslateText("Keybind button width"),
+				Min = 32, Max = 96, Increase = 1,
+				Default = Library:GetKeybindWidth(),
+				Callback = function(Value) Library:SetKeybindWidth(Value) end
+			})
+			ExtraLabels[#ExtraLabels + 1] = {KeybindWidthControl, "Keybind button width"}
+			local KeybindHighlightControl = ConfigTab:AddToggle({
+				Name = TranslateText("Highlight active keybinds"),
+				Default = Library:GetKeybindHighlight(),
+				Callback = function(Value) Library:SetKeybindHighlight(Value) end
+			})
+			ExtraLabels[#ExtraLabels + 1] = {KeybindHighlightControl, "Highlight active keybinds"}
+			local KeybindRightClickControl = ConfigTab:AddToggle({
+				Name = TranslateText("Capture keybind on right click"),
+				Default = Library:GetKeybindRightClick(),
+				Callback = function(Value) Library:SetKeybindRightClick(Value) end
+			})
+			ExtraLabels[#ExtraLabels + 1] = {KeybindRightClickControl, "Capture keybind on right click"}
+
+			local SectionSettings = ConfigTab:AddSection(TranslateText("Sections"))
+			ExtraLabels[#ExtraLabels + 1] = {SectionSettings, "Sections"}
+
+			local SectionIndicatorToggle = ConfigTab:AddToggle({
+				Name = TranslateText("Apply indicators to sections"),
+				Default = Library.Save.SectionIndicator,
+				Callback = function(Value) Library:SetSectionSetting("SectionIndicator", Value) end
+			})
+			ExtraLabels[#ExtraLabels + 1] = {SectionIndicatorToggle, "Apply indicators to sections"}
+
+			for _, Option in ipairs({
+				{"Section height", "SectionHeight"},
+				{"Section text size", "SectionTextSize"},
+				{"Indicator thickness", "SectionThickness"},
+				{"Indicator height", "SectionIndicatorHeight"},
+				{"Indicator spacing", "SectionSpacing"}
+			}) do
+				local Name, Key = Option[1], Option[2]
+				local Range = Library.SectionRanges[Key]
+				local Control = ConfigTab:AddSlider({
+					Name = TranslateText(Name),
+					Min = Range[1], Max = Range[2], Increase = 1,
+					Default = Library.Save[Key],
+					Callback = function(Value) Library:SetSectionSetting(Key, Value) end
+				})
+				ExtraLabels[#ExtraLabels + 1] = {Control, Name}
+			end
+
 			local ScrollingSection = ConfigTab:AddSection(TranslateText("Scrolling"))
 			ExtraLabels[#ExtraLabels + 1] = {ScrollingSection, "Scrolling"}
 
@@ -9596,6 +11483,110 @@ function Library:MakeWindow(Configs)
 				Callback = function(Value) Library:SetDropdownMaxVisibleOptions(Value) end
 			})
 			ExtraLabels[#ExtraLabels + 1] = {DropdownVisibleOptionsControl, "Visible dropdown options"}
+
+			local MiscSection = ConfigTab:AddSection(TranslateText("Miscellaneous"))
+            ExtraLabels[#ExtraLabels + 1] = {MiscSection, "Miscellaneous"}
+
+            local FloatingButtonToggle = ConfigTab:AddToggle({
+                Name = TranslateText("Show floating hub button"),
+                Default = Library.Save.ShowFloatingMinimizeButton,
+                Callback = function(Value) Window:SetFloatingMinimizeButtonVisible(Value) end
+            })
+            ExtraLabels[#ExtraLabels + 1] = {FloatingButtonToggle, "Show floating hub button"}
+
+            local SavePositionToggle = ConfigTab:AddToggle({
+                Name = TranslateText("Save position"),
+                Default = Library:GetSavePosition(),
+                Callback = function(Value) Library:SetSavePosition(Value) end
+            })
+            ExtraLabels[#ExtraLabels + 1] = {SavePositionToggle, "Save position"}
+
+            local ResetSettingsButton = ConfigTab:AddButton({
+                Name = TranslateText("Reset settings"),
+                Callback = function()
+                    Window:Dialog({
+                        Title = TranslateText("Reset settings"),
+                        Text = TranslateText("Restore interface defaults now? Your language will be kept."),
+                        Options = {
+                            {Name = TranslateText("Cancel")},
+                            {
+                                Name = TranslateText("Restore defaults"),
+                                Callback = function()
+                                    local Defaults = Library.DefaultSettings
+                                    Window:SetSize(Defaults.UISize[1], Defaults.UISize[2])
+                                    Window:SetTabSize(Defaults.TabSize)
+                                    Window:SetMinimizedWidth(Defaults.MinimizedWidth)
+                                    Window:SetKeybind(Defaults.Keybind)
+                                    Library:SetKeybindIconDefault(Defaults.KeybindIcon)
+                                    Library:SetKeybindWidth(Defaults.KeybindWidth)
+                                    Library:SetKeybindHighlight(Defaults.KeybindHighlight)
+                                    Library:SetKeybindRightClick(Defaults.KeybindRightClick)
+                                    DraggableControl:SetEnabled(Defaults.Draggable)
+                                    ResizableControl:SetEnabled(Defaults.Resizable)
+                                    TabResizableControl:SetEnabled(Defaults.TabResizable)
+                                    FloatingButtonToggle:SetEnabled(Defaults.ShowFloatingMinimizeButton)
+                                    Library:SetSavePosition(Defaults.SavePosition)
+                                    SavePositionToggle:SetEnabled(Defaults.SavePosition)
+                                    Library:ResetPositions()
+
+                                    Library:SetTransparency(Defaults.Transparency)
+                                    Library:SetScrollThickness(Defaults.ScrollThickness)
+                                    Library:SetScrollTransparency(Defaults.ScrollTransparency)
+                                    Library:SetBackground(Defaults.BackgroundImage, Defaults.BackgroundPreset)
+                                    Library:SetBackgroundImageTransparency(Defaults.BackgroundImageTransparency)
+                                    Library:SetBackgroundScale(Defaults.BackgroundScale)
+                                    Library:SetSoundEnabled(Defaults.SoundEnabled)
+                                    Library:SetSoundId(Defaults.SoundId)
+                                    Library:SetSoundVolume(Defaults.SoundVolume)
+                                    Library:SetDropdownSearchDefault(Defaults.DropdownSearch)
+                                    Library:SetDropdownPrefixOnly(Defaults.DropdownPrefixOnly)
+                                    Library:SetDropdownCloseOnSelect(Defaults.DropdownCloseOnSelect)
+                                    Library:SetDropdownMaxVisibleOptions(Defaults.DropdownMaxVisibleOptions)
+                                    for Key in pairs(Library.SectionRanges) do
+                                        Library:SetSectionSetting(Key, Defaults[Key])
+                                    end
+                                    Library:SetSectionSetting("SectionIndicator", Defaults.SectionIndicator)
+                                    Library:SetTheme(Defaults.Theme)
+
+                                    SettingsWindowWidth:SetValue(Defaults.UISize[1], true)
+                                    SettingsWindowHeight:SetValue(Defaults.UISize[2], true)
+                                    SettingsTabWidth:SetValue(Defaults.TabSize, true)
+                                    MinimizedWidthControl:SetValue(Defaults.MinimizedWidth, true)
+                                    HubTransparency:SetValue(Defaults.Transparency, true)
+                                    KeybindIconControl:SetEnabled(Defaults.KeybindIcon)
+                                    KeybindWidthControl:SetValue(Defaults.KeybindWidth, true)
+                                    KeybindHighlightControl:SetEnabled(Defaults.KeybindHighlight)
+                                    KeybindRightClickControl:SetEnabled(Defaults.KeybindRightClick)
+                                    ScrollThicknessControl:SetValue(Defaults.ScrollThickness, true)
+                                    ScrollTransparencyControl:SetValue(Defaults.ScrollTransparency * 100, true)
+                                    SoundEnabledControl:SetEnabled(Defaults.SoundEnabled)
+                                    SoundVolumeControl:SetValue(Defaults.SoundVolume, true)
+                                    SoundPresetControl:Set(EnsureSoundPreset(tostring(Defaults.SoundId)), true)
+                                    DropdownSearchControl:SetEnabled(Defaults.DropdownSearch)
+                                    DropdownPrefixControl:SetEnabled(Defaults.DropdownPrefixOnly)
+                                    DropdownCloseControl:SetEnabled(Defaults.DropdownCloseOnSelect)
+                                    DropdownVisibleOptionsControl:SetValue(Defaults.DropdownMaxVisibleOptions, true)
+                                    SectionIndicatorToggle:SetEnabled(Defaults.SectionIndicator)
+                                    for _, Entry in ipairs(ExtraLabels) do
+                                        local Key = ({
+                                            ["Section height"] = "SectionHeight",
+                                            ["Section text size"] = "SectionTextSize",
+                                            ["Indicator thickness"] = "SectionThickness",
+                                            ["Indicator height"] = "SectionIndicatorHeight",
+                                            ["Indicator spacing"] = "SectionSpacing"
+                                        })[Entry[2]]
+                                        if Key then Entry[1]:SetValue(Defaults[Key], true) end
+                                    end
+                                    ThemeDropdown:Select(Defaults.Theme)
+                                    QueueSettingsSave()
+                                    Library:NotifyLibrary(TranslateText("Interface settings restored."))
+                                end
+                            }
+                        }
+                    })
+                end
+            })
+            ExtraLabels[#ExtraLabels + 1] = {ResetSettingsButton, "Reset settings"}
 
 			local ConfigLanguageConnection = Connection.LanguageChanged:Connect(function()
 				if not ConfigTab or ConfigTab._Destroyed then return end

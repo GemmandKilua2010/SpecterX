@@ -1,37 +1,37 @@
---// Games
+local Games = {
+    [4777817887] = {
+        Name = "Blade Ball",
+        Places = {
+            13772394625
+        },
+        Loadstring = "none"
+    },
 
-local Games = {}
+    [994732206] = {
+        Name = "Blox Fruits",
+        Places = {
+            2753915549,
+            4442272183,
+            7449423635
+        },
+        Loadstring = "none"
+    },
 
---// Functions
+    [1686885941] = {
+        Name = "Brookhaven",
+        Places = {
+            4924922222
+        },
+        Loadstring = "none"
+    },
 
-local function AddGame(Name, Ids)
-    for _, Id in ipairs(Ids) do
-        Games[Id] = Name
-    end
-end
-
---// Register
-
-AddGame("Blade Ball", {
-    13772394625,
-    4777817887
-})
-
-AddGame("Blox Fruits", {
-    2753915549,
-    994732206
-})
-
-AddGame("Brookhaven", {
-    4924922222,
-    1686885941
-})
-
-AddGame("Murder Mystery 2", {
-    142823291,
-    66654135
-})
-
---// Return
+    [66654135] = {
+        Name = "Murder Mystery 2",
+        Places = {
+            142823291
+        },
+        Loadstring = "none"
+    }
+}
 
 return Games

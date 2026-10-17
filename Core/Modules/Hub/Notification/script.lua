@@ -668,8 +668,8 @@ local function applyTheme(s)
     if r.Title then r.Title.TextColor3 = t.Title end
     if r.Text then r.Text.TextColor3 = t.Text end
     if r.Bubble then r.Bubble.BackgroundColor3 = accent end
-    if r.Glyph then r.Glyph.TextColor3 = accent end
-    if r.Icon and s.IconKind == "Type" then r.Icon.ImageColor3 = accent end
+    if r.Glyph then r.Glyph.TextColor3 = Color3.new(1, 1, 1) end
+    if r.Icon and s.IconKind == "Type" then r.Icon.ImageColor3 = Color3.new(1, 1, 1) end
     if r.Track then r.Track.BackgroundColor3 = t.Title end
     if r.Fill then r.Fill.BackgroundColor3 = progress end
     if r.CloseIcon then r.CloseIcon.ImageColor3 = t.CloseButton end
@@ -778,7 +778,7 @@ local function build(s)
         r.Bubble = new("Frame", row, {
             Size = UDim2.fromOffset(Config.IconSize, Config.IconSize),
             BorderSizePixel = 0,
-            BackgroundTransparency = s.IconKind == "Custom" and 1 or 0.82,
+            BackgroundTransparency = 1,
             ZIndex = 4,
         })
         new("UICorner", r.Bubble, {CornerRadius = UDim.new(1, 0)})
@@ -1181,7 +1181,6 @@ local function typed(t)
         return Notify.Notify(data)
     end
 end
-Notify.Info = typed("Info")
 Notify.Success = typed("Success")
 Notify.Warning = typed("Warning")
 Notify.Error = typed("Error")

@@ -3,8 +3,10 @@ local Config = {
     Title = "SpecterX",
     SubTitle = "By Specter",
     Theme = "Obsidian",
-    Image = 121730327067473,
+    Image = 108120493027251,
     LoadingScreen = false,
+
+    Whitelist = true,
 
     --// Icon
     Icon = {
@@ -66,6 +68,7 @@ local Config = {
         -- Legacy key: optional flags JSON file path, e.g. "Library/flags.json".
         SaveFolder = false,
         SettingsSaveDelay = 0.5,
+        SavePosition = true,
         FlagsSaveDelay = 0.1,
         ConfigButton = true,
         MinimizedWidth = 220,
@@ -118,6 +121,12 @@ local Config = {
                 Default = "",
                 Placeholder = "Input",
                 ClearText = false
+            },
+            Keybind = {
+                ShowIcon = false,
+                Width = 48,
+                HighlightActive = true,
+                RightClickCapture = true
             },
             ColorPicker = {
                 Default = "#137D81",
@@ -174,6 +183,15 @@ local Config = {
             HorizontalPadding = 10,
             VerticalPadding = 5,
             Spacing = 2
+        },
+
+        Section = {
+            Indicator = false,
+            Height = 18,
+            TextSize = 11,
+            Thickness = 3,
+            IndicatorHeight = 10,
+            Spacing = 7
         },
 
         Scroll = {
