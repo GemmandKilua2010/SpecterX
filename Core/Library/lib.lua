@@ -7188,7 +7188,15 @@ function Library:MakeWindow(Configs)
 			local MinHeight = math.clamp(tonumber(Configs.MinHeight) or 64, 48, Height)
 			local AutoResize = Configs.AutoResize ~= false
 			local TextSize = math.clamp(tonumber(Configs.TextSize) or 12, 10, 28)
+			local function NormalizeMaxLength(Value)
+				if Value == nil or Value == false then return nil end
+				local Number = tonumber(Value)
+				if not Number or Number ~= Number or Number < 0 or Number == math.huge then return nil end
+				return math.floor(Number)
+			end
+			local MaxLength = NormalizeMaxLength(Configs.MaxLength)
 			local EditorPadding = 20
+			local CounterPadding = 16
 			local Destroyed = false
 			local Connections = {}
 
@@ -7282,7 +7290,7 @@ function Library:MakeWindow(Configs)
 			}), "Theme")
 
 			local Scroll = InsertTheme(Create("ScrollingFrame", Editor, {
-				Size = UDim2.new(1, -24, 1, -EditorPadding),
+				Size = UDim2.new(1, -24, 1, -(EditorPadding + (MaxLength and CounterPadding or 0))),
 				Position = UDim2.fromOffset(12, 10),
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
@@ -7316,6 +7324,20 @@ function Library:MakeWindow(Configs)
 				Text = ""
 			}), "Text")
 
+			local Counter = Create("TextLabel", Editor, {
+				AnchorPoint = Vector2.new(1, 1),
+				Position = UDim2.new(1, -12, 1, -4),
+				Size = UDim2.new(1, -24, 0, 12),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				TextSize = 10,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				TextYAlignment = Enum.TextYAlignment.Bottom,
+				TextColor3 = Theme["Color Dark Text"],
+				Text = "",
+				Visible = MaxLength ~= nil
+			})
+
 			local LineHeight = TextService:GetTextSize("Mg", TextSize, Input.Font, Vector2.new(1000, 1000)).Y
 
 			local TextArea = {OnChanging = false}
@@ -7331,6 +7353,24 @@ function Library:MakeWindow(Configs)
 
 			local function EffectiveScale()
 				return math.max(0.01, ScreenScale.Scale)
+			end
+
+			local function CountCharacters(Text)
+				return utf8.len(Text) or #Text
+			end
+
+			local function EnforceMaxLength(Text)
+				if MaxLength == nil or CountCharacters(Text) <= MaxLength then return Text end
+				local Offset = utf8.offset(Text, MaxLength + 1)
+				return Text:sub(1, (Offset or MaxLength + 1) - 1)
+			end
+
+			local function UpdateCounter()
+				Counter.Visible = MaxLength ~= nil
+				if MaxLength == nil then return end
+				local Count = CountCharacters(Input.Text)
+				Counter.Text = string.format("%d/%d", Count, MaxLength)
+				Counter.TextColor3 = Count >= MaxLength and Theme["Color Theme"] or Theme["Color Dark Text"]
 			end
 
 			local function MeasureText(Text)
@@ -7360,6 +7400,11 @@ function Library:MakeWindow(Configs)
 
 			local function UpdateCanvas()
 				if Destroyed then return end
+				UpdateCounter()
+				local Padding = EditorPadding + (MaxLength and CounterPadding or 0)
+				if Scroll.Size.Y.Offset ~= -Padding then
+					Scroll.Size = UDim2.new(1, -24, 1, -Padding)
+				end
 				local Text = Input.Text
 				local Measured = Text == "" and " " or Text
 				if Measured:sub(-1) == "\n" then Measured ..= " " end
@@ -7367,11 +7412,11 @@ function Library:MakeWindow(Configs)
 				if not RealHeight then return end
 				local Lines = select(2, Text:gsub("\n", "")) + 1
 				local ContentHeight = math.max(math.ceil(RealHeight), Lines * LineHeight) + 6
-				local TargetHeight = AutoResize and math.clamp(ContentHeight + EditorPadding, MinHeight, Height) or Height
+				local TargetHeight = AutoResize and math.clamp(ContentHeight + Padding, MinHeight, Height) or Height
 				if Editor.Size.Y.Offset ~= TargetHeight then
 					Editor.Size = UDim2.new(1, 0, 0, TargetHeight)
 				end
-				local ViewHeight = TargetHeight - EditorPadding
+				local ViewHeight = TargetHeight - Padding
 				LastContentHeight = ContentHeight
 				Overflow = ContentHeight > ViewHeight + 2
 				local CanvasHeight = math.max(ViewHeight, ContentHeight)
@@ -7461,11 +7506,18 @@ function Library:MakeWindow(Configs)
 			end
 
 			local function SetInput(Text)
-				if Input.Text == Text then return end
+				Text = EnforceMaxLength(Text)
+				if Input.Text == Text then return Text end
+				local Cursor = Input.CursorPosition
+				local Selection = Input.SelectionStart
 				Changing = true
 				Input.Text = Text
+				local CursorLimit = CountCharacters(Text) + 1
+				if Cursor > 0 then Input.CursorPosition = math.min(Cursor, CursorLimit) end
+				if Selection > 0 then Input.SelectionStart = math.min(Selection, CursorLimit) end
 				Changing = false
 				Refresh()
+				return Text
 			end
 
 			local function Submit(Silent)
@@ -7475,7 +7527,7 @@ function Library:MakeWindow(Configs)
 					local Changed = TextArea.OnChanging(Text)
 					if type(Changed) == "string" then Text = Changed end
 				end
-				SetInput(Text)
+				Text = SetInput(Text)
 				if LastSubmitted == Text then return end
 				LastSubmitted = Text
 				SetFlag(Flag, Text)
@@ -7484,10 +7536,10 @@ function Library:MakeWindow(Configs)
 
 			Track(Input:GetPropertyChangedSignal("Text"), function()
 				if Destroyed or Changing then return end
-				if Mod ~= nil then
-					local NewText = ApplyMod(Input.Text)
-					if NewText ~= Input.Text then SetInput(NewText) end
-				end
+				local NewText = Input.Text
+				if Mod ~= nil then NewText = ApplyMod(NewText) end
+				NewText = EnforceMaxLength(NewText)
+				if NewText ~= Input.Text then SetInput(NewText) end
 				Refresh()
 			end)
 			Track(Input:GetPropertyChangedSignal("CursorPosition"), ScheduleCaretFollow)
@@ -7577,6 +7629,23 @@ function Library:MakeWindow(Configs)
 			function TextArea:GetHeight()
 				return Editor.Size.Y.Offset
 			end
+			function TextArea:GetTextLength()
+				return CountCharacters(Input.Text)
+			end
+			function TextArea:GetMaxLength()
+				return MaxLength
+			end
+			function TextArea:SetMaxLength(Value)
+				if Destroyed then return end
+				if Value ~= nil and Value ~= false and NormalizeMaxLength(Value) == nil then return end
+				local NewLength = NormalizeMaxLength(Value)
+				if MaxLength == NewLength then return end
+				MaxLength = NewLength
+				local OldText = Input.Text
+				SetInput(OldText)
+				Refresh()
+				if Input.Text ~= OldText and not Input:IsFocused() then Submit(false) end
+			end
 			function TextArea:SetAutoResize(Enabled)
 				if Destroyed or type(Enabled) ~= "boolean" then return end
 				AutoResize = Enabled
@@ -7607,14 +7676,16 @@ function Library:MakeWindow(Configs)
 				Track(Connection.FlagsChanged, function(Name, Value)
 					if Destroyed or Name ~= Flag or type(Value) ~= "string" or GetFlag(Flag) ~= Value then return end
 					if Input:IsFocused() or Input.Text == Value then return end
-					SetInput(Value)
-					LastSubmitted = Value
+					local Limited = SetInput(Value)
+					LastSubmitted = Limited
+					if Limited ~= Value then SetFlag(Flag, Limited) end
 				end)
 			end
 			Track(Connection.ThemeChanged, function()
 				if Destroyed then return end
 				Editor.BackgroundColor3 = EditorColor()
 				Input.PlaceholderColor3 = Theme["Color Dark Text"]
+				UpdateCounter()
 			end)
 			Track(Frame.Destroying, function()
 				Hovering = false
