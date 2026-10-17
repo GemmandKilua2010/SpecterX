@@ -7304,6 +7304,40 @@ function Library:MakeWindow(Configs)
 				Text = ""
 			}), "Text")
 
+			-- An invisible text layout proxy provides real wrapped line bounds at the
+			-- library's UIScale. Measuring text with an unscaled viewport made
+			-- the editor disagree with Roblox's actual TextBox wrapping.
+			local Measure = Create("TextLabel", Scroll, {
+				Size = UDim2.new(1, -3, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				TextTransparency = 1,
+				BorderSizePixel = 0,
+				TextWrapped = true,
+				TextScaled = false,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				Font = Input.Font,
+				TextSize = TextSize,
+				Text = " ",
+				Active = false
+			})
+			local CaretMeasure = Create("TextLabel", Scroll, {
+				Size = UDim2.new(1, -3, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				TextTransparency = 1,
+				BorderSizePixel = 0,
+				TextWrapped = true,
+				TextScaled = false,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				Font = Input.Font,
+				TextSize = TextSize,
+				Text = " ",
+				Active = false
+			})
+
 			local TextArea = {OnChanging = false}
 			local Changing = false
 			local LastSubmitted
@@ -7312,6 +7346,9 @@ function Library:MakeWindow(Configs)
 			local WheelConnection
 			local TabVisibilityConnection
 			local InnerSizeConnection
+			local MeasurementConnection
+			local CaretMeasurementConnection
+			local CanvasSizeConnection
 			local Hovering = false
 			local SavedTabScroll
 			local ManualWheel = UserInputService.MouseEnabled
@@ -7319,8 +7356,14 @@ function Library:MakeWindow(Configs)
 			local VisibleHeight = Height - 20
 			local LastContentHeight = 0
 
+			local function EffectiveScale()
+				return math.max(0.01, ScreenScale.Scale)
+			end
+
 			local function MaxScroll()
-				return math.max(0, Scroll.CanvasSize.Y.Offset - VisibleHeight)
+				-- CanvasPosition and AbsoluteCanvasSize use rendered pixels, unlike
+				-- CanvasSize offsets and Editor.Size offsets.
+				return math.max(0, Scroll.AbsoluteCanvasSize.Y - Scroll.AbsoluteWindowSize.Y)
 			end
 
 			local function UpdateScrollOwnership()
@@ -7336,12 +7379,17 @@ function Library:MakeWindow(Configs)
 
 			local function UpdateCanvas()
 				if Destroyed then return end
-				local MeasureWidth = math.max(32, Scroll.AbsoluteSize.X - 4)
-				local ContentText = Input.Text
-				if ContentText == "" then ContentText = " " end
-				if ContentText:sub(-1) == "\n" then ContentText ..= " " end
-				local Bounds = TextService:GetTextSize(ContentText, TextSize, Input.Font, Vector2.new(MeasureWidth, 100000))
-				local ContentHeight = math.max(math.ceil(Bounds.Y) + 5, math.ceil(TextSize * 1.3))
+				local Scale = EffectiveScale()
+				local Text = Input.Text
+				local Measured = Text == "" and " " or Text
+				if Measured:sub(-1) == "\n" then Measured ..= " " end
+				if Measure.Text ~= Measured then Measure.Text = Measured end
+
+				local Lines = select(2, Text:gsub("\n", "")) + 1
+				local LineHeight = TextService:GetTextSize("Mg", TextSize, Input.Font, Vector2.new(1000, 1000)).Y
+				local RealHeight = Measure.TextBounds.Y / Scale
+				local ContentHeight = math.max(math.ceil(RealHeight), Lines * LineHeight) + 6
+
 				local TargetHeight = AutoResize and math.clamp(ContentHeight + 20, MinHeight, Height) or Height
 				if Editor.Size.Y.Offset ~= TargetHeight then
 					Editor.Size = UDim2.new(1, 0, 0, TargetHeight)
@@ -7350,11 +7398,13 @@ function Library:MakeWindow(Configs)
 				LastContentHeight = ContentHeight
 				Overflow = ContentHeight > VisibleHeight + 2
 				local CanvasHeight = math.max(VisibleHeight, ContentHeight)
-				Input.Size = UDim2.new(1, -3, 0, CanvasHeight)
+				if Input.Size.Y.Offset ~= CanvasHeight then
+					Input.Size = UDim2.new(1, -3, 0, CanvasHeight)
+				end
 				Scroll.CanvasSize = UDim2.fromOffset(0, CanvasHeight)
 				Scroll.ScrollBarThickness = Overflow and 2 or 0
 				Scroll.ScrollingEnabled = Overflow and not (ManualWheel and Input:IsFocused())
-				Scroll.CanvasPosition = Vector2.new(0, math.clamp(Scroll.CanvasPosition.Y, 0, MaxScroll()))
+				if not Overflow then Scroll.CanvasPosition = Vector2.zero end
 				UpdateScrollOwnership()
 			end
 
@@ -7363,20 +7413,32 @@ function Library:MakeWindow(Configs)
 				local Cursor = Input.CursorPosition
 				if Cursor < 1 then return end
 				local Prefix = Input.Text:sub(1, Cursor - 1)
-				if Prefix:sub(-1) == "\n" then Prefix ..= " " end
-				local Width = math.max(32, Scroll.AbsoluteSize.X - 4)
-				local Bounds = TextService:GetTextSize(Prefix == "" and " " or Prefix, TextSize, Input.Font, Vector2.new(Width, 100000))
-				local CaretBottom = math.min(LastContentHeight, math.max(TextSize, Bounds.Y))
+				if Prefix == "" or Prefix:sub(-1) == "\n" then Prefix ..= " " end
+				if CaretMeasure.Text ~= Prefix then
+					CaretMeasure.Text = Prefix
+					return -- Wait for actual TextBounds to update before moving canvas.
+				end
+				local Scale = EffectiveScale()
+				local CaretBottom = math.min(LastContentHeight * Scale, CaretMeasure.TextBounds.Y)
 				local Top = Scroll.CanvasPosition.Y
-				if CaretBottom > Top + VisibleHeight - 4 then
-					Scroll.CanvasPosition = Vector2.new(0, math.clamp(CaretBottom - VisibleHeight + 6, 0, MaxScroll()))
-				elseif CaretBottom < Top + TextSize then
-					Scroll.CanvasPosition = Vector2.new(0, math.clamp(CaretBottom - TextSize - 4, 0, MaxScroll()))
+				local WindowHeight = math.max(1, Scroll.AbsoluteWindowSize.Y)
+				local Margin = 6 * Scale
+				local LowerBound = Top + WindowHeight - Margin
+				if CaretBottom > LowerBound then
+					Scroll.CanvasPosition = Vector2.new(0, math.clamp(CaretBottom - WindowHeight + Margin, 0, MaxScroll()))
+				elseif CaretBottom < Top + TextSize * Scale then
+					Scroll.CanvasPosition = Vector2.new(0, math.clamp(CaretBottom - (TextSize + 4) * Scale, 0, MaxScroll()))
 				end
 			end
 
+			local CaretScheduled = false
 			local function ScheduleCaretFollow()
-				task.defer(KeepCaretVisible)
+				if Destroyed or CaretScheduled then return end
+				CaretScheduled = true
+				task.defer(function()
+					CaretScheduled = false
+					if not Destroyed then KeepCaretVisible() end
+				end)
 			end
 
 			local function SetDescription(Value)
@@ -7449,8 +7511,27 @@ function Library:MakeWindow(Configs)
 			end)
 
 			Input:GetPropertyChangedSignal("CursorPosition"):Connect(ScheduleCaretFollow)
-			InnerSizeConnection = Scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateCanvas)
-			TabVisibilityConnection = Container:GetPropertyChangedSignal("Visible"):Connect(UpdateScrollOwnership)
+			InnerSizeConnection = Scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+				UpdateCanvas()
+				ScheduleCaretFollow()
+			end)
+			MeasurementConnection = Measure:GetPropertyChangedSignal("TextBounds"):Connect(function()
+				UpdateCanvas()
+				ScheduleCaretFollow()
+			end)
+			CaretMeasurementConnection = CaretMeasure:GetPropertyChangedSignal("TextBounds"):Connect(ScheduleCaretFollow)
+			CanvasSizeConnection = Scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(function()
+				if not Overflow then return end
+				Scroll.CanvasPosition = Vector2.new(0, math.clamp(Scroll.CanvasPosition.Y, 0, MaxScroll()))
+				ScheduleCaretFollow()
+			end)
+			TabVisibilityConnection = Container:GetPropertyChangedSignal("Visible"):Connect(function()
+				UpdateScrollOwnership()
+				if Container.Visible then
+					UpdateCanvas()
+					ScheduleCaretFollow()
+				end
+			end)
 
 			Editor.MouseEnter:Connect(function()
 				Hovering = true
@@ -7467,7 +7548,7 @@ function Library:MakeWindow(Configs)
 				local Movement = InputObject.Position.Z
 				if Movement == 0 then return end
 				Scroll.CanvasPosition = Vector2.new(0, math.clamp(
-					Scroll.CanvasPosition.Y - Movement * math.max(TextSize * 3, 30), 0, MaxScroll()
+					Scroll.CanvasPosition.Y - Movement * math.max(TextSize * 3, 30) * EffectiveScale(), 0, MaxScroll()
 				))
 			end)
 
@@ -7567,6 +7648,9 @@ function Library:MakeWindow(Configs)
 				if WheelConnection then WheelConnection:Disconnect() end
 				if TabVisibilityConnection then TabVisibilityConnection:Disconnect() end
 				if InnerSizeConnection then InnerSizeConnection:Disconnect() end
+				if MeasurementConnection then MeasurementConnection:Disconnect() end
+				if CaretMeasurementConnection then CaretMeasurementConnection:Disconnect() end
+				if CanvasSizeConnection then CanvasSizeConnection:Disconnect() end
 			end)
 
 			ApplyLocked(TextArea, Frame, Configs, function(Locked)
