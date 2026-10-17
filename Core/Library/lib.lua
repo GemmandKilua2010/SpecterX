@@ -6418,8 +6418,8 @@ function Library:MakeWindow(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local Range = type(Configs.Value) == "table" and Configs.Value or {}
 
-			local function Finite(Value)
-				local Number = tonumber(Value)
+			local function Finite(Input)
+				local Number = tonumber(Input)
 				if not Number or Number ~= Number or math.abs(Number) == math.huge then return nil end
 				return Number
 			end
@@ -6430,18 +6430,37 @@ function Library:MakeWindow(Configs)
 
 			local Default = (type(Configs.Value) == "number" and Finite(Configs.Value))
 				or Finite(Range.Default) or Finite(Configs.Default) or Min
-			local Value = math.clamp(Default, Min, Max)
+			local Flag = NormalizeObjectFlag(Configs.Flag)
+			local SavedValue = CheckFlag(Flag) and Finite(GetFlag(Flag)) or nil
+			local Value = math.clamp(SavedValue or Default, Min, Max)
 			local Indeterminate = Configs.Indeterminate == true
 			local IndeterminateText = tostring(Configs.IndeterminateText or "")
 			local ShowValue = Configs.ShowValue
 			if ShowValue == nil then ShowValue = not Indeterminate or IndeterminateText ~= "" end
 			ShowValue = ShowValue == true
 
+			local Callback = Funcs:GetCallback(Configs, 3)
+			local CompleteCallbacks = {}
+			local ResetCallbacks = {}
+			local MilestoneCallbacks = {}
+			if type(Configs.OnComplete) == "function" then table.insert(CompleteCallbacks, Configs.OnComplete) end
+			if type(Configs.OnReset) == "function" then table.insert(ResetCallbacks, Configs.OnReset) end
+			if type(Configs.OnMilestone) == "function" then table.insert(MilestoneCallbacks, Configs.OnMilestone) end
+
+			local Milestones = {}
+			if type(Configs.Milestones) == "table" then
+				for _, Entry in ipairs(Configs.Milestones) do
+					local Threshold = Finite(Entry)
+					if Threshold and Threshold >= 0 and Threshold <= 100 and not table.find(Milestones, Threshold) then
+						table.insert(Milestones, Threshold)
+					end
+				end
+				table.sort(Milestones)
+			end
+
 			local Width = math.max(Finite(Configs.Width) or 160, 0)
 			local ValueWidth = math.max(Finite(Configs.ValueWidth) or 44, 0)
 			local ControlGap = math.max(Finite(Configs.ControlGap) or 16, 0)
-			local Animate = Configs.Animate ~= false
-			local AnimationDuration = math.max(Finite(Configs.AnimationDuration) or 0.15, 0)
 			local ControlWidth = Width + (ShowValue and ValueWidth + 8 or 0)
 			local Title = Configs[1] or Configs.Name or Configs.Title or "ProgressBar"
 			local Desc = Configs.Desc or Configs.Description or ""
@@ -6497,14 +6516,19 @@ function Library:MakeWindow(Configs)
 				ShowValue = ShowValue,
 				DisplayMode = Configs.DisplayMode or "Percent",
 				Format = Configs.Format,
-				Animate = Animate,
-				AnimationDuration = AnimationDuration,
+				Animate = Configs.Animate ~= false,
+				AnimationDuration = math.max(Finite(Configs.AnimationDuration) or 0.15, 0),
 				Speed = math.max(Finite(Configs.Speed) or 1, 0.01),
+				Paused = false,
+				Locked = Configs.Locked == true,
 				UIElements = {Container = Holder, Bar = Track, Fill = Fill, Value = ValueLabel}
 			}
 			local Destroyed = false
 			local ValueTween
 			local LoopTween
+			local VisibilityConnection
+			local FrameVisibilityConnection
+			local FlagConnection
 
 			local function GetRatio(Number)
 				if Max == Min then return Number >= Max and 1 or 0 end
@@ -6530,16 +6554,45 @@ function Library:MakeWindow(Configs)
 				return tostring(math.floor(Percentage + 0.5)) .. "%"
 			end
 
+			local function StopValueTween()
+				if ValueTween then
+					ValueTween:Cancel()
+					ValueTween:Destroy()
+					ValueTween = nil
+				end
+			end
+
+			local function StopLoop()
+				if LoopTween then
+					LoopTween:Cancel()
+					LoopTween:Destroy()
+					LoopTween = nil
+				end
+			end
+
+			local function SyncLoop()
+				if Destroyed or not Indeterminate then return end
+				if not LoopTween then
+					Fill.Size = UDim2.fromScale(0.35, 1)
+					Fill.Position = UDim2.fromScale(-0.35, 0)
+					LoopTween = TweenService:Create(Fill,
+						TweenInfo.new(1 / ProgressBar.Speed, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1),
+						{Position = UDim2.fromScale(1, 0)})
+				end
+				if ProgressBar.Paused or ProgressBar.Locked or not Frame.Visible or not Container.Visible then
+					LoopTween:Pause()
+				else
+					LoopTween:Play()
+				end
+			end
+
 			local function Refresh(Instant)
 				if Destroyed then return end
 				local Fraction = GetRatio(Value)
 				ValueLabel.Text = FormatValue(Value, Fraction * 100)
 				if Indeterminate then return end
 
-				if ValueTween then
-					ValueTween:Cancel()
-					ValueTween = nil
-				end
+				StopValueTween()
 				local Target = UDim2.fromScale(Fraction, 1)
 				if not Instant and ProgressBar.Animate and ProgressBar.AnimationDuration > 0 then
 					ValueTween = TweenService:Create(Fill,
@@ -6551,32 +6604,86 @@ function Library:MakeWindow(Configs)
 				end
 			end
 
-			local function SetValue(NewValue)
+			local function SetValue(NewValue, Silent, Instant)
 				if Destroyed then return Value end
 				local Number = Finite(NewValue)
 				if not Number then return Value end
-				Value = math.clamp(Number, Min, Max)
+				Number = math.clamp(Number, Min, Max)
+				if Number == Value then return Value end
+
+				local Previous = Value
+				local PreviousPercentage = GetRatio(Previous) * 100
+				Value = Number
 				ProgressBar.Value.Default = Value
-				Refresh(false)
+				Refresh(Instant)
+				SetFlag(Flag, Value)
+
+				if not Silent then
+					local Percentage = GetRatio(Value) * 100
+					Funcs:FireCallback(Callback, Value, Percentage)
+					for _, Threshold in ipairs(Milestones) do
+						if PreviousPercentage < Threshold and Percentage >= Threshold then
+							Funcs:FireCallback(MilestoneCallbacks, Threshold, Value)
+						end
+					end
+					if Previous < Max and Value >= Max then
+						Funcs:FireCallback(CompleteCallbacks, Value)
+					end
+					if Previous > Min and Value <= Min then
+						Funcs:FireCallback(ResetCallbacks, Value)
+					end
+				end
 				return Value
 			end
 
-			function ProgressBar:Set(NewValue)
-				return SetValue(NewValue)
+			function ProgressBar:Set(NewValue, Silent)
+				return SetValue(NewValue, Silent == true)
 			end
+			ProgressBar.SetValue = ProgressBar.Set
+
 			function ProgressBar:Get()
 				return Value
 			end
 			function ProgressBar:GetPercentage()
 				return GetRatio(Value) * 100
 			end
+			function ProgressBar:IsComplete()
+				return Value >= Max
+			end
+			function ProgressBar:IsIndeterminate()
+				return Indeterminate
+			end
+			function ProgressBar:SetPercentage(Percentage, Silent)
+				local Number = Finite(Percentage)
+				if not Number then return Value end
+				return SetValue(Min + (Max - Min) * math.clamp(Number / 100, 0, 1), Silent == true)
+			end
+			function ProgressBar:Increment(Amount, Silent)
+				local Number = Finite(Amount)
+				if not Number then return Value end
+				return SetValue(Value + Number, Silent == true)
+			end
+			ProgressBar.Add = ProgressBar.Increment
+
+			function ProgressBar:Reset(Silent)
+				return SetValue(Min, Silent == true)
+			end
+			function ProgressBar:Complete(Silent)
+				return SetValue(Max, Silent == true)
+			end
 			function ProgressBar:SetRange(NewMin, NewMax)
 				NewMin, NewMax = Finite(NewMin), Finite(NewMax)
 				if not NewMin or not NewMax then return Min, Max end
 				if NewMin > NewMax then NewMin, NewMax = NewMax, NewMin end
+				if Min == NewMin and Max == NewMax then return Min, Max end
 				Min, Max = NewMin, NewMax
 				ProgressBar.Value.Min, ProgressBar.Value.Max = Min, Max
-				SetValue(Value)
+				local Clamped = math.clamp(Value, Min, Max)
+				if Clamped ~= Value then
+					SetValue(Clamped)
+				else
+					Refresh(true)
+				end
 				return Min, Max
 			end
 			function ProgressBar:SetMin(NewMin)
@@ -6591,11 +6698,76 @@ function Library:MakeWindow(Configs)
 				self:SetRange(math.min(Min, NewMax), NewMax)
 				return Max
 			end
+
+			function ProgressBar:SetIndeterminate(Enabled)
+				if Destroyed or type(Enabled) ~= "boolean" or Indeterminate == Enabled then return Indeterminate end
+				Indeterminate = Enabled
+				self.Indeterminate = Enabled
+				StopValueTween()
+				if Indeterminate then
+					SyncLoop()
+				else
+					StopLoop()
+					Fill.Position = UDim2.fromScale(0, 0)
+				end
+				Refresh(true)
+				return Indeterminate
+			end
+			function ProgressBar:SetIndeterminateText(Text)
+				self.IndeterminateText = tostring(Text or "")
+				Refresh(true)
+			end
+			function ProgressBar:SetSpeed(NewSpeed)
+				local Number = Finite(NewSpeed)
+				if not Number or Number <= 0 then return self.Speed end
+				self.Speed = Number
+				if Indeterminate then
+					StopLoop()
+					SyncLoop()
+				end
+				return self.Speed
+			end
+			function ProgressBar:Pause()
+				self.Paused = true
+				if LoopTween then LoopTween:Pause() end
+			end
+			function ProgressBar:Resume()
+				self.Paused = false
+				SyncLoop()
+			end
+			function ProgressBar:SetDisplayMode(Mode)
+				if type(Mode) ~= "string" then return end
+				self.DisplayMode = Mode
+				Refresh(true)
+			end
+			function ProgressBar:SetFormat(Formatter)
+				if Formatter ~= nil and type(Formatter) ~= "function" then return end
+				self.Format = Formatter
+				Refresh(true)
+			end
+			function ProgressBar:SetAnimation(Enabled, Duration)
+				if type(Enabled) == "boolean" then self.Animate = Enabled end
+				local Number = Finite(Duration)
+				if Number and Number >= 0 then self.AnimationDuration = Number end
+				if not self.Animate then Refresh(true) end
+			end
 			function ProgressBar:SetTitle(NewTitle)
 				LabelFunc:SetTitle(DisplayString(NewTitle))
 			end
 			function ProgressBar:SetDesc(NewDesc)
 				LabelFunc:SetDesc(DisplayString(NewDesc))
+			end
+			function ProgressBar:Callback(Func)
+				Funcs:InsertCallback(Callback, Func)
+			end
+			function ProgressBar:OnComplete(Func)
+				Funcs:InsertCallback(CompleteCallbacks, Func)
+			end
+			function ProgressBar:OnReset(Func)
+				Funcs:InsertCallback(ResetCallbacks, Func)
+			end
+			function ProgressBar:OnMilestone(Func)
+				Funcs:InsertCallback(MilestoneCallbacks, Func)
 			end
 			function ProgressBar:Visible(...)
 				if not Destroyed then Funcs:ToggleVisible(Frame, ...) end
@@ -6604,22 +6776,34 @@ function Library:MakeWindow(Configs)
 				if not Destroyed then Frame:Destroy() end
 			end
 
-			if Indeterminate then
-				Fill.Size = UDim2.fromScale(0.35, 1)
-				Fill.Position = UDim2.fromScale(-0.35, 0)
-				LoopTween = TweenService:Create(Fill,
-					TweenInfo.new(1 / ProgressBar.Speed, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1),
-					{Position = UDim2.fromScale(1, 0)})
-				LoopTween:Play()
+			VisibilityConnection = Container:GetPropertyChangedSignal("Visible"):Connect(SyncLoop)
+			FrameVisibilityConnection = Frame:GetPropertyChangedSignal("Visible"):Connect(SyncLoop)
+			if Flag then
+				FlagConnection = Connection.FlagsChanged:Connect(function(Name, NewValue)
+					if Destroyed or Name ~= Flag then return end
+					local Number = Finite(NewValue)
+					if Number then SetValue(Number, true) end
+				end)
 			end
+
 			Frame.Destroying:Connect(function()
 				Destroyed = true
-				if ValueTween then ValueTween:Cancel() ValueTween = nil end
-				if LoopTween then LoopTween:Cancel() LoopTween = nil end
+				StopValueTween()
+				StopLoop()
+				VisibilityConnection:Disconnect()
+				FrameVisibilityConnection:Disconnect()
+				if FlagConnection then FlagConnection:Disconnect() end
 			end)
-			Refresh(true)
 
-			return RegisterFlagObject(Configs.Flag, ProgressBar, Frame)
+			Refresh(true)
+			if Indeterminate then SyncLoop() end
+			SetFlag(Flag, Value)
+			if Configs.FireOnInit == true then
+				Funcs:FireCallback(Callback, Value, GetRatio(Value) * 100)
+				if Value >= Max then Funcs:FireCallback(CompleteCallbacks, Value) end
+			end
+			ApplyLocked(ProgressBar, Frame, Configs, SyncLoop)
+			return RegisterFlagObject(Flag, ProgressBar, Frame)
 		end
 		function Tab:AddSlider(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
