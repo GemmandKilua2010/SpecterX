@@ -7276,7 +7276,7 @@ function Library:MakeWindow(Configs)
 			Make("Corner", Editor, UDim.new(0, 5))
 			local Outline = InsertTheme(Create("UIStroke", Editor, {
 				Color = Theme["Color Theme"],
-				Thickness = 1,
+				Thickness = 0.65,
 				Enabled = false,
 				ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 			}), "Theme")
@@ -7316,27 +7316,6 @@ function Library:MakeWindow(Configs)
 				Text = ""
 			}), "Text")
 
-			-- Match the editor font, size and wrapping width when measuring content.
-			local function CreateMeasure()
-				return Create("TextLabel", Scroll, {
-					Size = UDim2.new(1, -3, 0, 0),
-					AutomaticSize = Enum.AutomaticSize.Y,
-					BackgroundTransparency = 1,
-					TextTransparency = 1,
-					BorderSizePixel = 0,
-					TextWrapped = true,
-					TextScaled = false,
-					TextXAlignment = Enum.TextXAlignment.Left,
-					TextYAlignment = Enum.TextYAlignment.Top,
-					Font = Input.Font,
-					TextSize = TextSize,
-					Text = " ",
-					Active = false
-				})
-			end
-
-			local Measure = CreateMeasure()
-			local CaretMeasure = CreateMeasure()
 			local LineHeight = TextService:GetTextSize("Mg", TextSize, Input.Font, Vector2.new(1000, 1000)).Y
 
 			local TextArea = {OnChanging = false}
@@ -7352,6 +7331,12 @@ function Library:MakeWindow(Configs)
 
 			local function EffectiveScale()
 				return math.max(0.01, ScreenScale.Scale)
+			end
+
+			local function MeasureText(Text)
+				local Width = Input.AbsoluteSize.X / EffectiveScale()
+				if Width < 1 then return end
+				return TextService:GetTextSize(Text, TextSize, Input.Font, Vector2.new(math.floor(Width), 100000)).Y
 			end
 
 			local function MaxScroll()
@@ -7375,15 +7360,12 @@ function Library:MakeWindow(Configs)
 
 			local function UpdateCanvas()
 				if Destroyed then return end
-				local Scale = EffectiveScale()
 				local Text = Input.Text
 				local Measured = Text == "" and " " or Text
-				-- Roblox does not include a final empty line in TextBounds.
 				if Measured:sub(-1) == "\n" then Measured ..= " " end
-				if Measure.Text ~= Measured then Measure.Text = Measured end
-
+				local RealHeight = MeasureText(Measured)
+				if not RealHeight then return end
 				local Lines = select(2, Text:gsub("\n", "")) + 1
-				local RealHeight = Measure.TextBounds.Y / Scale
 				local ContentHeight = math.max(math.ceil(RealHeight), Lines * LineHeight) + 6
 				local TargetHeight = AutoResize and math.clamp(ContentHeight + EditorPadding, MinHeight, Height) or Height
 				if Editor.Size.Y.Offset ~= TargetHeight then
@@ -7413,13 +7395,10 @@ function Library:MakeWindow(Configs)
 				if Cursor < 1 then return end
 				local Prefix = Input.Text:sub(1, Cursor - 1)
 				if Prefix == "" or Prefix:sub(-1) == "\n" then Prefix ..= " " end
-				if CaretMeasure.Text ~= Prefix then
-					CaretMeasure.Text = Prefix
-					-- Wait for TextBounds to update; its signal schedules another pass.
-					return
-				end
+				local RealHeight = MeasureText(Prefix)
+				if not RealHeight then return end
 				local Scale = EffectiveScale()
-				local CaretBottom = math.min(LastContentHeight * Scale, CaretMeasure.TextBounds.Y)
+				local CaretBottom = math.min(LastContentHeight * Scale, RealHeight * Scale)
 				local Top = Scroll.CanvasPosition.Y
 				local ViewHeight = math.max(1, Scroll.AbsoluteWindowSize.Y)
 				local Margin = 6 * Scale
@@ -7514,8 +7493,6 @@ function Library:MakeWindow(Configs)
 			Track(Input:GetPropertyChangedSignal("CursorPosition"), ScheduleCaretFollow)
 			Track(Scroll:GetPropertyChangedSignal("AbsoluteSize"), Refresh)
 			Track(Scroll:GetPropertyChangedSignal("AbsoluteWindowSize"), Refresh)
-			Track(Measure:GetPropertyChangedSignal("TextBounds"), Refresh)
-			Track(CaretMeasure:GetPropertyChangedSignal("TextBounds"), ScheduleCaretFollow)
 			Track(Scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"), function()
 				if not Overflow then return end
 				Scroll.CanvasPosition = ClampScroll(Scroll.CanvasPosition.Y)
