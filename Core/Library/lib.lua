@@ -6669,6 +6669,7 @@ function Library:MakeWindow(Configs)
 				return SetValue(Min, Silent == true)
 			end
 			function ProgressBar:Complete(Silent)
+				if Indeterminate then self:SetIndeterminate(false) end
 				return SetValue(Max, Silent == true)
 			end
 			function ProgressBar:SetRange(NewMin, NewMax)
@@ -6780,7 +6781,7 @@ function Library:MakeWindow(Configs)
 			FrameVisibilityConnection = Frame:GetPropertyChangedSignal("Visible"):Connect(SyncLoop)
 			if Flag then
 				FlagConnection = Connection.FlagsChanged:Connect(function(Name, NewValue)
-					if Destroyed or Name ~= Flag then return end
+					if Destroyed or Name ~= Flag or GetFlag(Flag) ~= NewValue then return end
 					local Number = Finite(NewValue)
 					if Number then SetValue(Number, true) end
 				end)
