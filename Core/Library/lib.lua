@@ -7184,8 +7184,8 @@ function Library:MakeWindow(Configs)
 			local Callback = Funcs:GetCallback(Configs, 4)
 			local Mod = Configs.Mod
 			local ReadOnly = Configs.ReadOnly == true or Configs.TextEditable == false
-			local Height = math.clamp(tonumber(Configs.Height) or 110, 64, 360)
-			local TextSize = math.clamp(tonumber(Configs.TextSize) or math.max(13, ElementDescriptionTextSize), 10, 28)
+			local Height = math.clamp(tonumber(Configs.Height) or 96, 64, 360)
+			local TextSize = math.clamp(tonumber(Configs.TextSize) or 12, 10, 28)
 			local Destroyed = false
 
 			local Frame = InsertTheme(Create("Frame", Container, {
@@ -7195,8 +7195,6 @@ function Library:MakeWindow(Configs)
 				BorderSizePixel = 0
 			}), "Frame")
 			Make("Corner", Frame, UDim.new(0, ElementCornerRadius))
-			BindHover(Frame, "BackgroundTransparency", ButtonHoverTransparency, 0)
-
 			local Content = Create("Frame", Frame, {
 				Size = UDim2.new(1, 0, 0, 0),
 				AutomaticSize = Enum.AutomaticSize.Y,
@@ -7253,30 +7251,36 @@ function Library:MakeWindow(Configs)
 				Visible = false
 			}), "DarkText")
 
-			local Editor = InsertTheme(Create("Frame", Content, {
+			local Editor = Create("Frame", Content, {
 				LayoutOrder = 2,
 				Size = UDim2.new(1, 0, 0, Height),
-				BackgroundColor3 = Theme["Color Stroke"],
+				BackgroundColor3 = Theme["Color Hub 2"]:Lerp(Theme["Color Stroke"], 0.13),
 				BorderSizePixel = 0,
 				ClipsDescendants = true
-			}), "Stroke")
+			})
 			Make("Corner", Editor, UDim.new(0, 5))
+			local Outline = InsertTheme(Create("UIStroke", Editor, {
+				Color = Theme["Color Theme"],
+				Thickness = 1,
+				Transparency = 0.82,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			}), "Theme")
 
 			local Scroll = InsertTheme(Create("ScrollingFrame", Editor, {
-				Size = UDim2.new(1, -12, 1, -12),
-				Position = UDim2.fromOffset(6, 6),
+				Size = UDim2.new(1, -24, 1, -20),
+				Position = UDim2.fromOffset(12, 10),
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
 				CanvasSize = UDim2.new(),
 				AutomaticCanvasSize = Enum.AutomaticSize.Y,
 				ScrollingDirection = Enum.ScrollingDirection.Y,
-				ScrollBarThickness = 3,
+				ScrollBarThickness = 2,
 				ScrollBarImageColor3 = Theme["Color Theme"],
-				ScrollBarImageTransparency = 0.25
+				ScrollBarImageTransparency = 0.48
 			}), "ScrollBar")
 
 			local Input = InsertTheme(Create("TextBox", Scroll, {
-				Size = UDim2.new(1, -4, 0, Height - 12),
+				Size = UDim2.new(1, -3, 0, Height - 20),
 				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
@@ -7369,7 +7373,12 @@ function Library:MakeWindow(Configs)
 				end
 			end)
 
+			Input.Focused:Connect(function()
+				TweenService:Create(Outline, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.24}):Play()
+			end)
+
 			Input.FocusLost:Connect(function()
+				TweenService:Create(Outline, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.82}):Play()
 				if not TextArea.Locked then Submit(false) end
 			end)
 
@@ -7407,7 +7416,7 @@ function Library:MakeWindow(Configs)
 				if not NewHeight or NewHeight ~= NewHeight or math.abs(NewHeight) == math.huge or Destroyed then return end
 				Height = math.clamp(NewHeight, 64, 360)
 				Editor.Size = UDim2.new(1, 0, 0, Height)
-				Input.Size = UDim2.new(1, -4, 0, Height - 12)
+				Input.Size = UDim2.new(1, -3, 0, Height - 20)
 			end
 			function TextArea:Focus()
 				if not Destroyed and not self.Locked and Input.TextEditable then Input:CaptureFocus() end
@@ -7434,7 +7443,9 @@ function Library:MakeWindow(Configs)
 				end)
 			end
 			ThemeConnection = Connection.ThemeChanged:Connect(function()
-				if not Destroyed then Input.PlaceholderColor3 = Theme["Color Dark Text"] end
+				if Destroyed then return end
+				Editor.BackgroundColor3 = Theme["Color Hub 2"]:Lerp(Theme["Color Stroke"], 0.13)
+				Input.PlaceholderColor3 = Theme["Color Dark Text"]
 			end)
 			Frame.Destroying:Connect(function()
 				Destroyed = true
