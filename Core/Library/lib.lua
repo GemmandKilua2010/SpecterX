@@ -7220,12 +7220,13 @@ function Library:MakeWindow(Configs)
 			})
 			Create("UIListLayout", Header, {
 				SortOrder = Enum.SortOrder.LayoutOrder,
-				Padding = UDim.new(0, 4)
+				Padding = UDim.new(0, ElementSpacing)
 			})
 
 			local TitleLabel = InsertTheme(Create("TextLabel", Header, {
 				LayoutOrder = 1,
-				Size = UDim2.new(1, 0, 0, math.max(ElementTitleTextSize + 5, 18)),
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundTransparency = 1,
 				Font = Enum.Font.GothamMedium,
 				TextSize = ElementTitleTextSize,
