@@ -7170,6 +7170,283 @@ function Library:MakeWindow(Configs)
 			ApplyLocked(TextBox, Button, Configs)
 			return RegisterFlagObject(Flag, TextBox, Button)
 		end
+
+		function Tab:AddTextArea(Configs)
+			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
+			local Title = Configs[1] or Configs.Name or Configs.Title or "TextArea"
+			local Description = Configs.Desc or Configs.Description or ""
+			local Flag = NormalizeObjectFlag(Configs.Flag)
+			local Default = FirstDefined(Configs[2], Configs.Default, ControlsConfig.TextBox.Default, "")
+			if CheckFlag(Flag) then Default = GetFlag(Flag) end
+			if type(Default) ~= "string" then Default = DisplayString(Default) end
+			local Placeholder = Configs[5] or Configs.PlaceholderText or ControlsConfig.TextBox.Placeholder or ""
+			local ClearOnFocus = FirstDefined(Configs[3], Configs.ClearText, false) == true
+			local Callback = Funcs:GetCallback(Configs, 4)
+			local Mod = Configs.Mod
+			local ReadOnly = Configs.ReadOnly == true or Configs.TextEditable == false
+			local Height = math.clamp(tonumber(Configs.Height) or 110, 64, 360)
+			local TextSize = math.clamp(tonumber(Configs.TextSize) or math.max(13, ElementDescriptionTextSize), 10, 28)
+			local Destroyed = false
+
+			local Frame = InsertTheme(Create("Frame", Container, {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundColor3 = Theme["Color Hub 2"],
+				BorderSizePixel = 0
+			}), "Frame")
+			Make("Corner", Frame, UDim.new(0, ElementCornerRadius))
+			BindHover(Frame, "BackgroundTransparency", ButtonHoverTransparency, 0)
+
+			local Content = Create("Frame", Frame, {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0
+			})
+			Create("UIPadding", Content, {
+				PaddingLeft = UDim.new(0, ElementHorizontalPadding),
+				PaddingRight = UDim.new(0, ElementHorizontalPadding),
+				PaddingTop = UDim.new(0, ElementVerticalPadding),
+				PaddingBottom = UDim.new(0, ElementVerticalPadding)
+			})
+			Create("UIListLayout", Content, {
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, ElementSpacing)
+			})
+
+			local Header = Create("Frame", Content, {
+				LayoutOrder = 1,
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1
+			})
+			Create("UIListLayout", Header, {
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, 2)
+			})
+
+			local TitleLabel = InsertTheme(Create("TextLabel", Header, {
+				LayoutOrder = 1,
+				Size = UDim2.new(1, 0, 0, math.max(ElementTitleTextSize + 5, 18)),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamMedium,
+				TextSize = ElementTitleTextSize,
+				TextColor3 = Theme["Color Text"],
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Center,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Text = TranslateText(DisplayString(Title))
+			}), "Text")
+
+			local DescLabel = InsertTheme(Create("TextLabel", Header, {
+				LayoutOrder = 2,
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				TextSize = ElementDescriptionTextSize,
+				TextColor3 = Theme["Color Dark Text"],
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				Text = "",
+				Visible = false
+			}), "DarkText")
+
+			local Editor = InsertTheme(Create("Frame", Content, {
+				LayoutOrder = 2,
+				Size = UDim2.new(1, 0, 0, Height),
+				BackgroundColor3 = Theme["Color Stroke"],
+				BorderSizePixel = 0,
+				ClipsDescendants = true
+			}), "Stroke")
+			Make("Corner", Editor, UDim.new(0, 5))
+
+			local Scroll = InsertTheme(Create("ScrollingFrame", Editor, {
+				Size = UDim2.new(1, -12, 1, -12),
+				Position = UDim2.fromOffset(6, 6),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				CanvasSize = UDim2.new(),
+				AutomaticCanvasSize = Enum.AutomaticSize.Y,
+				ScrollingDirection = Enum.ScrollingDirection.Y,
+				ScrollBarThickness = 3,
+				ScrollBarImageColor3 = Theme["Color Theme"],
+				ScrollBarImageTransparency = 0.25
+			}), "ScrollBar")
+
+			local Input = InsertTheme(Create("TextBox", Scroll, {
+				Size = UDim2.new(1, -4, 0, Height - 12),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				MultiLine = true,
+				TextWrapped = true,
+				TextScaled = false,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				Font = Enum.Font.Gotham,
+				TextSize = TextSize,
+				TextColor3 = Theme["Color Text"],
+				PlaceholderColor3 = Theme["Color Dark Text"],
+				PlaceholderText = TranslateText(DisplayString(Placeholder)),
+				ClearTextOnFocus = ClearOnFocus,
+				TextEditable = not ReadOnly,
+				Text = ""
+			}), "Text")
+
+			local TextArea = {OnChanging = false}
+			local Changing = false
+			local LastSubmitted
+			local ThemeConnection
+			local FlagConnection
+
+			local function SetDescription(Value)
+				local Text = DisplayString(Value)
+				DescLabel.Text = TranslateText(Text)
+				DescLabel.Visible = Text:match("%S") ~= nil
+			end
+
+			local function ApplyMod(Text)
+				if type(Mod) == "function" then
+					local Result = Mod(Text)
+					return type(Result) == "string" and Result or Text
+				end
+				if type(Mod) ~= "table" then return Text end
+
+				local Space = Mod.Space ~= false
+				local Number = Mod.Number ~= false
+				local Letter = Mod.Letter ~= false
+				local Symbol = Mod.Symbol == true
+				local Result = {}
+				for Index = 1, #Text do
+					local Character = Text:sub(Index, Index)
+					if Character == "\n" or Character == "\r" then
+						Result[#Result + 1] = Character
+					elseif Character == " " or Character == "\t" then
+						if Space then Result[#Result + 1] = Character end
+					elseif Character:match("%a") then
+						if Letter then Result[#Result + 1] = Character end
+					elseif Character:match("%d") then
+						if Number then Result[#Result + 1] = Character end
+					elseif Symbol then
+						Result[#Result + 1] = Character
+					end
+				end
+				return table.concat(Result)
+			end
+
+			local function SetInput(Text)
+				if Input.Text == Text then return end
+				Changing = true
+				Input.Text = Text
+				Changing = false
+			end
+
+			local function Submit(Silent)
+				if Destroyed then return end
+				local Text = ApplyMod(Input.Text)
+				if type(TextArea.OnChanging) == "function" and not Silent then
+					local Changed = TextArea.OnChanging(Text)
+					if type(Changed) == "string" then Text = Changed end
+				end
+				SetInput(Text)
+				if LastSubmitted == Text then return end
+				LastSubmitted = Text
+				SetFlag(Flag, Text)
+				if not Silent then Funcs:FireCallback(Callback, Text) end
+			end
+
+			Input:GetPropertyChangedSignal("Text"):Connect(function()
+				if Destroyed or Changing or Mod == nil then return end
+				local NewText = ApplyMod(Input.Text)
+				SetInput(NewText)
+			end)
+
+			Scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(function()
+				if Input:IsFocused() and Input.CursorPosition > #Input.Text then
+					Scroll.CanvasPosition = Vector2.new(0, math.max(0, Scroll.AbsoluteCanvasSize.Y - Scroll.AbsoluteWindowSize.Y))
+				end
+			end)
+
+			Input.FocusLost:Connect(function()
+				if not TextArea.Locked then Submit(false) end
+			end)
+
+			SetDescription(Description)
+			SetInput(ApplyMod(Default))
+			Submit(false)
+
+			function TextArea:Get()
+				return Input.Text
+			end
+			function TextArea:GetPlaceholder()
+				return Input.PlaceholderText
+			end
+			function TextArea:Set(Text)
+				if type(Text) ~= "string" or Destroyed then return end
+				SetInput(ApplyMod(Text))
+				Submit(false)
+			end
+			function TextArea:Clear()
+				self:Set("")
+			end
+			function TextArea:SetPlaceholder(Text)
+				if type(Text) == "string" and not Destroyed then
+					Input.PlaceholderText = TranslateText(Text)
+				end
+			end
+			function TextArea:SetTitle(Value)
+				if not Destroyed then TitleLabel.Text = TranslateText(DisplayString(Value)) end
+			end
+			function TextArea:SetDesc(Value)
+				if not Destroyed then SetDescription(Value) end
+			end
+			function TextArea:SetHeight(Value)
+				local NewHeight = tonumber(Value)
+				if not NewHeight or NewHeight ~= NewHeight or math.abs(NewHeight) == math.huge or Destroyed then return end
+				Height = math.clamp(NewHeight, 64, 360)
+				Editor.Size = UDim2.new(1, 0, 0, Height)
+				Input.Size = UDim2.new(1, -4, 0, Height - 12)
+			end
+			function TextArea:Focus()
+				if not Destroyed and not self.Locked and Input.TextEditable then Input:CaptureFocus() end
+			end
+			function TextArea:Callback(Func)
+				Funcs:InsertCallback(Callback, Func)
+			end
+			function TextArea:Mod(NewMod)
+				Mod = NewMod
+			end
+			function TextArea:Visible(...)
+				if not Destroyed then Funcs:ToggleVisible(Frame, ...) end
+			end
+			function TextArea:Destroy()
+				if not Destroyed then Frame:Destroy() end
+			end
+
+			if Flag then
+				FlagConnection = Connection.FlagsChanged:Connect(function(Name, Value)
+					if Destroyed or Name ~= Flag or GetFlag(Flag) ~= Value or type(Value) ~= "string" or Input:IsFocused() then return end
+					if Input.Text == Value then return end
+					SetInput(Value)
+					LastSubmitted = Value
+				end)
+			end
+			ThemeConnection = Connection.ThemeChanged:Connect(function()
+				if not Destroyed then Input.PlaceholderColor3 = Theme["Color Dark Text"] end
+			end)
+			Frame.Destroying:Connect(function()
+				Destroyed = true
+				if FlagConnection then FlagConnection:Disconnect() end
+				if ThemeConnection then ThemeConnection:Disconnect() end
+			end)
+
+			ApplyLocked(TextArea, Frame, Configs, function(Locked)
+				Input.TextEditable = not Locked and not ReadOnly
+			end)
+			return RegisterFlagObject(Flag, TextArea, Frame)
+		end
 		function Tab:AddKeybind(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			if not UserInputService.KeyboardEnabled then return end
