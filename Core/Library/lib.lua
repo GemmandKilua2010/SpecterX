@@ -7273,8 +7273,10 @@ function Library:MakeWindow(Configs)
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
 				CanvasSize = UDim2.new(),
-				AutomaticCanvasSize = Enum.AutomaticSize.Y,
+				AutomaticCanvasSize = Enum.AutomaticSize.None,
 				ScrollingDirection = Enum.ScrollingDirection.Y,
+				ScrollingEnabled = true,
+				Active = true,
 				ScrollBarThickness = 2,
 				ScrollBarImageColor3 = Theme["Color Theme"],
 				ScrollBarImageTransparency = 0.48
@@ -7282,7 +7284,7 @@ function Library:MakeWindow(Configs)
 
 			local Input = InsertTheme(Create("TextBox", Scroll, {
 				Size = UDim2.new(1, -3, 0, Height - 20),
-				AutomaticSize = Enum.AutomaticSize.Y,
+				AutomaticSize = Enum.AutomaticSize.None,
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
 				MultiLine = true,
@@ -7305,6 +7307,63 @@ function Library:MakeWindow(Configs)
 			local LastSubmitted
 			local ThemeConnection
 			local FlagConnection
+			local WheelConnection
+			local TabVisibilityConnection
+			local InnerSizeConnection
+			local ContentBoundsConnection
+			local Hovering = false
+			local SavedTabScroll
+			local ManualWheel = UserInputService.MouseEnabled and not UserInputService.TouchEnabled
+
+			local function MaxScroll()
+				return math.max(0, Scroll.CanvasSize.Y.Offset - Scroll.AbsoluteWindowSize.Y)
+			end
+
+			local function UpdateScrollOwnership()
+				local Capture = not Destroyed and Hovering and Frame.Visible and Container.Visible and MaxScroll() > 1
+				if Capture and SavedTabScroll == nil then
+					SavedTabScroll = Container.ScrollingEnabled
+					Container.ScrollingEnabled = false
+				elseif not Capture and SavedTabScroll ~= nil then
+					Container.ScrollingEnabled = SavedTabScroll
+					SavedTabScroll = nil
+				end
+			end
+
+			local function UpdateCanvas()
+				if Destroyed then return end
+				local ViewHeight = math.max(1, Scroll.AbsoluteWindowSize.Y)
+				local MeasureWidth = math.max(32, Scroll.AbsoluteSize.X - Scroll.ScrollBarThickness - 4)
+				local ContentText = Input.Text
+				if ContentText == "" then
+					ContentText = " "
+				elseif ContentText:sub(-1) == "\n" then
+					ContentText ..= " "
+				end
+				local Bounds = TextService:GetTextSize(ContentText, TextSize, Input.Font, Vector2.new(MeasureWidth, 100000))
+				local ContentHeight = math.max(ViewHeight, math.ceil(Bounds.Y) + math.ceil(TextSize * 0.6))
+				Input.Size = UDim2.new(1, -3, 0, ContentHeight)
+				Scroll.CanvasSize = UDim2.fromOffset(0, ContentHeight)
+				Scroll.CanvasPosition = Vector2.new(0, math.min(Scroll.CanvasPosition.Y, math.max(0, ContentHeight - ViewHeight)))
+				UpdateScrollOwnership()
+			end
+
+			local function KeepCaretVisible()
+				if Destroyed or not Input:IsFocused() then return end
+				local Cursor = Input.CursorPosition
+				if Cursor < 1 then return end
+				local Prefix = Input.Text:sub(1, Cursor - 1)
+				local Width = math.max(32, Scroll.AbsoluteSize.X - Scroll.ScrollBarThickness - 4)
+				local CaretBounds = TextService:GetTextSize(Prefix .. " ", TextSize, Input.Font, Vector2.new(Width, 100000))
+				local CaretBottom = math.max(TextSize, CaretBounds.Y)
+				local Top = Scroll.CanvasPosition.Y
+				local ViewHeight = math.max(1, Scroll.AbsoluteWindowSize.Y)
+				if CaretBottom > Top + ViewHeight - 4 then
+					Scroll.CanvasPosition = Vector2.new(0, math.min(MaxScroll(), CaretBottom - ViewHeight + 6))
+				elseif CaretBottom < Top + TextSize then
+					Scroll.CanvasPosition = Vector2.new(0, math.max(0, CaretBottom - TextSize - 4))
+				end
+			end
 
 			local function SetDescription(Value)
 				local Text = DisplayString(Value)
@@ -7346,6 +7405,7 @@ function Library:MakeWindow(Configs)
 				Changing = true
 				Input.Text = Text
 				Changing = false
+				UpdateCanvas()
 			end
 
 			local function Submit(Silent)
@@ -7363,28 +7423,57 @@ function Library:MakeWindow(Configs)
 			end
 
 			Input:GetPropertyChangedSignal("Text"):Connect(function()
-				if Destroyed or Changing or Mod == nil then return end
-				local NewText = ApplyMod(Input.Text)
-				SetInput(NewText)
+				if Destroyed or Changing then return end
+				if Mod ~= nil then
+					local NewText = ApplyMod(Input.Text)
+					if NewText ~= Input.Text then
+						SetInput(NewText)
+					end
+				end
+				UpdateCanvas()
+				KeepCaretVisible()
 			end)
 
-			Scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(function()
-				if Input:IsFocused() and Input.CursorPosition > #Input.Text then
-					Scroll.CanvasPosition = Vector2.new(0, math.max(0, Scroll.AbsoluteCanvasSize.Y - Scroll.AbsoluteWindowSize.Y))
-				end
+			Input:GetPropertyChangedSignal("CursorPosition"):Connect(KeepCaretVisible)
+			InnerSizeConnection = Scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateCanvas)
+			TabVisibilityConnection = Container:GetPropertyChangedSignal("Visible"):Connect(UpdateScrollOwnership)
+
+			Editor.MouseEnter:Connect(function()
+				Hovering = true
+				UpdateScrollOwnership()
+			end)
+			Editor.MouseLeave:Connect(function()
+				Hovering = false
+				UpdateScrollOwnership()
+			end)
+
+			WheelConnection = UserInputService.InputChanged:Connect(function(InputObject)
+				if Destroyed or not ManualWheel or not Hovering or not Input:IsFocused()
+					or InputObject.UserInputType ~= Enum.UserInputType.MouseWheel then return end
+				local Movement = InputObject.Position.Z
+				if Movement == 0 then return end
+				Scroll.CanvasPosition = Vector2.new(0, math.clamp(
+					Scroll.CanvasPosition.Y - Movement * math.max(TextSize * 3, 30), 0, MaxScroll()
+				))
 			end)
 
 			Input.Focused:Connect(function()
-				if not Destroyed and not TextArea.Locked then Outline.Enabled = true end
+				if Destroyed then return end
+				if not TextArea.Locked then Outline.Enabled = true end
+				if ManualWheel then Scroll.ScrollingEnabled = false end
+				UpdateCanvas()
+				KeepCaretVisible()
 			end)
 
 			Input.FocusLost:Connect(function()
 				Outline.Enabled = false
+				Scroll.ScrollingEnabled = true
 				if not TextArea.Locked then Submit(false) end
 			end)
 
 			SetDescription(Description)
 			SetInput(ApplyMod(Default))
+			UpdateCanvas()
 			Submit(false)
 
 			function TextArea:Get()
@@ -7417,7 +7506,7 @@ function Library:MakeWindow(Configs)
 				if not NewHeight or NewHeight ~= NewHeight or math.abs(NewHeight) == math.huge or Destroyed then return end
 				Height = math.clamp(NewHeight, 64, 360)
 				Editor.Size = UDim2.new(1, 0, 0, Height)
-				Input.Size = UDim2.new(1, -3, 0, Height - 20)
+				UpdateCanvas()
 			end
 			function TextArea:Focus()
 				if not Destroyed and not self.Locked and Input.TextEditable then Input:CaptureFocus() end
@@ -7449,9 +7538,14 @@ function Library:MakeWindow(Configs)
 				Input.PlaceholderColor3 = Theme["Color Dark Text"]
 			end)
 			Frame.Destroying:Connect(function()
+				Hovering = false
+				UpdateScrollOwnership()
 				Destroyed = true
 				if FlagConnection then FlagConnection:Disconnect() end
 				if ThemeConnection then ThemeConnection:Disconnect() end
+				if WheelConnection then WheelConnection:Disconnect() end
+				if TabVisibilityConnection then TabVisibilityConnection:Disconnect() end
+				if InnerSizeConnection then InnerSizeConnection:Disconnect() end
 			end)
 
 			ApplyLocked(TextArea, Frame, Configs, function(Locked)
