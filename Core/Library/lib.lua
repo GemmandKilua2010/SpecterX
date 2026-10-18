@@ -4064,7 +4064,9 @@ function Library:MakeWindow(Configs)
 			local Brightness = Base.R * 0.299 + Base.G * 0.587 + Base.B * 0.114
 			local ContrastText = Brightness > 0.62 and Color3.fromRGB(20, 20, 24) or Color3.new(1, 1, 1)
 			local TextSource = Palette.Text or Palette.TextColor or Palette.TextColor3
-				or (Explicit or Entry.Primary and nil) and nil or DefaultButtonTextColor
+			if TextSource == nil and not Explicit and not Entry.Primary then
+				TextSource = DefaultButtonTextColor
+			end
 			local TextColor = ResolveColor(TextSource, (Explicit or Entry.Primary) and ContrastText or Theme["Color Text"])
 			Entry.Button.BackgroundColor3 = Base
 			Entry.Button.TextColor3 = TextColor
@@ -4083,13 +4085,15 @@ function Library:MakeWindow(Configs)
 			if Overlay.Parent then Overlay:Destroy() end
 			if Dialog.Closed then return end
 			Dialog.Closed = true
-			local Callbacks = table.clone(ClosingHandlers)
-			if type(Configs.OnClose) == "function" then Callbacks[#Callbacks + 1] = Configs.OnClose end
-			for _, Callback in ipairs(Callbacks) do
-				local Success, Error = pcall(Callback, Reason, Dialog)
+			for _, Listener in ipairs(ClosingHandlers) do
+				local Success, Error = pcall(Listener.Callback, Reason, Dialog)
 				if not Success then warn("[SpecterX Dialog] OnClose: " .. tostring(Error)) end
 			end
 			table.clear(ClosingHandlers)
+			if type(Configs.OnClose) == "function" then
+				local Success, Error = pcall(Configs.OnClose, Reason, Dialog)
+				if not Success then warn("[SpecterX Dialog] OnClose: " .. tostring(Error)) end
+			end
 		end
 
 		function Dialog:IsOpen()
@@ -4272,12 +4276,19 @@ function Library:MakeWindow(Configs)
 				local Selected = Entry
 				TweenService:Create(ButtonScale, AnimButton, {Scale = 0.96}):Play()
 				task.delay(0.09, function()
-					if Selected.CloseOnClick then Dialog:Close(Selected.Name) end
-					if type(Selected.Callback) == "function" then
-						local Success, Error = pcall(Selected.Callback)
-						if not Success then warn("[SpecterX Dialog] Button callback: " .. tostring(Error)) end
+					local function FireCallback()
+						if type(Selected.Callback) == "function" then
+							local Success, Error = pcall(Selected.Callback)
+							if not Success then warn("[SpecterX Dialog] Button callback: " .. tostring(Error)) end
+						end
+						if not Dialog.Closing then Dialog.Pending = false end
 					end
-					if not Dialog.Closing then Dialog.Pending = false end
+					if Selected.CloseOnClick then
+						Dialog:Close(Selected.Name)
+						task.delay(0.19, FireCallback)
+					else
+						FireCallback()
+					end
 				end)
 			end)
 			ApplyButtonStyle(Entry)
