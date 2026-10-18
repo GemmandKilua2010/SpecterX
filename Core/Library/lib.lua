@@ -1441,6 +1441,11 @@ local function RefreshTranslations()
 		if typeof(Object) ~= "Instance" or Updated[Object] then
 			return
 		end
+		-- Dialog text is translated from canonical sources by its own listener.
+		local DialogOverlay = Library._ActiveDialogOverlay
+		if DialogOverlay and (Object == DialogOverlay or Object:IsDescendantOf(DialogOverlay)) then
+			return
+		end
 
 		Updated[Object] = true
 
@@ -3909,8 +3914,23 @@ function Library:MakeWindow(Configs)
 		local TitleSource = tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Dialog)
 		local MessageSource = tostring(Configs[2] or Configs.Text or Configs.Description or Configs.Desc or ControlsConfig.Titles.DialogText)
 		local Options = Configs[3] or Configs.Options or {}
+		local MessageValues = Configs.Values or Configs.FormatValues
+		local function TranslateDialog(Source)
+			if type(Hub) == "table" and type(Hub.Translate) == "function" then
+				return Hub:Translate(Source, Library:GetLanguage())
+			end
+			return TranslateText(Source)
+		end
+		local function RenderMessage()
+			local Result = TranslateDialog(MessageSource)
+			if type(MessageValues) == "table" and type(Hub) == "table" and type(Hub.Format) == "function" then
+				Result = Hub:Format(Result, MessageValues)
+			end
+			return Result
+		end
 		local Width = math.clamp(tonumber(Configs.Width) or tonumber(Defaults.Width) or 286, 220, math.max(220, MainFrame.Size.X.Offset - 28))
 		local MaxHeight = math.clamp(tonumber(Configs.MaxHeight) or tonumber(Defaults.MaxHeight) or 194, 126, math.max(126, MainFrame.Size.Y.Offset - 18))
+		local PaddingTop, PaddingBottom, TitleGap, ContentGap = 11, 11, 3, 11
 		local ButtonHeight = math.clamp(tonumber(Configs.ButtonHeight) or tonumber(Defaults.ButtonHeight) or 32, 26, 42)
 		local ButtonGap = math.clamp(tonumber(Configs.ButtonSpacing) or tonumber(Defaults.ButtonSpacing) or 8, 0, 16)
 		local DefaultButtonColor = Configs.ButtonColor or Defaults.ButtonColor or "Color Stroke"
@@ -3948,6 +3968,7 @@ function Library:MakeWindow(Configs)
 			Active = true
 		}), "Stroke")
 		ActiveDialog = Overlay
+		Library._ActiveDialogOverlay = Overlay
 		MainCorner:Clone().Parent = Overlay
 
 		local Panel = InsertTheme(Create("Frame", Overlay, {
@@ -3963,12 +3984,12 @@ function Library:MakeWindow(Configs)
 		Make("Stroke", Panel, {Thickness = 1, Transparency = 0.45})
 		local Scale = Create("UIScale", Panel, {Scale = 0.92})
 		local TitleLabel = InsertTheme(Create("TextLabel", Panel, {
-			Size = UDim2.fromOffset(Width - 32, 25),
-			Position = UDim2.fromOffset(16, 13),
+			Size = UDim2.fromOffset(Width - 32, 22),
+			Position = UDim2.fromOffset(16, PaddingTop),
 			BackgroundTransparency = 1,
-			Text = TranslateText(TitleSource),
+			Text = TranslateDialog(TitleSource),
 			Font = Enum.Font.GothamBold,
-			TextSize = 17,
+			TextSize = 16,
 			TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextYAlignment = Enum.TextYAlignment.Top,
@@ -3976,8 +3997,8 @@ function Library:MakeWindow(Configs)
 			TextColor3 = Theme["Color Text"]
 		}), "Text")
 		local TextScroll = Create("ScrollingFrame", Panel, {
-			Size = UDim2.fromOffset(Width - 32, 28),
-			Position = UDim2.fromOffset(16, 45),
+			Size = UDim2.fromOffset(Width - 32, 24),
+			Position = UDim2.fromOffset(16, 34),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			CanvasSize = UDim2.new(),
@@ -3988,7 +4009,7 @@ function Library:MakeWindow(Configs)
 		local MessageLabel = InsertTheme(Create("TextLabel", TextScroll, {
 			Size = UDim2.fromOffset(Width - 39, 25),
 			BackgroundTransparency = 1,
-			Text = TranslateText(MessageSource),
+			Text = RenderMessage(),
 			TextWrapped = true,
 			TextSize = 14,
 			Font = Enum.Font.GothamMedium,
@@ -3999,7 +4020,7 @@ function Library:MakeWindow(Configs)
 		}), "Text")
 		local ButtonsHolder = Create("Frame", Panel, {
 			Size = UDim2.new(1, -32, 0, ButtonHeight),
-			Position = UDim2.new(0, 16, 1, -12),
+			Position = UDim2.new(0, 16, 1, -PaddingBottom),
 			AnchorPoint = Vector2.new(0, 1),
 			BackgroundTransparency = 1
 		})
@@ -4015,16 +4036,20 @@ function Library:MakeWindow(Configs)
 
 		local function Reflow()
 			if not Overlay.Parent or Dialog.Closing then return end
-			local TitleHeight = math.max(22, TextService:GetTextSize(TitleLabel.Text, 17, Enum.Font.GothamBold, Vector2.new(Width - 32, 2000)).Y + 3)
-			local MessageHeight = math.max(24, TextService:GetTextSize(MessageLabel.Text, 14, Enum.Font.GothamMedium, Vector2.new(Width - 40, 10000)).Y + 5)
+			local TitleHeight = math.max(18, TextService:GetTextSize(TitleLabel.Text, 16, Enum.Font.GothamBold, Vector2.new(Width - 32, 2000)).Y)
+			local MessageHeight = math.max(19, TextService:GetTextSize(MessageLabel.Text, 14, Enum.Font.GothamMedium, Vector2.new(Width - 40, 10000)).Y + 2)
+			local FixedHeight = PaddingTop + TitleHeight + TitleGap + ContentGap + ButtonHeight + PaddingBottom
 			local RequestedHeight = tonumber(Configs.Height)
-			local Height = math.clamp(RequestedHeight or (TitleHeight + math.min(MessageHeight, 100) + ButtonHeight + 52), 112, MaxHeight)
-			local ViewHeight = math.max(20, Height - TitleHeight - ButtonHeight - 52)
+			local NaturalHeight = FixedHeight + MessageHeight
+			local MinimumHeight = math.min(MaxHeight, math.max(108, FixedHeight + 18))
+			local Height = math.clamp(RequestedHeight or NaturalHeight, MinimumHeight, MaxHeight)
+			local ViewHeight = math.max(18, Height - FixedHeight)
 			Panel.Size = UDim2.fromOffset(Width, Height)
 			TitleLabel.Size = UDim2.fromOffset(Width - 32, TitleHeight)
-			TextScroll.Position = UDim2.fromOffset(16, 17 + TitleHeight)
+			TextScroll.Position = UDim2.fromOffset(16, PaddingTop + TitleHeight + TitleGap)
 			TextScroll.Size = UDim2.fromOffset(Width - 32, ViewHeight)
 			TextScroll.CanvasSize = UDim2.fromOffset(0, MessageHeight)
+			TextScroll.ScrollingEnabled = MessageHeight > ViewHeight + 1
 			TextScroll.ScrollBarThickness = MessageHeight > ViewHeight + 1 and 2 or 0
 			MessageLabel.Size = UDim2.fromOffset(Width - 39, MessageHeight)
 		end
@@ -4141,14 +4166,14 @@ function Library:MakeWindow(Configs)
 		function Dialog:SetTitle(Value)
 			if not self:IsOpen() or Value == nil then return false end
 			TitleSource = tostring(Value)
-			TitleLabel.Text = TranslateText(TitleSource)
+			TitleLabel.Text = TranslateDialog(TitleSource)
 			Reflow()
 			return true
 		end
 		function Dialog:SetText(Value)
 			if not self:IsOpen() or Value == nil then return false end
 			MessageSource = tostring(Value)
-			MessageLabel.Text = TranslateText(MessageSource)
+			MessageLabel.Text = RenderMessage()
 			Reflow()
 			return true
 		end
@@ -4194,7 +4219,7 @@ function Library:MakeWindow(Configs)
 				BackgroundColor3 = Theme["Color Stroke"],
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
-				Text = TranslateText(LabelSource),
+				Text = TranslateDialog(LabelSource),
 				TextSize = 13,
 				Font = Enum.Font.GothamBold,
 				TextColor3 = Theme["Color Text"],
@@ -4230,7 +4255,7 @@ function Library:MakeWindow(Configs)
 			function Handle:SetText(Value)
 				if not Button.Parent or Value == nil then return false end
 				Entry.Name = tostring(Value)
-				Button.Text = TranslateText(Entry.Name)
+				Button.Text = TranslateDialog(Entry.Name)
 				ReflowButtons()
 				return true
 			end
@@ -4348,10 +4373,10 @@ function Library:MakeWindow(Configs)
 		end)
 		local LanguageConnection = Connection.LanguageChanged:Connect(function()
 			if not Overlay.Parent then return end
-			TitleLabel.Text = TranslateText(TitleSource)
-			MessageLabel.Text = TranslateText(MessageSource)
+			TitleLabel.Text = TranslateDialog(TitleSource)
+			MessageLabel.Text = RenderMessage()
 			for _, Entry in ipairs(ButtonEntries) do
-				Entry.Button.Text = TranslateText(Entry.Name)
+				Entry.Button.Text = TranslateDialog(Entry.Name)
 			end
 			Reflow()
 			ReflowButtons()
@@ -4360,6 +4385,7 @@ function Library:MakeWindow(Configs)
 			ThemeConnection:Disconnect()
 			LanguageConnection:Disconnect()
 			if ActiveDialog == Overlay then ActiveDialog = nil end
+			if Library._ActiveDialogOverlay == Overlay then Library._ActiveDialogOverlay = nil end
 		end)
 		TweenService:Create(Scale, AnimOpen, {Scale = 1}):Play()
 		TweenService:Create(Panel, AnimFade, {BackgroundTransparency = 0}):Play()
@@ -11924,13 +11950,13 @@ function Library:MakeWindow(Configs)
 			local Name = Player and (Player.DisplayName ~= "" and Player.DisplayName or Player.Name) or "Player"
 			local Template = type(Greeting.Description) == "string" and Greeting.Description
 				or "Good to see you, {Player}! {Title} is ready. Make yourself at home and enjoy!"
-			local Message = Hub:Format(TranslateText(Template), {
-				Player = Name,
-				Title = tostring(RootConfig.Title or WTitle)
-			})
 			Window:Dialog({
 				Title = tostring(RootConfig.Title or WTitle),
-				Text = Message,
+				Text = Template,
+				Values = {
+					Player = Name,
+					Title = tostring(RootConfig.Title or WTitle)
+				},
 				Options = {
 					{
 						Name = "Don't show again",
