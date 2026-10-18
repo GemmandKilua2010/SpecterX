@@ -4836,6 +4836,89 @@ function Library:MakeWindow(Configs)
 			end
 			return RegisterFlagObject(SectionFlag, Section, SectionFrame)
 		end
+
+		function Tab:AddDivider(Configs)
+			Configs = type(Configs) == "table" and Configs or {}
+			local Height = math.clamp(tonumber(Configs.Height) or 14, 4, 60)
+			local Thickness = math.clamp(tonumber(Configs.Thickness) or 1, 1, 12)
+			local Inset = math.clamp(tonumber(Configs.Inset) or 8, 0, 60)
+			local Transparency = math.clamp(tonumber(Configs.Transparency) or 0.25, 0, 1)
+			Height = math.max(Height, Thickness + 4)
+
+			local Holder = Create("Frame", Container, {
+				Size = UDim2.new(1, 0, 0, Height),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0
+			})
+			local Line = InsertTheme(Create("Frame", Holder, {
+				Size = UDim2.new(1, -Inset * 2, 0, Thickness),
+				Position = UDim2.new(0, Inset, 0.5, 0),
+				AnchorPoint = Vector2.new(0, 0.5),
+				BackgroundColor3 = Theme["Color Stroke"],
+				BackgroundTransparency = Transparency,
+				BorderSizePixel = 0
+			}), "Stroke")
+			local ThemeEntry = Library.Instances[#Library.Instances]
+			local Divider = {}
+
+			function Divider:SetColor(Value)
+				local Key, Kind
+				if Value == nil or Value == "Stroke" or Value == "Color Stroke" then
+					Key, Kind = "Color Stroke", "Stroke"
+				elseif Value == "Theme" or Value == "Color Theme" then
+					Key, Kind = "Color Theme", "Theme"
+				elseif Value == "Text" or Value == "Color Text" then
+					Key, Kind = "Color Text", "Text"
+				elseif Value == "DarkText" or Value == "Color Dark Text" then
+					Key, Kind = "Color Dark Text", "DarkText"
+				elseif typeof(Value) ~= "Color3" then
+					return false
+				end
+				ThemeEntry.Type = Kind or "Custom"
+				Line.BackgroundColor3 = Key and Theme[Key] or Value
+				return true
+			end
+
+			function Divider:SetThickness(Value)
+				Value = tonumber(Value)
+				if not Value or Value ~= Value then return false end
+				Thickness = math.clamp(Value, 1, 12)
+				Height = math.max(Height, Thickness + 4)
+				Holder.Size = UDim2.new(1, 0, 0, Height)
+				Line.Size = UDim2.new(1, -Inset * 2, 0, Thickness)
+				return true
+			end
+
+			function Divider:SetHeight(Value)
+				Value = tonumber(Value)
+				if not Value or Value ~= Value then return false end
+				Height = math.clamp(Value, Thickness + 4, 60)
+				Holder.Size = UDim2.new(1, 0, 0, Height)
+				return true
+			end
+
+			function Divider:SetInset(Value)
+				Value = tonumber(Value)
+				if not Value or Value ~= Value then return false end
+				Inset = math.clamp(Value, 0, 60)
+				Line.Position = UDim2.new(0, Inset, 0.5, 0)
+				Line.Size = UDim2.new(1, -Inset * 2, 0, Thickness)
+				return true
+			end
+
+			function Divider:SetTransparency(Value)
+				Value = tonumber(Value)
+				if not Value or Value ~= Value then return false end
+				Line.BackgroundTransparency = math.clamp(Value, 0, 1)
+				return true
+			end
+
+			function Divider:Visible(...) Funcs:ToggleVisible(Holder, ...) end
+			function Divider:Destroy() Holder:Destroy() end
+
+			Divider:SetColor(Configs.Color)
+			return RegisterFlagObject(Configs.Flag, Divider, Holder)
+		end
 		function Tab:AddParagraph(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local PName = Configs[1] or Configs.Title or TranslateText(ControlsConfig.Titles.Paragraph)
@@ -11610,7 +11693,7 @@ function Library:MakeWindow(Configs)
 			return RegisterFlagObject(Configs.Flag, DiscordInvite, InviteHolder)
 		end
 		for _, MethodName in ipairs({
-			"AddSection", "AddParagraph", "AddButton", "AddToggle", "AddDropdown",
+			"AddSection", "AddDivider", "AddParagraph", "AddButton", "AddToggle", "AddDropdown",
 			"AddPlayers", "AddSelector", "AddSlider", "AddTextBox", "AddKeybind",
 			"AddColorPicker", "AddCode", "AddDiscordInvite"
 		}) do
