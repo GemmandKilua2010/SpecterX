@@ -3960,7 +3960,11 @@ function Library:MakeWindow(Configs)
 			return Fallback
 		end
 
+		-- SpecterX translates dialog content using its own selected language.
+		-- Roblox's AutoLocalize can otherwise render different text than .Text
+		-- (for example Close -> Fechar while Library:GetLanguage() is US).
 		local Overlay = InsertTheme(Create("Frame", MainFrame, {
+			AutoLocalize = false,
 			Size = UDim2.fromScale(1, 1),
 			BackgroundColor3 = Theme["Color Stroke"],
 			BackgroundTransparency = 1,
@@ -3984,6 +3988,7 @@ function Library:MakeWindow(Configs)
 		Make("Stroke", Panel, {Thickness = 1, Transparency = 0.45})
 		local Scale = Create("UIScale", Panel, {Scale = 0.92})
 		local TitleLabel = InsertTheme(Create("TextLabel", Panel, {
+			AutoLocalize = false,
 			Size = UDim2.fromOffset(Width - 32, 22),
 			Position = UDim2.fromOffset(16, PaddingTop),
 			BackgroundTransparency = 1,
@@ -4007,6 +4012,7 @@ function Library:MakeWindow(Configs)
 			ScrollBarImageColor3 = Theme["Color Theme"]
 		})
 		local MessageLabel = InsertTheme(Create("TextLabel", TextScroll, {
+			AutoLocalize = false,
 			Size = UDim2.fromOffset(Width - 39, 25),
 			BackgroundTransparency = 1,
 			Text = RenderMessage(),
@@ -4215,6 +4221,7 @@ function Library:MakeWindow(Configs)
 			local LabelSource = tostring(Option[1] or Option.Name or Option.Title or Option.Label or "")
 			local Callback = Option[2] or Option.Callback
 			local Button = Create("TextButton", ButtonsHolder, {
+				AutoLocalize = false,
 				Size = UDim2.fromOffset(80, ButtonHeight),
 				BackgroundColor3 = Theme["Color Stroke"],
 				BackgroundTransparency = 1,
