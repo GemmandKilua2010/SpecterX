@@ -3406,10 +3406,9 @@ function Library:MakeWindow(Configs)
 			Title = "Close",
 			Text = "Are you sure you want to exit?",
 			Options = {
-				{Name = "Cancel", Style = "Secondary"},
+				{Name = "Cancel"},
 				{
 					Name = "Confirm",
-					Style = "Primary",
 					Callback = function()
 						if CloseCallback then CloseCallback() end
 						if type(Library._BeforeClose) == "function" then
@@ -3932,16 +3931,19 @@ function Library:MakeWindow(Configs)
 			end
 			return Result
 		end
-		local Width = math.clamp(tonumber(Configs.Width) or tonumber(Defaults.Width) or 300, 220, math.max(220, MainFrame.Size.X.Offset - 28))
-		local MaxHeight = math.clamp(tonumber(Configs.MaxHeight) or tonumber(Defaults.MaxHeight) or 210, 126, math.max(126, MainFrame.Size.Y.Offset - 18))
-		local PaddingTop = math.clamp(tonumber(Configs.PaddingTop) or tonumber(Defaults.PaddingTop) or 14, 8, 24)
-		local PaddingBottom = math.clamp(tonumber(Configs.PaddingBottom) or tonumber(Defaults.PaddingBottom) or 14, 8, 24)
-		local TitleGap = math.clamp(tonumber(Configs.TitleGap) or tonumber(Defaults.TitleGap) or 5, 0, 12)
-		local ContentGap = math.clamp(tonumber(Configs.ContentGap) or tonumber(Defaults.ContentGap) or 15, 5, 28)
-		local CornerRadius = math.clamp(tonumber(Configs.CornerRadius) or tonumber(Defaults.CornerRadius) or 12, 4, 20)
-		local ButtonCornerRadius = math.clamp(tonumber(Configs.ButtonCornerRadius) or tonumber(Defaults.ButtonCornerRadius) or 9, 3, 18)
-		local ButtonHeight = math.clamp(tonumber(Configs.ButtonHeight) or tonumber(Defaults.ButtonHeight) or 38, 28, 48)
+		local Width = math.clamp(tonumber(Configs.Width) or tonumber(Defaults.Width) or 350, 220, math.max(220, MainFrame.Size.X.Offset - 28))
+		local MaxHeight = math.clamp(tonumber(Configs.MaxHeight) or tonumber(Defaults.MaxHeight) or 246, 126, math.max(126, MainFrame.Size.Y.Offset - 18))
+		local MinHeight = math.min(MaxHeight, math.max(126, tonumber(Configs.MinHeight) or tonumber(Defaults.MinHeight) or 156))
+		local PaddingTop = math.clamp(tonumber(Configs.PaddingTop) or tonumber(Defaults.PaddingTop) or 16, 8, 24)
+		local PaddingBottom = math.clamp(tonumber(Configs.PaddingBottom) or tonumber(Defaults.PaddingBottom) or 16, 8, 24)
+		local TitleGap = math.clamp(tonumber(Configs.TitleGap) or tonumber(Defaults.TitleGap) or 0, 0, 12)
+		local ContentGap = math.clamp(tonumber(Configs.ContentGap) or tonumber(Defaults.ContentGap) or 18, 5, 28)
+		local CornerRadius = math.clamp(tonumber(Configs.CornerRadius) or tonumber(Defaults.CornerRadius) or 11, 4, 20)
+		local ButtonCornerRadius = math.clamp(tonumber(Configs.ButtonCornerRadius) or tonumber(Defaults.ButtonCornerRadius) or 8, 3, 18)
+		local ButtonHeight = math.clamp(tonumber(Configs.ButtonHeight) or tonumber(Defaults.ButtonHeight) or 32, 28, 48)
 		local ButtonGap = math.clamp(tonumber(Configs.ButtonSpacing) or tonumber(Defaults.ButtonSpacing) or 10, 0, 20)
+		local ButtonMaxWidth = math.clamp(tonumber(Configs.ButtonMaxWidth) or tonumber(Defaults.ButtonMaxWidth) or 122, 75, 240)
+		local SingleButtonMaxWidth = math.clamp(tonumber(Configs.SingleButtonMaxWidth) or tonumber(Defaults.SingleButtonMaxWidth) or 210, 130, 320)
 		local DefaultButtonColor = Configs.ButtonColor or Defaults.ButtonColor or "Color Stroke"
 		local DefaultButtonTextColor = Configs.ButtonTextColor or Defaults.ButtonTextColor or "Color Text"
 		local Alignment = tostring(Configs.ButtonAlignment or Defaults.ButtonAlignment or "Center")
@@ -4057,7 +4059,7 @@ function Library:MakeWindow(Configs)
 			local FixedHeight = PaddingTop + TitleHeight + TitleGap + ContentGap + ButtonHeight + PaddingBottom
 			local RequestedHeight = tonumber(Configs.Height)
 			local NaturalHeight = FixedHeight + MessageHeight
-			local MinimumHeight = math.min(MaxHeight, math.max(108, FixedHeight + 18))
+			local MinimumHeight = math.min(MaxHeight, math.max(MinHeight, FixedHeight + 18))
 			local Height = math.clamp(RequestedHeight or NaturalHeight, MinimumHeight, MaxHeight)
 			local ViewHeight = math.max(18, Height - FixedHeight)
 			Panel.Size = UDim2.fromOffset(Width, Height)
@@ -4078,13 +4080,15 @@ function Library:MakeWindow(Configs)
 			local Count = #VisibleEntries
 			if Count == 0 then return end
 			local AvailableWidth = math.max(1, Width - 32 - ButtonGap * (Count - 1))
-			for Index, Entry in ipairs(ButtonEntries) do Entry.Button.LayoutOrder = Index end
+			for Index, Entry in ipairs(ButtonEntries) do
+				Entry.Button.LayoutOrder = Index
+			end
 			for _, Entry in ipairs(VisibleEntries) do
-				local NaturalWidth = TextService:GetTextSize(Entry.Button.Text, 14, Enum.Font.GothamBold, Vector2.new(1000, 40)).X + 42
-				Entry.Button.Size = UDim2.fromOffset(
-					Count == 1 and math.min(AvailableWidth, math.max(176, NaturalWidth)) or AvailableWidth / Count,
-					ButtonHeight
-				)
+				-- Compact buttons are centered instead of stretching across the panel.
+				local NaturalWidth = TextService:GetTextSize(Entry.Button.Text, 13, Enum.Font.GothamBold, Vector2.new(1000, 40)).X + 28
+				local MaxWidth = Count == 1 and SingleButtonMaxWidth or ButtonMaxWidth
+				local TargetWidth = math.min(AvailableWidth / Count, MaxWidth, math.max(94, NaturalWidth))
+				Entry.Button.Size = UDim2.fromOffset(TargetWidth, ButtonHeight)
 			end
 		end
 
@@ -4255,7 +4259,7 @@ function Library:MakeWindow(Configs)
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
 				Text = TranslateDialog(LabelSource),
-				TextSize = 14,
+				TextSize = 13,
 				Font = Enum.Font.GothamBold,
 				TextColor3 = Theme["Color Text"],
 				TextTruncate = Enum.TextTruncate.AtEnd,
@@ -12023,7 +12027,6 @@ function Library:MakeWindow(Configs)
 				Options = {
 					{
 						Name = "Don't show again",
-						Style = "Primary",
 						Callback = function()
 							if not Library:SetStartupGreetingDismissed(true) then
 								warn("[SpecterX] Could not save startup greeting preference.")
