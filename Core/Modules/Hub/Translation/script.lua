@@ -161,10 +161,16 @@ function Translation:Translate(Text, Language)
     end
 
     local Lookup = Lower(Text)
-    local Canonical = Aliases[Lookup] or Lookup
-    local Direct = Dictionary[Canonical]
+    -- Prefer an explicit key in the requested language. Shared aliases can
+    -- point at a different canonical entry when dictionaries overlap.
+    local Direct = Dictionary[Lookup]
+    if Direct ~= nil then
+        return Direct
+    end
 
-    if Direct then
+    local Canonical = Aliases[Lookup] or Lookup
+    Direct = Dictionary[Canonical]
+    if Direct ~= nil then
         return Direct
     end
 
