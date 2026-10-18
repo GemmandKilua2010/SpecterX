@@ -376,7 +376,10 @@ function Main:GetGenv()
     end
 
     local Title = tostring(Configs.title or "Hub")
-    Env[Title] = Env[Title] or {}
+    -- Keep every hub's shared state inside one isolated table.
+    if type(Env[Title]) ~= "table" then
+        Env[Title] = {}
+    end
     return Env[Title]
 end
 
