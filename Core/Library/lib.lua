@@ -3395,19 +3395,20 @@ function Library:MakeWindow(Configs)
 	
 	function Window:CloseBtn()
 		Window:Dialog({
-			Title = TranslateText("Close"),
-			Text = TranslateText("Are you sure you want to exit?"),
+			Title = "Close",
+			Text = "Are you sure you want to exit?",
 			Options = {
-				{TranslateText("Confirm"), function()
-					if CloseCallback then
-						CloseCallback()
+				{Name = "Cancel"},
+				{
+					Name = "Confirm",
+					Callback = function()
+						if CloseCallback then CloseCallback() end
+						if type(Library._BeforeClose) == "function" then
+							Library._BeforeClose()
+						end
+						ScreenGui:Destroy()
 					end
-					if type(Library._BeforeClose) == "function" then
-						Library._BeforeClose()
-					end
-					ScreenGui:Destroy()
-				end},
-				{TranslateText("Cancel")}
+				}
 			}
 		})
 	end
