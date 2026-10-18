@@ -3935,20 +3935,21 @@ function Library:MakeWindow(Configs)
 			end
 			return Result
 		end
-		local Width = math.clamp(tonumber(Configs.Width) or tonumber(Defaults.Width) or 330, 220, math.max(220, MainFrame.Size.X.Offset - 28))
-		local MaxHeight = math.clamp(tonumber(Configs.MaxHeight) or tonumber(Defaults.MaxHeight) or 238, 126, math.max(126, MainFrame.Size.Y.Offset - 18))
-		local MinHeight = math.min(MaxHeight, math.max(126, tonumber(Configs.MinHeight) or tonumber(Defaults.MinHeight) or 136))
-		local PaddingTop = math.clamp(tonumber(Configs.PaddingTop) or tonumber(Defaults.PaddingTop) or 17, 8, 32)
-		local PaddingBottom = math.clamp(tonumber(Configs.PaddingBottom) or tonumber(Defaults.PaddingBottom) or 17, 8, 32)
-		local TitleGap = math.clamp(tonumber(Configs.TitleGap) or tonumber(Defaults.TitleGap) or 2, 0, 12)
-		local ContentGap = math.clamp(tonumber(Configs.ContentGap) or tonumber(Defaults.ContentGap) or 16, 5, 32)
+		local HorizontalPadding = math.clamp(tonumber(Configs.HorizontalPadding) or tonumber(Defaults.HorizontalPadding) or 12, 8, 30)
+		local Width = math.clamp(tonumber(Configs.Width) or tonumber(Defaults.Width) or 420, 220, math.max(220, MainFrame.Size.X.Offset - 24))
+		local MaxHeight = math.clamp(tonumber(Configs.MaxHeight) or tonumber(Defaults.MaxHeight) or 300, 126, math.max(126, MainFrame.Size.Y.Offset - 18))
+		local MinHeight = math.min(MaxHeight, math.max(126, tonumber(Configs.MinHeight) or tonumber(Defaults.MinHeight) or 190))
+		local PaddingTop = math.clamp(tonumber(Configs.PaddingTop) or tonumber(Defaults.PaddingTop) or 12, 8, 32)
+		local PaddingBottom = math.clamp(tonumber(Configs.PaddingBottom) or tonumber(Defaults.PaddingBottom) or 14, 8, 32)
+		local TitleGap = math.clamp(tonumber(Configs.TitleGap) or tonumber(Defaults.TitleGap) or 4, 0, 12)
+		local ContentGap = math.clamp(tonumber(Configs.ContentGap) or tonumber(Defaults.ContentGap) or 26, 5, 42)
 		local CornerRadius = math.clamp(tonumber(Configs.CornerRadius) or tonumber(Defaults.CornerRadius) or 11, 4, 20)
 		local ButtonCornerRadius = math.clamp(tonumber(Configs.ButtonCornerRadius) or tonumber(Defaults.ButtonCornerRadius) or 8, 3, 18)
 		-- Scale default action dimensions with the dialog's width. Explicit
 		-- ButtonHeight/ButtonMaxWidth settings retain their literal values.
-		local WidthRatio = Width / math.max(1, tonumber(Defaults.Width) or 330)
+		local WidthRatio = Width / math.max(1, tonumber(Defaults.Width) or 420)
 		local ButtonHeight = math.clamp(
-			tonumber(Configs.ButtonHeight) or math.floor((tonumber(Defaults.ButtonHeight) or 34) * WidthRatio + 0.5),
+			tonumber(Configs.ButtonHeight) or math.floor((tonumber(Defaults.ButtonHeight) or 36) * WidthRatio + 0.5),
 			30, 46
 		)
 		local ButtonGap = math.clamp(tonumber(Configs.ButtonSpacing) or tonumber(Defaults.ButtonSpacing) or 10, 0, 20)
@@ -4020,7 +4021,7 @@ function Library:MakeWindow(Configs)
 		MainCorner:Clone().Parent = Overlay
 
 		local Panel = InsertTheme(Create("Frame", Overlay, {
-			Size = UDim2.fromOffset(Width, 130),
+			Size = UDim2.fromOffset(Width, MinHeight),
 			Position = UDim2.fromScale(0.5, 0.5),
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			BackgroundColor3 = Theme["Color Hub 2"],
@@ -4033,8 +4034,8 @@ function Library:MakeWindow(Configs)
 		local Scale = Create("UIScale", Panel, {Scale = 0.92})
 		local TitleLabel = InsertTheme(Create("TextLabel", Panel, {
 			AutoLocalize = false,
-			Size = UDim2.fromOffset(Width - 32, 22),
-			Position = UDim2.fromOffset(16, PaddingTop),
+			Size = UDim2.fromOffset(Width - HorizontalPadding * 2, 22),
+			Position = UDim2.fromOffset(HorizontalPadding, PaddingTop),
 			BackgroundTransparency = 1,
 			Text = TranslateDialog(TitleSource),
 			Font = Enum.Font.GothamBold,
@@ -4046,8 +4047,8 @@ function Library:MakeWindow(Configs)
 			TextColor3 = Theme["Color Text"]
 		}), "Text")
 		local TextScroll = Create("ScrollingFrame", Panel, {
-			Size = UDim2.fromOffset(Width - 32, 24),
-			Position = UDim2.fromOffset(16, 34),
+			Size = UDim2.fromOffset(Width - HorizontalPadding * 2, 24),
+			Position = UDim2.fromOffset(HorizontalPadding, 34),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			CanvasSize = UDim2.new(),
@@ -4057,7 +4058,7 @@ function Library:MakeWindow(Configs)
 		})
 		local MessageLabel = InsertTheme(Create("TextLabel", TextScroll, {
 			AutoLocalize = false,
-			Size = UDim2.fromOffset(Width - 39, 25),
+			Size = UDim2.fromOffset(Width - (HorizontalPadding * 2 + 7), 25),
 			BackgroundTransparency = 1,
 			Text = RenderMessage(),
 			TextWrapped = true,
@@ -4068,7 +4069,7 @@ function Library:MakeWindow(Configs)
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextYAlignment = Enum.TextYAlignment.Top
 		}), "Text")
-		local ButtonInset = 10
+		local ButtonInset = 12
 		local ButtonsHolder = Create("Frame", Panel, {
 			Size = UDim2.new(1, -ButtonInset * 2, 0, ButtonHeight),
 			Position = UDim2.new(0, ButtonInset, 1, -PaddingBottom),
@@ -4088,28 +4089,25 @@ function Library:MakeWindow(Configs)
 
 		local function Reflow()
 			if not Overlay.Parent or Dialog.Closing then return end
-			local TitleHeight = math.max(18, TextService:GetTextSize(TitleLabel.Text, 16, Enum.Font.GothamBold, Vector2.new(Width - 32, 2000)).Y)
-			local MessageHeight = math.max(19, TextService:GetTextSize(MessageLabel.Text, 14, Enum.Font.GothamMedium, Vector2.new(Width - 40, 10000)).Y + 2)
+			local TitleHeight = math.max(18, TextService:GetTextSize(TitleLabel.Text, 16, Enum.Font.GothamBold, Vector2.new(Width - HorizontalPadding * 2, 2000)).Y)
+			local MessageHeight = math.max(19, TextService:GetTextSize(MessageLabel.Text, 14, Enum.Font.GothamMedium, Vector2.new(Width - (HorizontalPadding * 2 + 8), 10000)).Y + 2)
 			local FixedHeight = PaddingTop + TitleHeight + TitleGap + ContentGap + ButtonHeight + PaddingBottom
 			local RequestedHeight = tonumber(Configs.Height)
 			local NaturalHeight = FixedHeight + MessageHeight
 			local MinimumHeight = math.min(MaxHeight, math.max(MinHeight, FixedHeight + 18))
 			local Height = math.clamp(RequestedHeight or NaturalHeight, MinimumHeight, MaxHeight)
-			-- Extra room belongs around the content, not between the text and
-			-- buttons. This keeps short and long dialogs proportionate.
-			local Extra = math.max(0, Height - NaturalHeight)
-			local Top = PaddingTop + math.floor(Extra / 2)
-			local Bottom = PaddingBottom + math.ceil(Extra / 2)
+			local Top = PaddingTop
+			local Bottom = PaddingBottom
 			local ViewHeight = math.max(18, Height - (Top + TitleHeight + TitleGap + ContentGap + ButtonHeight + Bottom))
 			Panel.Size = UDim2.fromOffset(Width, Height)
-			TitleLabel.Position = UDim2.fromOffset(16, Top)
-			TitleLabel.Size = UDim2.fromOffset(Width - 32, TitleHeight)
-			TextScroll.Position = UDim2.fromOffset(16, Top + TitleHeight + TitleGap)
-			TextScroll.Size = UDim2.fromOffset(Width - 32, ViewHeight)
+			TitleLabel.Position = UDim2.fromOffset(HorizontalPadding, Top)
+			TitleLabel.Size = UDim2.fromOffset(Width - HorizontalPadding * 2, TitleHeight)
+			TextScroll.Position = UDim2.fromOffset(HorizontalPadding, Top + TitleHeight + TitleGap)
+			TextScroll.Size = UDim2.fromOffset(Width - HorizontalPadding * 2, ViewHeight)
 			TextScroll.CanvasSize = UDim2.fromOffset(0, MessageHeight)
 			TextScroll.ScrollingEnabled = MessageHeight > ViewHeight + 1
 			TextScroll.ScrollBarThickness = MessageHeight > ViewHeight + 1 and 2 or 0
-			MessageLabel.Size = UDim2.fromOffset(Width - 39, MessageHeight)
+			MessageLabel.Size = UDim2.fromOffset(Width - (HorizontalPadding * 2 + 7), MessageHeight)
 			ButtonsHolder.Position = UDim2.new(0, ButtonInset, 1, -Bottom)
 		end
 
@@ -4124,9 +4122,7 @@ function Library:MakeWindow(Configs)
 			for Index, Entry in ipairs(ButtonEntries) do
 				Entry.Button.LayoutOrder = Index
 			end
-			-- Fill the entire button row: 16px margins on each side of the panel
-			-- and only ButtonGap between actions. This stays proportional if
-			-- the Dialog width changes or the button list is updated.
+			-- Fill the button row, leaving ButtonInset on each side.
 			local FullWidth = AvailableWidth / Count
 			local Last = 0
 			for _, Entry in ipairs(VisibleEntries) do
