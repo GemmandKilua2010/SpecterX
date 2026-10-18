@@ -9,7 +9,7 @@ local Config = {
     --// Startup dialog
     StartupGreeting = {
         Enabled = true,
-        Description = "Welcome aboard, {Player}! Everything is ready for you to explore {Title} your way."
+        Description = "Good to see you, {Player}! {Title} is ready. Make yourself at home and enjoy!"
     },
 
     Whitelist = true,
