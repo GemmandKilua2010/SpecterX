@@ -4103,12 +4103,16 @@ function Library:MakeWindow(Configs)
 			for Index, Entry in ipairs(ButtonEntries) do
 				Entry.Button.LayoutOrder = Index
 			end
+			-- Fill the entire button row: 16px margins on each side of the panel
+			-- and only ButtonGap between actions. This stays proportional if
+			-- the Dialog width changes or the button list is updated.
+			local FullWidth = AvailableWidth / Count
+			local Last = 0
 			for _, Entry in ipairs(VisibleEntries) do
-				-- Compact buttons are centered instead of stretching across the panel.
-				local NaturalWidth = TextService:GetTextSize(Entry.Button.Text, 13, Enum.Font.GothamBold, Vector2.new(1000, 40)).X + 28
-				local MaxWidth = Count == 1 and SingleButtonMaxWidth or ButtonMaxWidth
-				local TargetWidth = math.min(AvailableWidth / Count, MaxWidth, math.max(94, NaturalWidth))
-				Entry.Button.Size = UDim2.fromOffset(TargetWidth, ButtonHeight)
+				Last += 1
+				local Left = math.floor((Last - 1) * FullWidth + 0.5)
+				local Right = math.floor(Last * FullWidth + 0.5)
+				Entry.Button.Size = UDim2.fromOffset(math.max(1, Right - Left), ButtonHeight)
 			end
 		end
 
