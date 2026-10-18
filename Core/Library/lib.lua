@@ -2351,7 +2351,8 @@ local MouseSettingKeys = {
 }
 
 function Library:GetMouseSetting(Key)
-    return MouseSettingKeys[Key] and Library.Save[Key] ~= false or nil
+    if not MouseSettingKeys[Key] then return nil end
+    return Library.Save[Key] ~= false
 end
 
 function Library:SetMouseSetting(Key, Value)
