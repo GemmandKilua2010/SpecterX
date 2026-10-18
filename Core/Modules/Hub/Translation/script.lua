@@ -1,13 +1,18 @@
 local BASE_URL, InjectedGames, Game = ...
 assert(type(BASE_URL) == "string", "Translation base URL is required.")
 
+local HttpService = game:GetService("HttpService")
 local Lower = string.lower
 
 local function Fetch(Path, Retries)
     Retries = Retries or 3
 
     for Attempt = 1, Retries do
-        local Success, Body = pcall(game.HttpGet, game, BASE_URL .. Path)
+        -- Each dictionary request needs a fresh URL; cached raw responses may
+        -- lack recently added translations even when the repository is updated.
+        local Url = BASE_URL .. Path
+        Url ..= (Url:find("?", 1, true) and "&" or "?") .. "sx=" .. HttpService:GenerateGUID(false)
+        local Success, Body = pcall(game.HttpGet, game, Url)
 
         if Success and type(Body) == "string" and Body ~= "" then
             local Chunk = loadstring(Body)
