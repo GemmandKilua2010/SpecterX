@@ -365,7 +365,7 @@ Library.Save.SectionIndicator = LibraryConfig.Section.Indicator == true
 Library.Save.ShowFloatingMinimizeButton = true
 Library.Save.UnlockCursorOnOpen = true
 Library.Save.CameraWithRightMouseButton = true
-Library.Save.UnlockCursorWhenMinimized = true
+Library.Save.UnlockCursorWhenMinimized = false
 Library.Save.SavePosition = LibraryConfig.SavePosition ~= false
 Library.Save.Positions = {}
 Library.Save.SectionHeight = math.clamp(ConfigNumber(LibraryConfig.Section, "Height"), 16, 28)
