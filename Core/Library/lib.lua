@@ -4069,7 +4069,8 @@ function Library:MakeWindow(Configs)
 				TextSource = DefaultButtonTextColor
 			end
 			local TextColor = ResolveColor(TextSource, (Explicit or Entry.Primary) and ContrastText or Theme["Color Text"])
-			Entry.Button.BackgroundColor3 = Base
+			local HoverSource = Palette.Hover or Palette.HoverColor or Palette.HoverBackground
+			Entry.Button.BackgroundColor3 = Entry.Hovered and ResolveColor(HoverSource, Base) or Base
 			Entry.Button.TextColor3 = TextColor
 			local StrokeValue = Palette.Stroke or Palette.Border
 			Entry.Stroke.Enabled = StrokeValue ~= nil
