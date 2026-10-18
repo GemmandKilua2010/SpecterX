@@ -384,6 +384,7 @@ Library.Save.DropdownMaxVisibleOptions = DefaultDropdownMaxVisibleOptions
 
 Library.Save.Theme = RootTheme
 Library.Save.Language = assert(RootConfig.Language.Default, "Config.Language.Default is required.")
+Library.Save.StartupGreetingDismissed = false
 
 if type(Hub) == "table" and type(Hub.GetLanguage) == "function" then
     Library.Save.Language = Hub:GetLanguage()
@@ -502,7 +503,7 @@ local SetProps, SetChildren, InsertTheme, Create do
                 Accept(Key, math.clamp(Value, Range[1], Range[2]))
             end
         end
-        for _, Key in ipairs({"Draggable", "Resizable", "TabResizable", "SoundEnabled", "DropdownSearch", "DropdownPrefixOnly", "DropdownCloseOnSelect", "SectionIndicator", "ShowFloatingMinimizeButton", "KeybindIcon", "KeybindHighlight", "KeybindRightClick", "SavePosition"}) do
+        for _, Key in ipairs({"Draggable", "Resizable", "TabResizable", "SoundEnabled", "DropdownSearch", "DropdownPrefixOnly", "DropdownCloseOnSelect", "SectionIndicator", "ShowFloatingMinimizeButton", "KeybindIcon", "KeybindHighlight", "KeybindRightClick", "SavePosition", "StartupGreetingDismissed"}) do
             if type(Decode[Key]) == "boolean" then Accept(Key, Decode[Key]) end
         end
         if type(Decode.Positions) == "table" then
@@ -1069,6 +1070,22 @@ local function QueueSettingsSave()
     if SettingsSaveQueued then return end
     SettingsSaveQueued = true
     task.delay(SettingsSaveDelay, FlushSettingsWhenIdle)
+end
+
+function Library:IsStartupGreetingDismissed()
+    return Library.Save.StartupGreetingDismissed == true
+end
+
+function Library:SetStartupGreetingDismissed(Value)
+    if type(Value) ~= "boolean" then return false end
+    local Previous = Library.Save.StartupGreetingDismissed
+    Library.Save.StartupGreetingDismissed = Value
+    -- Persist immediately; the dialog may be the final interaction before closing.
+    local Success = SaveJson(SettingsPath, Library.Save)
+    if not Success then
+        Library.Save.StartupGreetingDismissed = Previous
+    end
+    return Success
 end
 
 ScreenGui.Destroying:Connect(function()
@@ -2440,6 +2457,8 @@ function Library._MouseControl.Initialize()
 end
 
 Library._MouseControl.Initialize()
+
+local StartupGreetingQueued = false
 
 function Library:MakeWindow(Configs)
     Configs = type(Configs) == "table" and Configs or {}
@@ -11612,6 +11631,37 @@ function Library:MakeWindow(Configs)
 
 		Window:SelectTab(ConfigTab)
 		return ConfigTab
+	end
+
+	local Greeting = RootConfig.StartupGreeting
+	if type(Greeting) == "table" and Greeting.Enabled ~= false
+		and not StartupGreetingQueued and not Library:IsStartupGreetingDismissed() then
+		StartupGreetingQueued = true
+		task.defer(function()
+			if not ScreenGui.Parent or not MainFrame.Parent then return end
+			local Name = Player and (Player.DisplayName ~= "" and Player.DisplayName or Player.Name) or "Player"
+			local Template = type(Greeting.Description) == "string" and Greeting.Description
+				or "Welcome aboard, {Player}! Everything is ready for you to explore {Title} your way."
+			local Message = Hub:Format(TranslateText(Template), {
+				Player = Name,
+				Title = tostring(RootConfig.Title or WTitle)
+			})
+			Window:Dialog({
+				Title = tostring(RootConfig.Title or WTitle),
+				Text = Message,
+				Options = {
+					{
+						Name = "Don't show again",
+						Callback = function()
+							if not Library:SetStartupGreetingDismissed(true) then
+								warn("[SpecterX] Could not save startup greeting preference.")
+							end
+						end
+					},
+					{Name = "Continue", Primary = true}
+				}
+			})
+		end)
 	end
 
 	return Window
