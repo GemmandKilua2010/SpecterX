@@ -12081,6 +12081,10 @@ function Library:MakeWindow(Configs)
 					{
 						Name = "Don't show again",
 						Style = "Secondary",
+						Color = {
+							Background = (type(ControlsConfig.Dialog) == "table" and ControlsConfig.Dialog.ButtonColor) or "Color Stroke",
+							Text = (type(ControlsConfig.Dialog) == "table" and ControlsConfig.Dialog.ButtonTextColor) or "Color Text"
+						},
 						Callback = function()
 							if not Library:SetStartupGreetingDismissed(true) then
 								warn("[SpecterX] Could not save startup greeting preference.")
