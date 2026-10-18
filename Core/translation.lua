@@ -1,8 +1,7 @@
 local Translation = {
     BR = {
-        ["Welcome aboard, {Player}! Everything is ready for you to explore {Title} your way."] = "Boas-vindas, {Player}! Está tudo pronto para você explorar o {Title} do seu jeito.",
+        ["Good to see you, {Player}! {Title} is ready. Make yourself at home and enjoy!"] = "Que bom te ver por aqui, {Player}! O {Title} já está pronto. Fica à vontade e aproveita!",
         ["Don't show again"] = "Não mostrar novamente",
-        ["Continue"] = "Continuar",
         ["Your SpecterX access was revoked."] = "Seu acesso ao SpecterX foi revogado.",
         ["Your SpecterX access has expired."] = "Seu acesso ao SpecterX expirou.",
         ["You are not on the whitelist."] = "Você não está na lista de acesso do SpecterX.",
@@ -142,9 +141,8 @@ local Translation = {
     },
 
     US = {
-        ["Welcome aboard, {Player}! Everything is ready for you to explore {Title} your way."] = "Welcome aboard, {Player}! Everything is ready for you to explore {Title} your way.",
+        ["Good to see you, {Player}! {Title} is ready. Make yourself at home and enjoy!"] = "Good to see you, {Player}! {Title} is ready. Make yourself at home and enjoy!",
         ["Don't show again"] = "Don't show again",
-        ["Continue"] = "Continue",
         ["Your SpecterX access was revoked."] = "Your SpecterX access was revoked.",
         ["Your SpecterX access has expired."] = "Your SpecterX access has expired.",
         ["You are not on the whitelist."] = "You are not on the SpecterX whitelist.",
@@ -284,9 +282,8 @@ local Translation = {
     },
 
     ES = {
-        ["Welcome aboard, {Player}! Everything is ready for you to explore {Title} your way."] = "¡Bienvenido, {Player}! Todo está listo para explorar {Title} a tu manera.",
+        ["Good to see you, {Player}! {Title} is ready. Make yourself at home and enjoy!"] = "¡Qué bueno verte por aquí, {Player}! {Title} ya está listo. ¡Ponte cómodo y disfrútalo!",
         ["Don't show again"] = "No volver a mostrar",
-        ["Continue"] = "Continuar",
         ["Your SpecterX access was revoked."] = "Se revocó tu acceso a SpecterX.",
         ["Your SpecterX access has expired."] = "Tu acceso a SpecterX ha caducado.",
         ["You are not on the whitelist."] = "No estás en la lista de acceso de SpecterX.",
