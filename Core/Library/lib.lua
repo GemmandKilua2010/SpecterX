@@ -2814,7 +2814,8 @@ function Library:MakeWindow(Configs)
 	end))
 
 	local function CanDragWindow(Input)
-		if not Draggable or ResizeState or not MainFrame.Visible then
+		if not Draggable or ResizeState or not MainFrame.Visible
+			or (Runtime.DialogOverlay and Runtime.DialogOverlay.Parent) then
 			return false
 		end
 
@@ -2859,7 +2860,7 @@ function Library:MakeWindow(Configs)
 			CanStart = CanDragWindow,
 			GlobalInput = true,
 			ShouldCancel = function()
-				return FloatingMinimizeHeld > 0
+				return FloatingMinimizeHeld > 0 or (Runtime.DialogOverlay and Runtime.DialogOverlay.Parent ~= nil)
 			end
 		})
 	end
@@ -3422,6 +3423,7 @@ function Library:MakeWindow(Configs)
 		})
 	end
 	function Window:MinimizeBtn()
+		if Runtime.DialogOverlay and Runtime.DialogOverlay.Parent then return end
 		if WaitClick then return end
 		WaitClick = true
 
@@ -3677,6 +3679,7 @@ function Library:MakeWindow(Configs)
 	TrackConnection(UserInputService.InputBegan:Connect(function(Input, GameProcessed)
 		if Input.UserInputType ~= Enum.UserInputType.Keyboard or Input.KeyCode == Enum.KeyCode.Unknown then return end
 		local Key = Input.KeyCode
+		if Runtime.DialogOverlay and Runtime.DialogOverlay.Parent then return end
 		if HeldBindingKeys[Key] then return end
 		HeldBindingKeys[Key] = true
 		if UserInputService:GetFocusedTextBox() then
@@ -3984,10 +3987,27 @@ function Library:MakeWindow(Configs)
 			return Fallback
 		end
 
+		local PreviousMainZIndex = MainFrame.ZIndex
+		local RootModal = Create("TextButton", ScreenGui, {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Text = "",
+			AutoButtonColor = false,
+			Active = true,
+			Selectable = false,
+			ZIndex = 10000
+		})
+		MainFrame.ZIndex = 10001
+
 		-- SpecterX translates dialog content using its own selected language.
 		-- Roblox's AutoLocalize can otherwise render different text than .Text
 		-- (for example Close -> Fechar while Library:GetLanguage() is US).
-		local Overlay = InsertTheme(Create("Frame", MainFrame, {
+		local Overlay = InsertTheme(Create("TextButton", MainFrame, {
+			Text = "",
+			AutoButtonColor = false,
+			Selectable = false,
+			ZIndex = 10002,
 			AutoLocalize = false,
 			Size = UDim2.fromScale(1, 1),
 			BackgroundColor3 = Theme["Color Stroke"],
@@ -4048,9 +4068,10 @@ function Library:MakeWindow(Configs)
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextYAlignment = Enum.TextYAlignment.Top
 		}), "Text")
+		local ButtonInset = 10
 		local ButtonsHolder = Create("Frame", Panel, {
-			Size = UDim2.new(1, -32, 0, ButtonHeight),
-			Position = UDim2.new(0, 16, 1, -PaddingBottom),
+			Size = UDim2.new(1, -ButtonInset * 2, 0, ButtonHeight),
+			Position = UDim2.new(0, ButtonInset, 1, -PaddingBottom),
 			AnchorPoint = Vector2.new(0, 1),
 			BackgroundTransparency = 1
 		})
@@ -4089,7 +4110,7 @@ function Library:MakeWindow(Configs)
 			TextScroll.ScrollingEnabled = MessageHeight > ViewHeight + 1
 			TextScroll.ScrollBarThickness = MessageHeight > ViewHeight + 1 and 2 or 0
 			MessageLabel.Size = UDim2.fromOffset(Width - 39, MessageHeight)
-			ButtonsHolder.Position = UDim2.new(0, 16, 1, -Bottom)
+			ButtonsHolder.Position = UDim2.new(0, ButtonInset, 1, -Bottom)
 		end
 
 		local function ReflowButtons()
@@ -4099,7 +4120,7 @@ function Library:MakeWindow(Configs)
 			end
 			local Count = #VisibleEntries
 			if Count == 0 then return end
-			local AvailableWidth = math.max(1, Width - 32 - ButtonGap * (Count - 1))
+			local AvailableWidth = math.max(1, Width - ButtonInset * 2 - ButtonGap * (Count - 1))
 			for Index, Entry in ipairs(ButtonEntries) do
 				Entry.Button.LayoutOrder = Index
 			end
@@ -4438,8 +4459,18 @@ function Library:MakeWindow(Configs)
 		end
 
 		ApplyAlignment(Alignment)
+		local SelectedObject = GuiService.SelectedObject
+		if SelectedObject and SelectedObject:IsDescendantOf(ScreenGui) then GuiService.SelectedObject = nil end
 		for _, Option in ipairs(Options) do Dialog:Button(Option) end
 		Reflow()
+		if UserInputService.PreferredInput == Enum.PreferredInput.Gamepad then
+			for _, Entry in ipairs(ButtonEntries) do
+				if Entry.Enabled and Entry.Visible then
+					GuiService.SelectedObject = Entry.Button
+					break
+				end
+			end
+		end
 
 		local ThemeConnection = Connection.ThemeChanged:Connect(function()
 			if not Overlay.Parent then return end
@@ -4471,6 +4502,8 @@ function Library:MakeWindow(Configs)
 			return true
 		end
 		Overlay.Destroying:Connect(function()
+			if RootModal.Parent then RootModal:Destroy() end
+			if MainFrame.Parent then MainFrame.ZIndex = PreviousMainZIndex end
 			ThemeConnection:Disconnect()
 			LanguageConnection:Disconnect()
 			if HubLanguageConnection then HubLanguageConnection:Disconnect() end
