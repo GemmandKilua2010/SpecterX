@@ -4371,19 +4371,34 @@ function Library:MakeWindow(Configs)
 			TextScroll.ScrollBarImageColor3 = Theme["Color Theme"]
 			for _, Entry in ipairs(ButtonEntries) do ApplyButtonStyle(Entry) end
 		end)
-		local LanguageConnection = Connection.LanguageChanged:Connect(function()
-			if not Overlay.Parent then return end
+		local function RefreshDialogTranslations()
+			if not Overlay.Parent or Dialog.Closing then return end
+			-- Always re-render from the original source texts, never from an
+			-- already localized button label or dialog title.
 			TitleLabel.Text = TranslateDialog(TitleSource)
 			MessageLabel.Text = RenderMessage()
 			for _, Entry in ipairs(ButtonEntries) do
-				Entry.Button.Text = TranslateDialog(Entry.Name)
+				if Entry.Button.Parent then
+					Entry.Button.Text = TranslateDialog(Entry.Name)
+				end
 			end
 			Reflow()
 			ReflowButtons()
-		end)
+		end
+		local LanguageConnection = Connection.LanguageChanged:Connect(RefreshDialogTranslations)
+		local HubLanguageConnection
+		if type(Hub) == "table" and type(Hub.OnLanguageChanged) == "function" then
+			HubLanguageConnection = Hub:OnLanguageChanged(RefreshDialogTranslations)
+		end
+		function Dialog:RefreshTranslations()
+			if not self:IsOpen() then return false end
+			RefreshDialogTranslations()
+			return true
+		end
 		Overlay.Destroying:Connect(function()
 			ThemeConnection:Disconnect()
 			LanguageConnection:Disconnect()
+			if HubLanguageConnection then HubLanguageConnection:Disconnect() end
 			if ActiveDialog == Overlay then ActiveDialog = nil end
 			if Library._ActiveDialogOverlay == Overlay then Library._ActiveDialogOverlay = nil end
 		end)
