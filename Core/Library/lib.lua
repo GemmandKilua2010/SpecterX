@@ -4295,6 +4295,10 @@ function Library:MakeWindow(Configs)
 			end)
 			ApplyButtonStyle(Entry)
 			ReflowButtons()
+			-- Animate newly added buttons in, rather than applying their final
+			-- transparency before the fade begins.
+			Button.TextTransparency = 1
+			Button.BackgroundTransparency = 1
 			TweenService:Create(Button, AnimFade, {
 				TextTransparency = Entry.Enabled and 0 or 0.5,
 				BackgroundTransparency = Entry.Enabled and 0.22 or 0.52
