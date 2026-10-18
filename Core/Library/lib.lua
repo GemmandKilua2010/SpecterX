@@ -363,6 +363,9 @@ Library.Save.ScrollThickness = ScrollThickness
 Library.Save.ScrollTransparency = ScrollTransparency
 Library.Save.SectionIndicator = LibraryConfig.Section.Indicator == true
 Library.Save.ShowFloatingMinimizeButton = true
+Library.Save.UnlockCursorOnOpen = true
+Library.Save.CameraWithRightMouseButton = true
+Library.Save.UnlockCursorWhenMinimized = true
 Library.Save.SavePosition = LibraryConfig.SavePosition ~= false
 Library.Save.Positions = {}
 Library.Save.SectionHeight = math.clamp(ConfigNumber(LibraryConfig.Section, "Height"), 16, 28)
@@ -503,7 +506,7 @@ local SetProps, SetChildren, InsertTheme, Create do
                 Accept(Key, math.clamp(Value, Range[1], Range[2]))
             end
         end
-        for _, Key in ipairs({"Draggable", "Resizable", "TabResizable", "SoundEnabled", "DropdownSearch", "DropdownPrefixOnly", "DropdownCloseOnSelect", "SectionIndicator", "ShowFloatingMinimizeButton", "KeybindIcon", "KeybindHighlight", "KeybindRightClick", "SavePosition", "StartupGreetingDismissed"}) do
+        for _, Key in ipairs({"Draggable", "Resizable", "TabResizable", "SoundEnabled", "DropdownSearch", "DropdownPrefixOnly", "DropdownCloseOnSelect", "SectionIndicator", "ShowFloatingMinimizeButton", "KeybindIcon", "KeybindHighlight", "KeybindRightClick", "UnlockCursorOnOpen", "CameraWithRightMouseButton", "UnlockCursorWhenMinimized", "SavePosition", "StartupGreetingDismissed"}) do
             if type(Decode[Key]) == "boolean" then Accept(Key, Decode[Key]) end
         end
         if type(Decode.Positions) == "table" then
@@ -2341,6 +2344,25 @@ function Library:GetViewportSize()
     return GetViewportSize()
 end
 
+local MouseSettingKeys = {
+    UnlockCursorOnOpen = true,
+    CameraWithRightMouseButton = true,
+    UnlockCursorWhenMinimized = true
+}
+
+function Library:GetMouseSetting(Key)
+    return MouseSettingKeys[Key] and Library.Save[Key] ~= false or nil
+end
+
+function Library:SetMouseSetting(Key, Value)
+    if not MouseSettingKeys[Key] or type(Value) ~= "boolean" then return false end
+    if Library.Save[Key] == Value then return true end
+    Library.Save[Key] = Value
+    if Library._MouseControl then Library._MouseControl:Refresh() end
+    QueueSettingsSave()
+    return true
+end
+
 -- Temporarily own the cursor; the camera keeps ownership of its underlying lock state.
 Library._MouseControl = {Frames = setmetatable({}, {__mode = "k"}), Connections = {}, Generation = 0}
 function Library._MouseControl.Initialize()
@@ -2356,6 +2378,8 @@ function Library._MouseControl.Initialize()
     Modal.Parent = ScreenGui
 
     function Control:IsVisible()
+        if Library.Save.UnlockCursorOnOpen == false
+            or (self.Minimized and Library.Save.UnlockCursorWhenMinimized == false) then return false end
         if self.Destroyed or self.Focused == false or not ScreenGui.Enabled
             or not ScreenGui:IsDescendantOf(game) then return false end
         for Frame in pairs(self.Frames) do
@@ -2371,6 +2395,8 @@ function Library._MouseControl.Initialize()
 
     function Control:Unlock()
         if not self.Active or self.Destroyed then return end
+        if Library.Save.CameraWithRightMouseButton ~= false
+            and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
         if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
             UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         end
@@ -3452,6 +3478,8 @@ function Library:MakeWindow(Configs)
 			Minimized = true
 		end
 
+		Library._MouseControl.Minimized = Minimized
+		Library._MouseControl:Refresh()
 		if MinimizeCallback then
 			MinimizeCallback(Minimized)
 		end
@@ -12014,6 +12042,30 @@ function Library:MakeWindow(Configs)
 			})
 			ExtraLabels[#ExtraLabels + 1] = {DropdownVisibleOptionsControl, "Visible dropdown options"}
 
+			local CursorSection = ConfigTab:AddSection(TranslateText("Cursor and camera"))
+			ExtraLabels[#ExtraLabels + 1] = {CursorSection, "Cursor and camera"}
+
+			local UnlockCursorToggle = ConfigTab:AddToggle({
+				Name = TranslateText("Unlock cursor when hub opens"),
+				Default = Library:GetMouseSetting("UnlockCursorOnOpen"),
+				Callback = function(Value) Library:SetMouseSetting("UnlockCursorOnOpen", Value) end
+			})
+			ExtraLabels[#ExtraLabels + 1] = {UnlockCursorToggle, "Unlock cursor when hub opens"}
+
+			local CameraRightClickToggle = ConfigTab:AddToggle({
+				Name = TranslateText("Rotate camera with right mouse button"),
+				Default = Library:GetMouseSetting("CameraWithRightMouseButton"),
+				Callback = function(Value) Library:SetMouseSetting("CameraWithRightMouseButton", Value) end
+			})
+			ExtraLabels[#ExtraLabels + 1] = {CameraRightClickToggle, "Rotate camera with right mouse button"}
+
+			local MinimizedCursorToggle = ConfigTab:AddToggle({
+				Name = TranslateText("Keep cursor unlocked while minimized"),
+				Default = Library:GetMouseSetting("UnlockCursorWhenMinimized"),
+				Callback = function(Value) Library:SetMouseSetting("UnlockCursorWhenMinimized", Value) end
+			})
+			ExtraLabels[#ExtraLabels + 1] = {MinimizedCursorToggle, "Keep cursor unlocked while minimized"}
+
 			local MiscSection = ConfigTab:AddSection(TranslateText("Miscellaneous"))
             ExtraLabels[#ExtraLabels + 1] = {MiscSection, "Miscellaneous"}
 
@@ -12072,6 +12124,9 @@ function Library:MakeWindow(Configs)
                                     Library:SetDropdownPrefixOnly(Defaults.DropdownPrefixOnly)
                                     Library:SetDropdownCloseOnSelect(Defaults.DropdownCloseOnSelect)
                                     Library:SetDropdownMaxVisibleOptions(Defaults.DropdownMaxVisibleOptions)
+                                    Library:SetMouseSetting("UnlockCursorOnOpen", Defaults.UnlockCursorOnOpen)
+                                    Library:SetMouseSetting("CameraWithRightMouseButton", Defaults.CameraWithRightMouseButton)
+                                    Library:SetMouseSetting("UnlockCursorWhenMinimized", Defaults.UnlockCursorWhenMinimized)
                                     for Key in pairs(Library.SectionRanges) do
                                         Library:SetSectionSetting(Key, Defaults[Key])
                                     end
@@ -12096,6 +12151,9 @@ function Library:MakeWindow(Configs)
                                     DropdownPrefixControl:SetEnabled(Defaults.DropdownPrefixOnly)
                                     DropdownCloseControl:SetEnabled(Defaults.DropdownCloseOnSelect)
                                     DropdownVisibleOptionsControl:SetValue(Defaults.DropdownMaxVisibleOptions, true)
+                                    UnlockCursorToggle:SetEnabled(Defaults.UnlockCursorOnOpen)
+                                    CameraRightClickToggle:SetEnabled(Defaults.CameraWithRightMouseButton)
+                                    MinimizedCursorToggle:SetEnabled(Defaults.UnlockCursorWhenMinimized)
                                     SectionIndicatorToggle:SetEnabled(Defaults.SectionIndicator)
                                     for _, Entry in ipairs(ExtraLabels) do
                                         local Key = ({
