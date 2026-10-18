@@ -3932,29 +3932,29 @@ function Library:MakeWindow(Configs)
 			end
 			return Result
 		end
-		local Width = math.clamp(tonumber(Configs.Width) or tonumber(Defaults.Width) or 350, 220, math.max(220, MainFrame.Size.X.Offset - 28))
-		local MaxHeight = math.clamp(tonumber(Configs.MaxHeight) or tonumber(Defaults.MaxHeight) or 266, 126, math.max(126, MainFrame.Size.Y.Offset - 18))
-		local MinHeight = math.min(MaxHeight, math.max(126, tonumber(Configs.MinHeight) or tonumber(Defaults.MinHeight) or 190))
-		local PaddingTop = math.clamp(tonumber(Configs.PaddingTop) or tonumber(Defaults.PaddingTop) or 20, 8, 32)
-		local PaddingBottom = math.clamp(tonumber(Configs.PaddingBottom) or tonumber(Defaults.PaddingBottom) or 20, 8, 32)
-		local TitleGap = math.clamp(tonumber(Configs.TitleGap) or tonumber(Defaults.TitleGap) or 0, 0, 12)
-		local ContentGap = math.clamp(tonumber(Configs.ContentGap) or tonumber(Defaults.ContentGap) or 20, 5, 32)
+		local Width = math.clamp(tonumber(Configs.Width) or tonumber(Defaults.Width) or 330, 220, math.max(220, MainFrame.Size.X.Offset - 28))
+		local MaxHeight = math.clamp(tonumber(Configs.MaxHeight) or tonumber(Defaults.MaxHeight) or 238, 126, math.max(126, MainFrame.Size.Y.Offset - 18))
+		local MinHeight = math.min(MaxHeight, math.max(126, tonumber(Configs.MinHeight) or tonumber(Defaults.MinHeight) or 136))
+		local PaddingTop = math.clamp(tonumber(Configs.PaddingTop) or tonumber(Defaults.PaddingTop) or 17, 8, 32)
+		local PaddingBottom = math.clamp(tonumber(Configs.PaddingBottom) or tonumber(Defaults.PaddingBottom) or 17, 8, 32)
+		local TitleGap = math.clamp(tonumber(Configs.TitleGap) or tonumber(Defaults.TitleGap) or 2, 0, 12)
+		local ContentGap = math.clamp(tonumber(Configs.ContentGap) or tonumber(Defaults.ContentGap) or 16, 5, 32)
 		local CornerRadius = math.clamp(tonumber(Configs.CornerRadius) or tonumber(Defaults.CornerRadius) or 11, 4, 20)
 		local ButtonCornerRadius = math.clamp(tonumber(Configs.ButtonCornerRadius) or tonumber(Defaults.ButtonCornerRadius) or 8, 3, 18)
 		-- Scale default action dimensions with the dialog's width. Explicit
 		-- ButtonHeight/ButtonMaxWidth settings retain their literal values.
-		local WidthRatio = Width / math.max(1, tonumber(Defaults.Width) or 350)
+		local WidthRatio = Width / math.max(1, tonumber(Defaults.Width) or 330)
 		local ButtonHeight = math.clamp(
-			tonumber(Configs.ButtonHeight) or math.floor((tonumber(Defaults.ButtonHeight) or 36) * WidthRatio + 0.5),
+			tonumber(Configs.ButtonHeight) or math.floor((tonumber(Defaults.ButtonHeight) or 34) * WidthRatio + 0.5),
 			30, 46
 		)
 		local ButtonGap = math.clamp(tonumber(Configs.ButtonSpacing) or tonumber(Defaults.ButtonSpacing) or 10, 0, 20)
 		local ButtonMaxWidth = math.clamp(
-			tonumber(Configs.ButtonMaxWidth) or math.floor((tonumber(Defaults.ButtonMaxWidth) or 132) * WidthRatio + 0.5),
+			tonumber(Configs.ButtonMaxWidth) or math.floor((tonumber(Defaults.ButtonMaxWidth) or 124) * WidthRatio + 0.5),
 			90, 240
 		)
 		local SingleButtonMaxWidth = math.clamp(
-			tonumber(Configs.SingleButtonMaxWidth) or math.floor((tonumber(Defaults.SingleButtonMaxWidth) or 220) * WidthRatio + 0.5),
+			tonumber(Configs.SingleButtonMaxWidth) or math.floor((tonumber(Defaults.SingleButtonMaxWidth) or 196) * WidthRatio + 0.5),
 			130, 320
 		)
 		local DefaultButtonColor = Configs.ButtonColor or Defaults.ButtonColor or "Color Stroke"
@@ -4074,15 +4074,22 @@ function Library:MakeWindow(Configs)
 			local NaturalHeight = FixedHeight + MessageHeight
 			local MinimumHeight = math.min(MaxHeight, math.max(MinHeight, FixedHeight + 18))
 			local Height = math.clamp(RequestedHeight or NaturalHeight, MinimumHeight, MaxHeight)
-			local ViewHeight = math.max(18, Height - FixedHeight)
+			-- Extra room belongs around the content, not between the text and
+			-- buttons. This keeps short and long dialogs proportionate.
+			local Extra = math.max(0, Height - NaturalHeight)
+			local Top = PaddingTop + math.floor(Extra / 2)
+			local Bottom = PaddingBottom + math.ceil(Extra / 2)
+			local ViewHeight = math.max(18, Height - (Top + TitleHeight + TitleGap + ContentGap + ButtonHeight + Bottom))
 			Panel.Size = UDim2.fromOffset(Width, Height)
+			TitleLabel.Position = UDim2.fromOffset(16, Top)
 			TitleLabel.Size = UDim2.fromOffset(Width - 32, TitleHeight)
-			TextScroll.Position = UDim2.fromOffset(16, PaddingTop + TitleHeight + TitleGap)
+			TextScroll.Position = UDim2.fromOffset(16, Top + TitleHeight + TitleGap)
 			TextScroll.Size = UDim2.fromOffset(Width - 32, ViewHeight)
 			TextScroll.CanvasSize = UDim2.fromOffset(0, MessageHeight)
 			TextScroll.ScrollingEnabled = MessageHeight > ViewHeight + 1
 			TextScroll.ScrollBarThickness = MessageHeight > ViewHeight + 1 and 2 or 0
 			MessageLabel.Size = UDim2.fromOffset(Width - 39, MessageHeight)
+			ButtonsHolder.Position = UDim2.new(0, 16, 1, -Bottom)
 		end
 
 		local function ReflowButtons()
