@@ -1,5 +1,13 @@
 local Translation = {
     BR = {
+        ["Continue"] = "Continuar",
+        ["Continuar"] = "Continuar",
+        ["Fechar"] = "Fechar",
+        ["Cerrar"] = "Fechar",
+        ["Cancelar"] = "Cancelar",
+        ["Confirmar"] = "Confirmar",
+        ["Tem certeza que deseja sair?"] = "Tem certeza que deseja sair?",
+        ["¿Seguro que quieres salir?"] = "Tem certeza que deseja sair?",
         ["Good to see you, {Player}! {Title} is ready. Make yourself at home and enjoy!"] = "Que bom te ver por aqui, {Player}! O {Title} já está pronto. Fica à vontade e aproveita!",
         ["Don't show again"] = "Não mostrar novamente",
         ["Your SpecterX access was revoked."] = "Seu acesso ao SpecterX foi revogado.",
@@ -141,6 +149,14 @@ local Translation = {
     },
 
     US = {
+        ["Continue"] = "Continue",
+        ["Continuar"] = "Continue",
+        ["Fechar"] = "Close",
+        ["Cerrar"] = "Close",
+        ["Cancelar"] = "Cancel",
+        ["Confirmar"] = "Confirm",
+        ["Tem certeza que deseja sair?"] = "Are you sure you want to exit?",
+        ["¿Seguro que quieres salir?"] = "Are you sure you want to exit?",
         ["Good to see you, {Player}! {Title} is ready. Make yourself at home and enjoy!"] = "Good to see you, {Player}! {Title} is ready. Make yourself at home and enjoy!",
         ["Don't show again"] = "Don't show again",
         ["Your SpecterX access was revoked."] = "Your SpecterX access was revoked.",
@@ -282,6 +298,14 @@ local Translation = {
     },
 
     ES = {
+        ["Continue"] = "Continuar",
+        ["Continuar"] = "Continuar",
+        ["Fechar"] = "Cerrar",
+        ["Cerrar"] = "Cerrar",
+        ["Cancelar"] = "Cancelar",
+        ["Confirmar"] = "Confirmar",
+        ["Tem certeza que deseja sair?"] = "¿Seguro que quieres salir?",
+        ["¿Seguro que quieres salir?"] = "¿Seguro que quieres salir?",
         ["Good to see you, {Player}! {Title} is ready. Make yourself at home and enjoy!"] = "¡Qué bueno verte por aquí, {Player}! {Title} ya está listo. ¡Ponte cómodo y disfrútalo!",
         ["Don't show again"] = "No volver a mostrar",
         ["Your SpecterX access was revoked."] = "Se revocó tu acceso a SpecterX.",
