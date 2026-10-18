@@ -99,6 +99,15 @@ local Config = {
         },
 
         Controls = {
+            Dialog = {
+                Width = 286,
+                MaxHeight = 194,
+                ButtonHeight = 32,
+                ButtonSpacing = 8,
+                ButtonColor = "Color Stroke",
+                ButtonTextColor = "Color Text",
+                ButtonAlignment = "Center"
+            },
             Titles = {
                 Dialog = "Dialog",
                 DialogText = "This is a Dialog",
