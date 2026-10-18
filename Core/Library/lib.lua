@@ -3406,9 +3406,10 @@ function Library:MakeWindow(Configs)
 			Title = "Close",
 			Text = "Are you sure you want to exit?",
 			Options = {
-				{Name = "Cancel"},
+				{Name = "Cancel", Style = "Secondary"},
 				{
 					Name = "Confirm",
+					Style = "Primary",
 					Callback = function()
 						if CloseCallback then CloseCallback() end
 						if type(Library._BeforeClose) == "function" then
@@ -3932,18 +3933,30 @@ function Library:MakeWindow(Configs)
 			return Result
 		end
 		local Width = math.clamp(tonumber(Configs.Width) or tonumber(Defaults.Width) or 350, 220, math.max(220, MainFrame.Size.X.Offset - 28))
-		local MaxHeight = math.clamp(tonumber(Configs.MaxHeight) or tonumber(Defaults.MaxHeight) or 246, 126, math.max(126, MainFrame.Size.Y.Offset - 18))
-		local MinHeight = math.min(MaxHeight, math.max(126, tonumber(Configs.MinHeight) or tonumber(Defaults.MinHeight) or 156))
-		local PaddingTop = math.clamp(tonumber(Configs.PaddingTop) or tonumber(Defaults.PaddingTop) or 16, 8, 24)
-		local PaddingBottom = math.clamp(tonumber(Configs.PaddingBottom) or tonumber(Defaults.PaddingBottom) or 16, 8, 24)
+		local MaxHeight = math.clamp(tonumber(Configs.MaxHeight) or tonumber(Defaults.MaxHeight) or 266, 126, math.max(126, MainFrame.Size.Y.Offset - 18))
+		local MinHeight = math.min(MaxHeight, math.max(126, tonumber(Configs.MinHeight) or tonumber(Defaults.MinHeight) or 190))
+		local PaddingTop = math.clamp(tonumber(Configs.PaddingTop) or tonumber(Defaults.PaddingTop) or 20, 8, 32)
+		local PaddingBottom = math.clamp(tonumber(Configs.PaddingBottom) or tonumber(Defaults.PaddingBottom) or 20, 8, 32)
 		local TitleGap = math.clamp(tonumber(Configs.TitleGap) or tonumber(Defaults.TitleGap) or 0, 0, 12)
-		local ContentGap = math.clamp(tonumber(Configs.ContentGap) or tonumber(Defaults.ContentGap) or 18, 5, 28)
+		local ContentGap = math.clamp(tonumber(Configs.ContentGap) or tonumber(Defaults.ContentGap) or 20, 5, 32)
 		local CornerRadius = math.clamp(tonumber(Configs.CornerRadius) or tonumber(Defaults.CornerRadius) or 11, 4, 20)
 		local ButtonCornerRadius = math.clamp(tonumber(Configs.ButtonCornerRadius) or tonumber(Defaults.ButtonCornerRadius) or 8, 3, 18)
-		local ButtonHeight = math.clamp(tonumber(Configs.ButtonHeight) or tonumber(Defaults.ButtonHeight) or 32, 28, 48)
+		-- Scale default action dimensions with the dialog's width. Explicit
+		-- ButtonHeight/ButtonMaxWidth settings retain their literal values.
+		local WidthRatio = Width / math.max(1, tonumber(Defaults.Width) or 350)
+		local ButtonHeight = math.clamp(
+			tonumber(Configs.ButtonHeight) or math.floor((tonumber(Defaults.ButtonHeight) or 36) * WidthRatio + 0.5),
+			30, 46
+		)
 		local ButtonGap = math.clamp(tonumber(Configs.ButtonSpacing) or tonumber(Defaults.ButtonSpacing) or 10, 0, 20)
-		local ButtonMaxWidth = math.clamp(tonumber(Configs.ButtonMaxWidth) or tonumber(Defaults.ButtonMaxWidth) or 122, 75, 240)
-		local SingleButtonMaxWidth = math.clamp(tonumber(Configs.SingleButtonMaxWidth) or tonumber(Defaults.SingleButtonMaxWidth) or 210, 130, 320)
+		local ButtonMaxWidth = math.clamp(
+			tonumber(Configs.ButtonMaxWidth) or math.floor((tonumber(Defaults.ButtonMaxWidth) or 132) * WidthRatio + 0.5),
+			90, 240
+		)
+		local SingleButtonMaxWidth = math.clamp(
+			tonumber(Configs.SingleButtonMaxWidth) or math.floor((tonumber(Defaults.SingleButtonMaxWidth) or 220) * WidthRatio + 0.5),
+			130, 320
+		)
 		local DefaultButtonColor = Configs.ButtonColor or Defaults.ButtonColor or "Color Stroke"
 		local DefaultButtonTextColor = Configs.ButtonTextColor or Defaults.ButtonTextColor or "Color Text"
 		local Alignment = tostring(Configs.ButtonAlignment or Defaults.ButtonAlignment or "Center")
@@ -12027,6 +12040,7 @@ function Library:MakeWindow(Configs)
 				Options = {
 					{
 						Name = "Don't show again",
+						Style = "Secondary",
 						Callback = function()
 							if not Library:SetStartupGreetingDismissed(true) then
 								warn("[SpecterX] Could not save startup greeting preference.")
