@@ -6,6 +6,12 @@ local Config = {
     Image = 108120493027251,
     LoadingScreen = false,
 
+    --// Startup dialog
+    StartupGreeting = {
+        Enabled = true,
+        Description = "Welcome aboard, {Player}! Everything is ready for you to explore {Title} your way."
+    },
+
     Whitelist = true,
 
     --// Icon
