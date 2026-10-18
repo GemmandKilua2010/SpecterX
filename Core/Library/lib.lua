@@ -3901,199 +3901,464 @@ function Library:MakeWindow(Configs)
 	local ActiveDialog
 
 	function Window:Dialog(Configs)
-        if ActiveDialog and ActiveDialog.Parent then return end
-        if Minimized then Window:MinimizeBtn() end
-        Configs = type(Configs) == "table" and Configs or {}
+		if ActiveDialog and ActiveDialog.Parent then return nil end
+		if Minimized then Window:MinimizeBtn() end
+		Configs = type(Configs) == "table" and Configs or {}
+		local Defaults = type(ControlsConfig.Dialog) == "table" and ControlsConfig.Dialog or {}
+		local TitleSource = tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Dialog)
+		local MessageSource = tostring(Configs[2] or Configs.Text or Configs.Description or Configs.Desc or ControlsConfig.Titles.DialogText)
+		local Options = Configs[3] or Configs.Options or {}
+		local Width = math.clamp(tonumber(Configs.Width) or tonumber(Defaults.Width) or 286, 220, math.max(220, MainFrame.Size.X.Offset - 28))
+		local MaxHeight = math.clamp(tonumber(Configs.MaxHeight) or tonumber(Defaults.MaxHeight) or 194, 126, math.max(126, MainFrame.Size.Y.Offset - 18))
+		local ButtonHeight = math.clamp(tonumber(Configs.ButtonHeight) or tonumber(Defaults.ButtonHeight) or 32, 26, 42)
+		local ButtonGap = math.clamp(tonumber(Configs.ButtonSpacing) or tonumber(Defaults.ButtonSpacing) or 8, 0, 16)
+		local DefaultButtonColor = Configs.ButtonColor or Defaults.ButtonColor or "Color Stroke"
+		local DefaultButtonTextColor = Configs.ButtonTextColor or Defaults.ButtonTextColor or "Color Text"
+		local Alignment = tostring(Configs.ButtonAlignment or Defaults.ButtonAlignment or "Center")
+		local AnimOpen = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		local AnimFade = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local AnimClose = TweenInfo.new(0.17, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		local AnimButton = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-        local Title = TranslateText(tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Dialog))
-        local Message = TranslateText(tostring(Configs[2] or Configs.Text or ControlsConfig.Titles.DialogText))
-        local Options = Configs[3] or Configs.Options or {}
-        local Width = math.min(286, math.max(230, MainFrame.Size.X.Offset - 32))
-        local TitleHeight = math.max(24, TextService:GetTextSize(Title, 18, Enum.Font.GothamBold, Vector2.new(Width - 32, 2000)).Y + 4)
-        local MessageHeight = math.max(25, TextService:GetTextSize(Message, 15, Enum.Font.GothamMedium, Vector2.new(Width - 38, 4000)).Y + 6)
-        local Height = math.clamp(TitleHeight + math.min(MessageHeight, 105) + 68, 146, math.min(194, math.max(146, MainFrame.Size.Y.Offset - 22)))
-        local ViewHeight = math.max(25, Height - TitleHeight - 68)
-        local OpenTween = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-        local FadeTween = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local CloseTween = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-        local ButtonTween = TweenInfo.new(0.11, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local function ResolveColor(Value, Fallback)
+			if typeof(Value) == "Color3" then return Value end
+			if type(Value) == "string" then
+				if typeof(Theme[Value]) == "Color3" then return Theme[Value] end
+				local Aliases = {
+					Theme = "Color Theme", Accent = "Color Theme",
+					Stroke = "Color Stroke", Text = "Color Text",
+					Background = "Color Hub 2", Hub = "Color Hub 2"
+				}
+				local Key = Aliases[Value]
+				if Key and typeof(Theme[Key]) == "Color3" then return Theme[Key] end
+				if Value:match("^#?%x%x%x%x%x%x$") then
+					local Success, Color = pcall(Color3.fromHex, Value:sub(1, 1) == "#" and Value or "#" .. Value)
+					if Success then return Color end
+				end
+			end
+			return Fallback
+		end
 
-        local Overlay = InsertTheme(Create("Frame", MainFrame, {
-            Size = UDim2.fromScale(1, 1),
-            BackgroundColor3 = Theme["Color Stroke"],
-            BackgroundTransparency = 1,
-            Active = true,
-            BorderSizePixel = 0
-        }), "Stroke")
-        ActiveDialog = Overlay
-        MainCorner:Clone().Parent = Overlay
+		local Overlay = InsertTheme(Create("Frame", MainFrame, {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = Theme["Color Stroke"],
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Active = true
+		}), "Stroke")
+		ActiveDialog = Overlay
+		MainCorner:Clone().Parent = Overlay
 
-        local Panel = InsertTheme(Create("Frame", Overlay, {
-            Size = UDim2.fromOffset(Width, Height),
-            Position = UDim2.fromScale(0.5, 0.5),
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            BackgroundColor3 = Theme["Color Hub 2"],
-            BackgroundTransparency = 1,
-            BorderSizePixel = 0,
-            ClipsDescendants = true
-        }), "Frame")
-        Make("Corner", Panel, UDim.new(0, 10))
-        Make("Stroke", Panel, {Thickness = 1, Transparency = 0.45})
-        local Scale = Create("UIScale", Panel, {Scale = 0.9})
+		local Panel = InsertTheme(Create("Frame", Overlay, {
+			Size = UDim2.fromOffset(Width, 130),
+			Position = UDim2.fromScale(0.5, 0.5),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundColor3 = Theme["Color Hub 2"],
+			BackgroundTransparency = 1,
+			ClipsDescendants = true,
+			BorderSizePixel = 0
+		}), "Frame")
+		Make("Corner", Panel, UDim.new(0, 10))
+		Make("Stroke", Panel, {Thickness = 1, Transparency = 0.45})
+		local Scale = Create("UIScale", Panel, {Scale = 0.92})
+		local TitleLabel = InsertTheme(Create("TextLabel", Panel, {
+			Size = UDim2.fromOffset(Width - 32, 25),
+			Position = UDim2.fromOffset(16, 13),
+			BackgroundTransparency = 1,
+			Text = TranslateText(TitleSource),
+			Font = Enum.Font.GothamBold,
+			TextSize = 17,
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			TextTransparency = 1,
+			TextColor3 = Theme["Color Text"]
+		}), "Text")
+		local TextScroll = Create("ScrollingFrame", Panel, {
+			Size = UDim2.fromOffset(Width - 32, 28),
+			Position = UDim2.fromOffset(16, 45),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			CanvasSize = UDim2.new(),
+			ScrollingDirection = Enum.ScrollingDirection.Y,
+			ScrollBarThickness = 0,
+			ScrollBarImageColor3 = Theme["Color Theme"]
+		})
+		local MessageLabel = InsertTheme(Create("TextLabel", TextScroll, {
+			Size = UDim2.fromOffset(Width - 39, 25),
+			BackgroundTransparency = 1,
+			Text = TranslateText(MessageSource),
+			TextWrapped = true,
+			TextSize = 14,
+			Font = Enum.Font.GothamMedium,
+			TextTransparency = 1,
+			TextColor3 = Theme["Color Text"],
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top
+		}), "Text")
+		local ButtonsHolder = Create("Frame", Panel, {
+			Size = UDim2.new(1, -32, 0, ButtonHeight),
+			Position = UDim2.new(0, 16, 1, -12),
+			AnchorPoint = Vector2.new(0, 1),
+			BackgroundTransparency = 1
+		})
+		local ButtonsLayout = Create("UIListLayout", ButtonsHolder, {
+			Padding = UDim.new(0, ButtonGap),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center
+		})
+		local ButtonEntries, ClosingHandlers = {}, {}
+		local Dialog = {Closing = false, Pending = false}
 
-        local TitleLabel = InsertTheme(Create("TextLabel", Panel, {
-            Size = UDim2.new(1, -32, 0, TitleHeight),
-            Position = UDim2.fromOffset(16, 15),
-            BackgroundTransparency = 1,
-            Text = Title,
-            TextSize = 18,
-            Font = Enum.Font.GothamBold,
-            TextWrapped = true,
-            TextTransparency = 1,
-            TextColor3 = Theme["Color Text"],
-            TextXAlignment = Enum.TextXAlignment.Left,
-            TextYAlignment = Enum.TextYAlignment.Top
-        }), "Text")
+		local function Reflow()
+			if not Overlay.Parent or Dialog.Closing then return end
+			local TitleHeight = math.max(22, TextService:GetTextSize(TitleLabel.Text, 17, Enum.Font.GothamBold, Vector2.new(Width - 32, 2000)).Y + 3)
+			local MessageHeight = math.max(24, TextService:GetTextSize(MessageLabel.Text, 14, Enum.Font.GothamMedium, Vector2.new(Width - 40, 10000)).Y + 5)
+			local RequestedHeight = tonumber(Configs.Height)
+			local Height = math.clamp(RequestedHeight or (TitleHeight + math.min(MessageHeight, 100) + ButtonHeight + 52), 112, MaxHeight)
+			local ViewHeight = math.max(20, Height - TitleHeight - ButtonHeight - 52)
+			Panel.Size = UDim2.fromOffset(Width, Height)
+			TitleLabel.Size = UDim2.fromOffset(Width - 32, TitleHeight)
+			TextScroll.Position = UDim2.fromOffset(16, 17 + TitleHeight)
+			TextScroll.Size = UDim2.fromOffset(Width - 32, ViewHeight)
+			TextScroll.CanvasSize = UDim2.fromOffset(0, MessageHeight)
+			TextScroll.ScrollBarThickness = MessageHeight > ViewHeight + 1 and 2 or 0
+			MessageLabel.Size = UDim2.fromOffset(Width - 39, MessageHeight)
+		end
 
-        local TextScroll = Create("ScrollingFrame", Panel, {
-            Size = UDim2.new(1, -32, 0, ViewHeight),
-            Position = UDim2.fromOffset(16, 12 + TitleHeight),
-            BackgroundTransparency = 1,
-            BorderSizePixel = 0,
-            CanvasSize = UDim2.fromOffset(0, MessageHeight),
-            ScrollingDirection = Enum.ScrollingDirection.Y,
-            ScrollBarThickness = MessageHeight > ViewHeight and 3 or 0,
-            ScrollBarImageColor3 = Theme["Color Theme"]
-        })
-        local MessageLabel = InsertTheme(Create("TextLabel", TextScroll, {
-            Size = UDim2.new(1, -8, 0, MessageHeight),
-            BackgroundTransparency = 1,
-            Text = Message,
-            TextWrapped = true,
-            TextSize = 15,
-            Font = Enum.Font.GothamMedium,
-            TextTransparency = 1,
-            TextColor3 = Theme["Color Text"],
-            TextXAlignment = Enum.TextXAlignment.Left,
-            TextYAlignment = Enum.TextYAlignment.Top
-        }), "Text")
+		local function ReflowButtons()
+			local VisibleEntries, TotalWidth = {}, 0
+			for _, Entry in ipairs(ButtonEntries) do
+				if Entry.Visible then
+					VisibleEntries[#VisibleEntries + 1] = Entry
+					TotalWidth += math.max(28, TextService:GetTextSize(Entry.Button.Text, 13, Enum.Font.GothamBold, Vector2.new(1000, 40)).X + 24)
+				end
+			end
+			local AvailableWidth = math.max(1, Width - 32 - ButtonGap * math.max(0, #VisibleEntries - 1))
+			for Index, Entry in ipairs(ButtonEntries) do
+				Entry.Button.LayoutOrder = Index
+			end
+			for _, Entry in ipairs(VisibleEntries) do
+				local NaturalWidth = math.max(28, TextService:GetTextSize(Entry.Button.Text, 13, Enum.Font.GothamBold, Vector2.new(1000, 40)).X + 24)
+				local TargetWidth = #VisibleEntries == 1 and math.min(AvailableWidth, math.max(130, NaturalWidth))
+					or math.max(1, AvailableWidth * NaturalWidth / math.max(1, TotalWidth))
+				Entry.Button.Size = UDim2.fromOffset(TargetWidth, ButtonHeight)
+			end
+		end
 
-        local ButtonsHolder = Create("Frame", Panel, {
-            Size = UDim2.new(1, -32, 0, 36),
-            Position = UDim2.new(0, 16, 1, -11),
-            AnchorPoint = Vector2.new(0, 1),
-            BackgroundTransparency = 1
-        }, {
-            Create("UIListLayout", {
-                Padding = UDim.new(0, 8),
-                FillDirection = Enum.FillDirection.Horizontal,
-                HorizontalAlignment = Enum.HorizontalAlignment.Center,
-                VerticalAlignment = Enum.VerticalAlignment.Center
-            })
-        })
+		local function ApplyAlignment(Value)
+			Value = tostring(Value or "Center"):lower()
+			Alignment = Value == "left" and "Left" or Value == "right" and "Right" or "Center"
+			ButtonsLayout.HorizontalAlignment = Enum.HorizontalAlignment[Alignment]
+		end
 
-        local ButtonEntries, Dialog = {}, {}
-        function Dialog:Close()
-            if self.Closing or not Overlay.Parent then return end
-            self.Closing = true
-            TweenService:Create(Scale, CloseTween, {Scale = 0.93}):Play()
-            TweenService:Create(Panel, CloseTween, {BackgroundTransparency = 1}):Play()
-            TweenService:Create(Overlay, CloseTween, {BackgroundTransparency = 1}):Play()
-            TweenService:Create(TitleLabel, CloseTween, {TextTransparency = 1}):Play()
-            TweenService:Create(MessageLabel, CloseTween, {TextTransparency = 1}):Play()
-            for _, Entry in ipairs(ButtonEntries) do
-                TweenService:Create(Entry.Button, CloseTween, {TextTransparency = 1, BackgroundTransparency = 1}):Play()
-            end
-            task.delay(0.19, function()
-                if ActiveDialog == Overlay then ActiveDialog = nil end
-                if Overlay.Parent then Overlay:Destroy() end
-            end)
-        end
+		local function ApplyButtonStyle(Entry)
+			local OptionColor = Entry.Color
+			local Palette = type(OptionColor) == "table" and OptionColor or {}
+			local Explicit = OptionColor ~= nil
+			local BackgroundSource = Explicit and (Palette.Background or Palette.BackgroundColor3 or Palette.Color or Palette.Theme or Palette[1] or (type(OptionColor) ~= "table" and OptionColor))
+				or (Entry.Primary and "Color Theme" or DefaultButtonColor)
+			local Base = ResolveColor(BackgroundSource, Theme["Color Stroke"])
+			local Brightness = Base.R * 0.299 + Base.G * 0.587 + Base.B * 0.114
+			local ContrastText = Brightness > 0.62 and Color3.fromRGB(20, 20, 24) or Color3.new(1, 1, 1)
+			local TextSource = Palette.Text or Palette.TextColor or Palette.TextColor3
+				or (Explicit or Entry.Primary and nil) and nil or DefaultButtonTextColor
+			local TextColor = ResolveColor(TextSource, (Explicit or Entry.Primary) and ContrastText or Theme["Color Text"])
+			Entry.Button.BackgroundColor3 = Base
+			Entry.Button.TextColor3 = TextColor
+			local StrokeValue = Palette.Stroke or Palette.Border
+			Entry.Stroke.Enabled = StrokeValue ~= nil
+			if StrokeValue ~= nil then Entry.Stroke.Color = ResolveColor(StrokeValue, Theme["Color Stroke"]) end
+			Entry.Button.Active = Entry.Enabled
+			Entry.Button.Interactable = Entry.Enabled
+			Entry.Button.Selectable = Entry.Enabled
+			Entry.Button.TextTransparency = Entry.Enabled and 0 or 0.5
+			Entry.Button.BackgroundTransparency = Entry.Enabled and (Entry.Hovered and 0.08 or 0.22) or 0.52
+		end
 
-        function Dialog:Button(Option)
-            Option = type(Option) == "table" and Option or {Option}
-            local Name = TranslateText(tostring(Option[1] or Option.Name or Option.Title or ""))
-            local Callback = Option[2] or Option.Callback or function() end
-            local IsPrimary = Option.Primary == true or (Option.Primary == nil and #ButtonEntries + 1 == #Options)
-            local ButtonColor = IsPrimary and Theme["Color Theme"] or Theme["Color Stroke"]
-            local Contrast = ButtonColor.R * 0.299 + ButtonColor.G * 0.587 + ButtonColor.B * 0.114
-            local Button = InsertTheme(Create("TextButton", ButtonsHolder, {
-                BackgroundColor3 = ButtonColor,
-                BackgroundTransparency = 1,
-                AutoButtonColor = false,
-                BorderSizePixel = 0,
-                Text = Name,
-                Font = Enum.Font.GothamBold,
-                TextSize = 14,
-                TextWrapped = false,
-                TextScaled = false,
-                TextTruncate = Enum.TextTruncate.AtEnd,
-                TextTransparency = 1,
-                TextColor3 = IsPrimary and (Contrast >= 0.62 and Color3.fromRGB(22, 22, 26) or Color3.new(1, 1, 1)) or Theme["Color Text"]
-            }), IsPrimary and "Theme" or "Stroke")
-            Make("Corner", Button, UDim.new(0, 7))
-            if IsPrimary then
-                local ThemeConnection = Connection.ThemeChanged:Connect(function()
-                    if not Button.Parent then return end
-                    local Color = Theme["Color Theme"]
-                    local Brightness = Color.R * 0.299 + Color.G * 0.587 + Color.B * 0.114
-                    Button.TextColor3 = Brightness >= 0.62 and Color3.fromRGB(22, 22, 26) or Color3.new(1, 1, 1)
-                end)
-                Button.Destroying:Connect(function() ThemeConnection:Disconnect() end)
-            end
-            local ButtonScale = Create("UIScale", Button, {Scale = 1})
-            ButtonEntries[#ButtonEntries + 1] = {
-                Button = Button,
-                Width = TextService:GetTextSize(Name, 14, Enum.Font.GothamBold, Vector2.new(1000, 50)).X + 26
-            }
-            local AvailableWidth = Width - 32 - 8 * (#ButtonEntries - 1)
-            local DesiredWidth = 0
-            for _, Entry in ipairs(ButtonEntries) do
-                DesiredWidth += Entry.Width
-            end
-            for _, Entry in ipairs(ButtonEntries) do
-                Entry.Button.Size = UDim2.fromOffset(math.max(1, AvailableWidth * Entry.Width / math.max(1, DesiredWidth)), 34)
-            end
-            Button.MouseEnter:Connect(function()
-                if Dialog.Closing or Dialog.Pending then return end
-                TweenService:Create(ButtonScale, ButtonTween, {Scale = 1.025}):Play()
-                TweenService:Create(Button, ButtonTween, {BackgroundTransparency = IsPrimary and 0 or 0.16}):Play()
-            end)
-            Button.MouseLeave:Connect(function()
-                if Dialog.Closing or Dialog.Pending then return end
-                TweenService:Create(ButtonScale, ButtonTween, {Scale = 1}):Play()
-                TweenService:Create(Button, ButtonTween, {BackgroundTransparency = IsPrimary and 0.07 or 0.32}):Play()
-            end)
-            Button.MouseButton1Down:Connect(function()
-                if not Dialog.Closing and not Dialog.Pending then
-                    TweenService:Create(ButtonScale, ButtonTween, {Scale = 0.95}):Play()
-                end
-            end)
-            Button.MouseButton1Up:Connect(function()
-                if not Dialog.Closing and not Dialog.Pending then
-                    TweenService:Create(ButtonScale, ButtonTween, {Scale = 1.02}):Play()
-                end
-            end)
-            Button.Activated:Connect(function()
-                if Dialog.Closing or Dialog.Pending then return end
-                Dialog.Pending = true
-                TweenService:Create(ButtonScale, ButtonTween, {Scale = 0.95}):Play()
-                task.delay(0.09, function()
-                    Dialog:Close()
-                    task.delay(0.2, Callback)
-                end)
-            end)
-            TweenService:Create(Button, FadeTween, {TextTransparency = 0, BackgroundTransparency = IsPrimary and 0.07 or 0.32}):Play()
-        end
+		local function FinishClose(Reason)
+			if ActiveDialog == Overlay then ActiveDialog = nil end
+			if Overlay.Parent then Overlay:Destroy() end
+			if Dialog.Closed then return end
+			Dialog.Closed = true
+			local Callbacks = table.clone(ClosingHandlers)
+			if type(Configs.OnClose) == "function" then Callbacks[#Callbacks + 1] = Configs.OnClose end
+			for _, Callback in ipairs(Callbacks) do
+				local Success, Error = pcall(Callback, Reason, Dialog)
+				if not Success then warn("[SpecterX Dialog] OnClose: " .. tostring(Error)) end
+			end
+			table.clear(ClosingHandlers)
+		end
 
-        for _, Option in ipairs(Options) do Dialog:Button(Option) end
-        TweenService:Create(Scale, OpenTween, {Scale = 1}):Play()
-        TweenService:Create(Panel, FadeTween, {BackgroundTransparency = 0}):Play()
-        TweenService:Create(Overlay, FadeTween, {BackgroundTransparency = 0.4}):Play()
-        TweenService:Create(TitleLabel, FadeTween, {TextTransparency = 0, Position = UDim2.fromOffset(16, 13)}):Play()
-        TweenService:Create(MessageLabel, FadeTween, {TextTransparency = 0.16}):Play()
-        return Dialog
-    end
+		function Dialog:IsOpen()
+			return not self.Closing and Overlay.Parent ~= nil
+		end
+
+		function Dialog:Close(Reason)
+			if self.Closing or not Overlay.Parent then return false end
+			self.Closing = true
+			TweenService:Create(Scale, AnimClose, {Scale = 0.94}):Play()
+			TweenService:Create(Panel, AnimClose, {BackgroundTransparency = 1}):Play()
+			TweenService:Create(Overlay, AnimClose, {BackgroundTransparency = 1}):Play()
+			TweenService:Create(TitleLabel, AnimClose, {TextTransparency = 1}):Play()
+			TweenService:Create(MessageLabel, AnimClose, {TextTransparency = 1}):Play()
+			for _, Entry in ipairs(ButtonEntries) do
+				if Entry.Button.Parent then
+					TweenService:Create(Entry.Button, AnimClose, {TextTransparency = 1, BackgroundTransparency = 1}):Play()
+				end
+			end
+			task.delay(0.18, function() FinishClose(Reason or "Closed") end)
+			return true
+		end
+
+		function Dialog:Destroy()
+			if self.Closing then return false end
+			self.Closing = true
+			FinishClose("Destroyed")
+			return true
+		end
+
+		function Dialog:OnClose(Callback)
+			if type(Callback) ~= "function" or self.Closing then return nil end
+			local Entry = {Callback = Callback}
+			ClosingHandlers[#ClosingHandlers + 1] = Entry
+			return {
+				Disconnect = function()
+					local Index = table.find(ClosingHandlers, Entry)
+					if Index then table.remove(ClosingHandlers, Index) end
+				end
+			}
+		end
+
+		function Dialog:SetTitle(Value)
+			if not self:IsOpen() or Value == nil then return false end
+			TitleSource = tostring(Value)
+			TitleLabel.Text = TranslateText(TitleSource)
+			Reflow()
+			return true
+		end
+		function Dialog:SetText(Value)
+			if not self:IsOpen() or Value == nil then return false end
+			MessageSource = tostring(Value)
+			MessageLabel.Text = TranslateText(MessageSource)
+			Reflow()
+			return true
+		end
+		Dialog.SetDesc = Dialog.SetText
+		function Dialog:GetTitle() return TitleLabel.Text end
+		function Dialog:GetText() return MessageLabel.Text end
+		function Dialog:SetAlignment(Value)
+			if not self:IsOpen() then return false end
+			ApplyAlignment(Value)
+			return true
+		end
+
+		local function FindButton(Identifier)
+			if type(Identifier) == "number" then return ButtonEntries[Identifier] end
+			for _, Entry in ipairs(ButtonEntries) do
+				if Identifier == Entry.Handle or Identifier == Entry.Button or Identifier == Entry.Name or Identifier == Entry.Button.Text then
+					return Entry
+				end
+			end
+			return nil
+		end
+
+		function Dialog:RemoveButton(Identifier)
+			local Entry = FindButton(Identifier)
+			if not Entry then return false end
+			local Index = table.find(ButtonEntries, Entry)
+			if Index then table.remove(ButtonEntries, Index) end
+			Entry.Button:Destroy()
+			ReflowButtons()
+			return true
+		end
+		function Dialog:ClearButtons()
+			for Index = #ButtonEntries, 1, -1 do self:RemoveButton(Index) end
+		end
+
+		function Dialog:Button(Option)
+			if not self:IsOpen() then return nil end
+			Option = type(Option) == "table" and Option or {Option}
+			local LabelSource = tostring(Option[1] or Option.Name or Option.Title or Option.Label or "")
+			local Callback = Option[2] or Option.Callback
+			local Button = Create("TextButton", ButtonsHolder, {
+				Size = UDim2.fromOffset(80, ButtonHeight),
+				BackgroundColor3 = Theme["Color Stroke"],
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				Text = TranslateText(LabelSource),
+				TextSize = 13,
+				Font = Enum.Font.GothamBold,
+				TextColor3 = Theme["Color Text"],
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				TextWrapped = false,
+				AutoButtonColor = false,
+				LayoutOrder = #ButtonEntries + 1
+			})
+			Make("Corner", Button, UDim.new(0, 7))
+			local Stroke = Create("UIStroke", Button, {
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+				Thickness = 1,
+				Enabled = false
+			})
+			local ButtonScale = Create("UIScale", Button, {Scale = 1})
+			local Entry = {
+				Button = Button, Stroke = Stroke, Name = LabelSource, Color = Option.Color,
+				Primary = Option.Primary == true, Enabled = Option.Enabled ~= false and Option.Disabled ~= true,
+				Visible = Option.Visible ~= false, Hovered = false, Callback = Callback,
+				CloseOnClick = Option.Close ~= false
+			}
+			local Handle = {}
+			Entry.Handle = Handle
+			ButtonEntries[#ButtonEntries + 1] = Entry
+			Button.Visible = Entry.Visible
+
+			function Handle:SetColor(Color)
+				if not Button.Parent then return false end
+				Entry.Color = Color
+				ApplyButtonStyle(Entry)
+				return true
+			end
+			function Handle:SetText(Value)
+				if not Button.Parent or Value == nil then return false end
+				Entry.Name = tostring(Value)
+				Button.Text = TranslateText(Entry.Name)
+				ReflowButtons()
+				return true
+			end
+			Handle.SetTitle = Handle.SetText
+			function Handle:GetText() return Button.Text end
+			function Handle:SetEnabled(Value)
+				if not Button.Parent then return false end
+				Entry.Enabled = Value == true
+				ApplyButtonStyle(Entry)
+				return true
+			end
+			function Handle:SetVisible(Value)
+				if not Button.Parent then return false end
+				Entry.Visible = Value == true
+				Button.Visible = Entry.Visible
+				ReflowButtons()
+				return true
+			end
+			function Handle:Destroy() return Dialog:RemoveButton(self) end
+
+			Button.MouseEnter:Connect(function()
+				if Dialog.Closing or Dialog.Pending or not Entry.Enabled then return end
+				Entry.Hovered = true
+				ApplyButtonStyle(Entry)
+				TweenService:Create(ButtonScale, AnimButton, {Scale = 1.025}):Play()
+			end)
+			Button.MouseLeave:Connect(function()
+				Entry.Hovered = false
+				if not Dialog.Closing then ApplyButtonStyle(Entry) end
+				TweenService:Create(ButtonScale, AnimButton, {Scale = 1}):Play()
+			end)
+			Button.MouseButton1Down:Connect(function()
+				if not Dialog.Closing and not Dialog.Pending and Entry.Enabled then
+					TweenService:Create(ButtonScale, AnimButton, {Scale = 0.96}):Play()
+				end
+			end)
+			Button.MouseButton1Up:Connect(function()
+				if not Dialog.Closing and not Dialog.Pending and Entry.Enabled then
+					TweenService:Create(ButtonScale, AnimButton, {Scale = 1}):Play()
+				end
+			end)
+			Button.Activated:Connect(function()
+				if Dialog.Closing or Dialog.Pending or not Entry.Enabled then return end
+				Dialog.Pending = true
+				local Selected = Entry
+				TweenService:Create(ButtonScale, AnimButton, {Scale = 0.96}):Play()
+				task.delay(0.09, function()
+					if Selected.CloseOnClick then Dialog:Close(Selected.Name) end
+					if type(Selected.Callback) == "function" then
+						local Success, Error = pcall(Selected.Callback)
+						if not Success then warn("[SpecterX Dialog] Button callback: " .. tostring(Error)) end
+					end
+					if not Dialog.Closing then Dialog.Pending = false end
+				end)
+			end)
+			ApplyButtonStyle(Entry)
+			ReflowButtons()
+			TweenService:Create(Button, AnimFade, {
+				TextTransparency = Entry.Enabled and 0 or 0.5,
+				BackgroundTransparency = Entry.Enabled and 0.22 or 0.52
+			}):Play()
+			return Handle
+		end
+		Dialog.AddButton = Dialog.Button
+
+		function Dialog:SetOptions(NewOptions)
+			if not self:IsOpen() or type(NewOptions) ~= "table" then return false end
+			self:ClearButtons()
+			for _, Option in ipairs(NewOptions) do self:Button(Option) end
+			return true
+		end
+		function Dialog:GetButtons()
+			local Result = {}
+			for _, Entry in ipairs(ButtonEntries) do Result[#Result + 1] = Entry.Handle end
+			return Result
+		end
+		function Dialog:SetButtonColor(Identifier, Color)
+			local Entry = FindButton(Identifier)
+			return Entry and Entry.Handle:SetColor(Color) or false
+		end
+		function Dialog:SetButtonText(Identifier, Text)
+			local Entry = FindButton(Identifier)
+			return Entry and Entry.Handle:SetText(Text) or false
+		end
+		function Dialog:SetButtonEnabled(Identifier, Value)
+			local Entry = FindButton(Identifier)
+			return Entry and Entry.Handle:SetEnabled(Value) or false
+		end
+		function Dialog:SetButtonDefaultColor(Value)
+			if not self:IsOpen() then return false end
+			DefaultButtonColor = Value or "Color Stroke"
+			for _, Entry in ipairs(ButtonEntries) do ApplyButtonStyle(Entry) end
+			return true
+		end
+
+		ApplyAlignment(Alignment)
+		for _, Option in ipairs(Options) do Dialog:Button(Option) end
+		Reflow()
+
+		local ThemeConnection = Connection.ThemeChanged:Connect(function()
+			if not Overlay.Parent then return end
+			TextScroll.ScrollBarImageColor3 = Theme["Color Theme"]
+			for _, Entry in ipairs(ButtonEntries) do ApplyButtonStyle(Entry) end
+		end)
+		local LanguageConnection = Connection.LanguageChanged:Connect(function()
+			if not Overlay.Parent then return end
+			TitleLabel.Text = TranslateText(TitleSource)
+			MessageLabel.Text = TranslateText(MessageSource)
+			for _, Entry in ipairs(ButtonEntries) do
+				Entry.Button.Text = TranslateText(Entry.Name)
+			end
+			Reflow()
+			ReflowButtons()
+		end)
+		Overlay.Destroying:Connect(function()
+			ThemeConnection:Disconnect()
+			LanguageConnection:Disconnect()
+			if ActiveDialog == Overlay then ActiveDialog = nil end
+		end)
+		TweenService:Create(Scale, AnimOpen, {Scale = 1}):Play()
+		TweenService:Create(Panel, AnimFade, {BackgroundTransparency = 0}):Play()
+		TweenService:Create(Overlay, AnimFade, {BackgroundTransparency = 0.4}):Play()
+		TweenService:Create(TitleLabel, AnimFade, {TextTransparency = 0}):Play()
+		TweenService:Create(MessageLabel, AnimFade, {TextTransparency = 0.14}):Play()
+		if type(Configs.OnOpen) == "function" then
+			task.defer(function()
+				if Dialog:IsOpen() then
+					local Success, Error = pcall(Configs.OnOpen, Dialog)
+					if not Success then warn("[SpecterX Dialog] OnOpen: " .. tostring(Error)) end
+				end
+			end)
+		end
+		return Dialog
+	end
 	function Window:SelectTab(TabSelect)
 		if type(TabSelect) == "number" then
 			TabSelect = Library.Tabs[TabSelect] and Library.Tabs[TabSelect].func
