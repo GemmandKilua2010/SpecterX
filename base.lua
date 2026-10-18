@@ -591,17 +591,6 @@ if Loader then
     Loader:Wait()
 end
 
-if type(Icons) == "table" and type(Notify.Notify) == "function" then
-    Base:Notify({
-        Title = Config("Title"),
-        Description = Hub:Format(
-            Hub:Translate("{Title} is ready. Enjoy your experience!"),
-            {Title = Title}
-        ),
-        Time = 3
-    })
-end
-
 Genv.State.Loading = false
 
 --// Return
