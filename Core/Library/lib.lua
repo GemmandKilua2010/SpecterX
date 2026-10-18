@@ -738,6 +738,9 @@ end
 if typeof(Runtime.Gui) == "Instance" then
     Runtime.Gui:Destroy()
 end
+-- Current dialog belongs to the hub-specific Runtime.Library namespace.
+Runtime.Dialog = nil
+Runtime.DialogOverlay = nil
 
 local RuntimeConnections = {}
 local ResponsiveWidth, ResponsiveHeight = table.unpack(Library.Save.UISize)
@@ -1442,7 +1445,7 @@ local function RefreshTranslations()
 			return
 		end
 		-- Dialog text is translated from canonical sources by its own listener.
-		local DialogOverlay = Library._ActiveDialogOverlay
+		local DialogOverlay = Runtime.DialogOverlay
 		if DialogOverlay and (Object == DialogOverlay or Object:IsDescendantOf(DialogOverlay)) then
 			return
 		end
@@ -3403,9 +3406,10 @@ function Library:MakeWindow(Configs)
 			Title = "Close",
 			Text = "Are you sure you want to exit?",
 			Options = {
-				{Name = "Cancel"},
+				{Name = "Cancel", Style = "Secondary"},
 				{
 					Name = "Confirm",
+					Style = "Primary",
 					Callback = function()
 						if CloseCallback then CloseCallback() end
 						if type(Library._BeforeClose) == "function" then
@@ -3928,11 +3932,16 @@ function Library:MakeWindow(Configs)
 			end
 			return Result
 		end
-		local Width = math.clamp(tonumber(Configs.Width) or tonumber(Defaults.Width) or 286, 220, math.max(220, MainFrame.Size.X.Offset - 28))
-		local MaxHeight = math.clamp(tonumber(Configs.MaxHeight) or tonumber(Defaults.MaxHeight) or 194, 126, math.max(126, MainFrame.Size.Y.Offset - 18))
-		local PaddingTop, PaddingBottom, TitleGap, ContentGap = 11, 11, 3, 11
-		local ButtonHeight = math.clamp(tonumber(Configs.ButtonHeight) or tonumber(Defaults.ButtonHeight) or 32, 26, 42)
-		local ButtonGap = math.clamp(tonumber(Configs.ButtonSpacing) or tonumber(Defaults.ButtonSpacing) or 8, 0, 16)
+		local Width = math.clamp(tonumber(Configs.Width) or tonumber(Defaults.Width) or 300, 220, math.max(220, MainFrame.Size.X.Offset - 28))
+		local MaxHeight = math.clamp(tonumber(Configs.MaxHeight) or tonumber(Defaults.MaxHeight) or 210, 126, math.max(126, MainFrame.Size.Y.Offset - 18))
+		local PaddingTop = math.clamp(tonumber(Configs.PaddingTop) or tonumber(Defaults.PaddingTop) or 14, 8, 24)
+		local PaddingBottom = math.clamp(tonumber(Configs.PaddingBottom) or tonumber(Defaults.PaddingBottom) or 14, 8, 24)
+		local TitleGap = math.clamp(tonumber(Configs.TitleGap) or tonumber(Defaults.TitleGap) or 5, 0, 12)
+		local ContentGap = math.clamp(tonumber(Configs.ContentGap) or tonumber(Defaults.ContentGap) or 15, 5, 28)
+		local CornerRadius = math.clamp(tonumber(Configs.CornerRadius) or tonumber(Defaults.CornerRadius) or 12, 4, 20)
+		local ButtonCornerRadius = math.clamp(tonumber(Configs.ButtonCornerRadius) or tonumber(Defaults.ButtonCornerRadius) or 9, 3, 18)
+		local ButtonHeight = math.clamp(tonumber(Configs.ButtonHeight) or tonumber(Defaults.ButtonHeight) or 38, 28, 48)
+		local ButtonGap = math.clamp(tonumber(Configs.ButtonSpacing) or tonumber(Defaults.ButtonSpacing) or 10, 0, 20)
 		local DefaultButtonColor = Configs.ButtonColor or Defaults.ButtonColor or "Color Stroke"
 		local DefaultButtonTextColor = Configs.ButtonTextColor or Defaults.ButtonTextColor or "Color Text"
 		local Alignment = tostring(Configs.ButtonAlignment or Defaults.ButtonAlignment or "Center")
@@ -3972,7 +3981,7 @@ function Library:MakeWindow(Configs)
 			Active = true
 		}), "Stroke")
 		ActiveDialog = Overlay
-		Library._ActiveDialogOverlay = Overlay
+		Runtime.DialogOverlay = Overlay
 		MainCorner:Clone().Parent = Overlay
 
 		local Panel = InsertTheme(Create("Frame", Overlay, {
@@ -3984,8 +3993,8 @@ function Library:MakeWindow(Configs)
 			ClipsDescendants = true,
 			BorderSizePixel = 0
 		}), "Frame")
-		Make("Corner", Panel, UDim.new(0, 10))
-		Make("Stroke", Panel, {Thickness = 1, Transparency = 0.45})
+		Make("Corner", Panel, UDim.new(0, CornerRadius))
+		Make("Stroke", Panel, {Thickness = 1, Transparency = 0.64})
 		local Scale = Create("UIScale", Panel, {Scale = 0.92})
 		local TitleLabel = InsertTheme(Create("TextLabel", Panel, {
 			AutoLocalize = false,
@@ -4039,6 +4048,7 @@ function Library:MakeWindow(Configs)
 		})
 		local ButtonEntries, ClosingHandlers = {}, {}
 		local Dialog = {Closing = false, Pending = false}
+		Runtime.Dialog = Dialog
 
 		local function Reflow()
 			if not Overlay.Parent or Dialog.Closing then return end
@@ -4061,22 +4071,20 @@ function Library:MakeWindow(Configs)
 		end
 
 		local function ReflowButtons()
-			local VisibleEntries, TotalWidth = {}, 0
+			local VisibleEntries = {}
 			for _, Entry in ipairs(ButtonEntries) do
-				if Entry.Visible then
-					VisibleEntries[#VisibleEntries + 1] = Entry
-					TotalWidth += math.max(28, TextService:GetTextSize(Entry.Button.Text, 13, Enum.Font.GothamBold, Vector2.new(1000, 40)).X + 24)
-				end
+				if Entry.Visible then VisibleEntries[#VisibleEntries + 1] = Entry end
 			end
-			local AvailableWidth = math.max(1, Width - 32 - ButtonGap * math.max(0, #VisibleEntries - 1))
-			for Index, Entry in ipairs(ButtonEntries) do
-				Entry.Button.LayoutOrder = Index
-			end
+			local Count = #VisibleEntries
+			if Count == 0 then return end
+			local AvailableWidth = math.max(1, Width - 32 - ButtonGap * (Count - 1))
+			for Index, Entry in ipairs(ButtonEntries) do Entry.Button.LayoutOrder = Index end
 			for _, Entry in ipairs(VisibleEntries) do
-				local NaturalWidth = math.max(28, TextService:GetTextSize(Entry.Button.Text, 13, Enum.Font.GothamBold, Vector2.new(1000, 40)).X + 24)
-				local TargetWidth = #VisibleEntries == 1 and math.min(AvailableWidth, math.max(130, NaturalWidth))
-					or math.max(1, AvailableWidth * NaturalWidth / math.max(1, TotalWidth))
-				Entry.Button.Size = UDim2.fromOffset(TargetWidth, ButtonHeight)
+				local NaturalWidth = TextService:GetTextSize(Entry.Button.Text, 14, Enum.Font.GothamBold, Vector2.new(1000, 40)).X + 42
+				Entry.Button.Size = UDim2.fromOffset(
+					Count == 1 and math.min(AvailableWidth, math.max(176, NaturalWidth)) or AvailableWidth / Count,
+					ButtonHeight
+				)
 			end
 		end
 
@@ -4086,31 +4094,51 @@ function Library:MakeWindow(Configs)
 			ButtonsLayout.HorizontalAlignment = Enum.HorizontalAlignment[Alignment]
 		end
 
+		local function NormalizeButtonStyle(Style, LegacyPrimary)
+			if type(Style) ~= "string" then return LegacyPrimary and "primary" or "secondary" end
+			Style = Style:lower()
+			return (Style == "primary" or Style == "secondary" or Style == "danger") and Style or "secondary"
+		end
+
 		local function ApplyButtonStyle(Entry)
-			local OptionColor = Entry.Color
-			local Palette = type(OptionColor) == "table" and OptionColor or {}
-			local Explicit = OptionColor ~= nil
-			local BackgroundSource = Explicit and (Palette.Background or Palette.BackgroundColor3 or Palette.Color or Palette.Theme or Palette[1] or (type(OptionColor) ~= "table" and OptionColor))
-				or (Entry.Primary and "Color Theme" or DefaultButtonColor)
+			local Palette = type(Entry.Color) == "table" and Entry.Color or {}
+			local BackgroundSource = Palette.Background or Palette.BackgroundColor3 or Palette.Color or Palette.Theme or Palette[1]
+			if BackgroundSource == nil and type(Entry.Color) ~= "table" then
+				BackgroundSource = Entry.Color
+			end
+			if BackgroundSource == nil then
+				if Entry.Style == "primary" then
+					BackgroundSource = "Color Theme"
+				elseif Entry.Style == "danger" then
+					BackgroundSource = Theme["Color Danger"] or Color3.fromRGB(193, 65, 79)
+				else
+					BackgroundSource = DefaultButtonColor
+				end
+			end
 			local Base = ResolveColor(BackgroundSource, Theme["Color Stroke"])
 			local Brightness = Base.R * 0.299 + Base.G * 0.587 + Base.B * 0.114
-			local ContrastText = Brightness > 0.62 and Color3.fromRGB(20, 20, 24) or Color3.new(1, 1, 1)
+			local Contrast = Brightness > 0.62 and Color3.fromRGB(20, 20, 24) or Color3.new(1, 1, 1)
 			local TextSource = Palette.Text or Palette.TextColor or Palette.TextColor3
-			if TextSource == nil and not Explicit and not Entry.Primary then
+			if TextSource == nil and Entry.Style == "secondary" and Entry.Color == nil then
 				TextSource = DefaultButtonTextColor
 			end
-			local TextColor = ResolveColor(TextSource, (Explicit or Entry.Primary) and ContrastText or Theme["Color Text"])
+			Entry.Button.TextColor3 = ResolveColor(TextSource,
+				(Entry.Style == "secondary" and Entry.Color == nil) and Theme["Color Text"] or Contrast)
 			local HoverSource = Palette.Hover or Palette.HoverColor or Palette.HoverBackground
-			Entry.Button.BackgroundColor3 = Entry.Hovered and ResolveColor(HoverSource, Base) or Base
-			Entry.Button.TextColor3 = TextColor
-			local StrokeValue = Palette.Stroke or Palette.Border
-			Entry.Stroke.Enabled = StrokeValue ~= nil
-			if StrokeValue ~= nil then Entry.Stroke.Color = ResolveColor(StrokeValue, Theme["Color Stroke"]) end
+			local HoverColor = ResolveColor(HoverSource,
+				Base:Lerp(Color3.new(1, 1, 1), Entry.Style == "secondary" and 0.07 or 0.1))
+			Entry.Button.BackgroundColor3 = Entry.Hovered and HoverColor or Base
+			local BorderSource = Palette.Stroke or Palette.Border
+			Entry.Stroke.Enabled = true
+			Entry.Stroke.Color = ResolveColor(BorderSource, Theme["Color Text"])
+			Entry.Stroke.Transparency = BorderSource and 0.52 or (Entry.Style == "secondary" and 0.89 or 0.80)
 			Entry.Button.Active = Entry.Enabled
 			Entry.Button.Interactable = Entry.Enabled
 			Entry.Button.Selectable = Entry.Enabled
 			Entry.Button.TextTransparency = Entry.Enabled and 0 or 0.5
-			Entry.Button.BackgroundTransparency = Entry.Enabled and (Entry.Hovered and 0.08 or 0.22) or 0.52
+			local Alpha = Entry.Style == "secondary" and 0.14 or 0.01
+			Entry.Button.BackgroundTransparency = Entry.Enabled
+				and math.max(0, Alpha - (Entry.Hovered and 0.05 or 0)) or 0.55
 		end
 
 		local function FinishClose(Reason)
@@ -4227,7 +4255,7 @@ function Library:MakeWindow(Configs)
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
 				Text = TranslateDialog(LabelSource),
-				TextSize = 13,
+				TextSize = 14,
 				Font = Enum.Font.GothamBold,
 				TextColor3 = Theme["Color Text"],
 				TextTruncate = Enum.TextTruncate.AtEnd,
@@ -4235,7 +4263,7 @@ function Library:MakeWindow(Configs)
 				AutoButtonColor = false,
 				LayoutOrder = #ButtonEntries + 1
 			})
-			Make("Corner", Button, UDim.new(0, 7))
+			Make("Corner", Button, UDim.new(0, ButtonCornerRadius))
 			local Stroke = Create("UIStroke", Button, {
 				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 				Thickness = 1,
@@ -4244,7 +4272,9 @@ function Library:MakeWindow(Configs)
 			local ButtonScale = Create("UIScale", Button, {Scale = 1})
 			local Entry = {
 				Button = Button, Stroke = Stroke, Name = LabelSource, Color = Option.Color,
-				Primary = Option.Primary == true, Enabled = Option.Enabled ~= false and Option.Disabled ~= true,
+				Primary = Option.Primary == true,
+				Style = NormalizeButtonStyle(Option.Style, Option.Primary == true),
+				Enabled = Option.Enabled ~= false and Option.Disabled ~= true,
 				Visible = Option.Visible ~= false, Hovered = false, Callback = Callback,
 				CloseOnClick = Option.Close ~= false
 			}
@@ -4256,6 +4286,12 @@ function Library:MakeWindow(Configs)
 			function Handle:SetColor(Color)
 				if not Button.Parent then return false end
 				Entry.Color = Color
+				ApplyButtonStyle(Entry)
+				return true
+			end
+			function Handle:SetStyle(Style)
+				if not Button.Parent or type(Style) ~= "string" then return false end
+				Entry.Style = NormalizeButtonStyle(Style, false)
 				ApplyButtonStyle(Entry)
 				return true
 			end
@@ -4333,7 +4369,7 @@ function Library:MakeWindow(Configs)
 			Button.BackgroundTransparency = 1
 			TweenService:Create(Button, AnimFade, {
 				TextTransparency = Entry.Enabled and 0 or 0.5,
-				BackgroundTransparency = Entry.Enabled and 0.22 or 0.52
+				BackgroundTransparency = Entry.Enabled and (Entry.Style == "secondary" and 0.14 or 0.01) or 0.55
 			}):Play()
 			return Handle
 		end
@@ -4353,6 +4389,10 @@ function Library:MakeWindow(Configs)
 		function Dialog:SetButtonColor(Identifier, Color)
 			local Entry = FindButton(Identifier)
 			return Entry and Entry.Handle:SetColor(Color) or false
+		end
+		function Dialog:SetButtonStyle(Identifier, Style)
+			local Entry = FindButton(Identifier)
+			return Entry and Entry.Handle:SetStyle(Style) or false
 		end
 		function Dialog:SetButtonText(Identifier, Text)
 			local Entry = FindButton(Identifier)
@@ -4407,7 +4447,8 @@ function Library:MakeWindow(Configs)
 			LanguageConnection:Disconnect()
 			if HubLanguageConnection then HubLanguageConnection:Disconnect() end
 			if ActiveDialog == Overlay then ActiveDialog = nil end
-			if Library._ActiveDialogOverlay == Overlay then Library._ActiveDialogOverlay = nil end
+			if Runtime.DialogOverlay == Overlay then Runtime.DialogOverlay = nil end
+			if Runtime.Dialog == Dialog then Runtime.Dialog = nil end
 		end)
 		TweenService:Create(Scale, AnimOpen, {Scale = 1}):Play()
 		TweenService:Create(Panel, AnimFade, {BackgroundTransparency = 0}):Play()
@@ -11982,6 +12023,7 @@ function Library:MakeWindow(Configs)
 				Options = {
 					{
 						Name = "Don't show again",
+						Style = "Primary",
 						Callback = function()
 							if not Library:SetStartupGreetingDismissed(true) then
 								warn("[SpecterX] Could not save startup greeting preference.")
