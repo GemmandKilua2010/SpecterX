@@ -11641,7 +11641,7 @@ function Library:MakeWindow(Configs)
 			if not ScreenGui.Parent or not MainFrame.Parent then return end
 			local Name = Player and (Player.DisplayName ~= "" and Player.DisplayName or Player.Name) or "Player"
 			local Template = type(Greeting.Description) == "string" and Greeting.Description
-				or "Welcome aboard, {Player}! Everything is ready for you to explore {Title} your way."
+				or "Good to see you, {Player}! {Title} is ready. Make yourself at home and enjoy!"
 			local Message = Hub:Format(TranslateText(Template), {
 				Player = Name,
 				Title = tostring(RootConfig.Title or WTitle)
@@ -11657,8 +11657,7 @@ function Library:MakeWindow(Configs)
 								warn("[SpecterX] Could not save startup greeting preference.")
 							end
 						end
-					},
-					{Name = "Continue", Primary = true}
+					}
 				}
 			})
 		end)
