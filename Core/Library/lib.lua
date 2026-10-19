@@ -4949,25 +4949,19 @@ function Library:MakeWindow(Configs)
 			return RegisterFlagObject(Configs.Flag, Divider, Holder)
 		end
 
-		local function CreateMediaSurface(Parent, Size, Configs)
+		local function CreateMediaImage(Parent, Configs)
 			local Radius = math.clamp(tonumber(Configs.CornerRadius) or 8, 0, 40)
-			local Surface = InsertTheme(Create("Frame", Parent, {
-				Size = Size,
-				BackgroundColor3 = Theme["Color Hub 2"],
-				BorderSizePixel = 0
-			}), "Frame")
-			local SurfaceCorner = Make("Corner", Surface, UDim.new(0, Radius))
-			local Image = Create("ImageLabel", Surface, {
-				Size = UDim2.fromScale(1, 1),
+			local Image = Create("ImageLabel", Parent, {
+				Size = UDim2.new(1, 0, 0, 140),
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
+				ScaleType = Enum.ScaleType.Crop,
 				ImageColor3 = typeof(Configs.Tint) == "Color3" and Configs.Tint or Color3.new(1, 1, 1),
-				ImageTransparency = math.clamp(tonumber(FirstDefined(Configs.ImageTransparency, Configs.Transparency)) or 0, 0, 1),
-				ScaleType = Enum.ScaleType.Crop
+				ImageTransparency = math.clamp(tonumber(FirstDefined(Configs.ImageTransparency, Configs.Transparency)) or 0, 0, 1)
 			})
-			local ImageCorner = Make("Corner", Image, UDim.new(0, Radius))
+			local Corner = Make("Corner", Image, UDim.new(0, Radius))
+			local Media = {Frame = Image, ImageLabel = Image}
 			local CurrentImage = ""
-			local Media = {Frame = Surface, ImageLabel = Image}
 
 			function Media:SetImage(Value)
 				if Value ~= nil and Value ~= false and type(Value) ~= "string" and type(Value) ~= "number" then
@@ -4993,34 +4987,32 @@ function Library:MakeWindow(Configs)
 				return true
 			end
 
+			function Media:SetTint(Value)
+				if typeof(Value) ~= "Color3" then return false end
+				Image.ImageColor3 = Value
+				return true
+			end
+
+			function Media:SetCornerRadius(Value)
+				Value = tonumber(Value)
+				if not Value or Value ~= Value then return false end
+				Corner.CornerRadius = UDim.new(0, math.clamp(Value, 0, 40))
+				return true
+			end
+
 			function Media:SetScaleType(Value)
 				if typeof(Value) == "EnumItem" and Value.EnumType == Enum.ScaleType then
 					Image.ScaleType = Value
 					return true
 				end
 				if type(Value) ~= "string" then return false end
-				for Name, EnumValue in pairs(BackgroundScaleTypes) do
+				for Name, Scale in pairs(BackgroundScaleTypes) do
 					if Name:lower() == Value:lower() then
-						Image.ScaleType = EnumValue
+						Image.ScaleType = Scale
 						return true
 					end
 				end
 				return false
-			end
-
-			function Media:SetCornerRadius(Value)
-				Value = tonumber(Value)
-				if not Value or Value ~= Value then return false end
-				local Corner = UDim.new(0, math.clamp(Value, 0, 40))
-				SurfaceCorner.CornerRadius = Corner
-				ImageCorner.CornerRadius = Corner
-				return true
-			end
-
-			function Media:SetTint(Value)
-				if typeof(Value) ~= "Color3" then return false end
-				Image.ImageColor3 = Value
-				return true
 			end
 
 			Media:SetScaleType(Configs.ScaleType or "Crop")
@@ -5040,54 +5032,68 @@ function Library:MakeWindow(Configs)
 				Create("UIListLayout", {
 					SortOrder = Enum.SortOrder.LayoutOrder,
 					HorizontalAlignment = Enum.HorizontalAlignment.Center,
-					Padding = UDim.new(0, 5)
+					Padding = UDim.new(0, 6)
 				}),
 				Create("UIPadding", {
-					PaddingTop = UDim.new(0, 4),
-					PaddingBottom = UDim.new(0, 4)
+					PaddingTop = UDim.new(0, 2),
+					PaddingLeft = UDim.new(0, 8),
+					PaddingRight = UDim.new(0, 8),
+					PaddingBottom = UDim.new(0, 2)
 				})
 			})
-			local SurfaceSize = UDim2.new(1, -16, 0, Height)
-			local Media = CreateMediaSurface(Holder, SurfaceSize, Configs)
-			Media.Frame.LayoutOrder = 2
-			local Caption = InsertTheme(Create("TextLabel", Holder, {
-				LayoutOrder = 1,
-				Size = UDim2.new(1, -16, 0, 0),
+			local Content = Create("Frame", Holder, {
+				Size = UDim2.new(1, 0, 0, 0),
 				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundTransparency = 1,
-				TextWrapped = true,
-				TextXAlignment = Enum.TextXAlignment.Left,
+				BorderSizePixel = 0
+			}, {
+				Create("UIListLayout", {
+					SortOrder = Enum.SortOrder.LayoutOrder,
+					HorizontalAlignment = Enum.HorizontalAlignment.Center,
+					Padding = UDim.new(0, 6)
+				})
+			})
+			local Caption = InsertTheme(Create("TextLabel", Content, {
+				LayoutOrder = 1,
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
 				Font = Enum.Font.GothamMedium,
 				TextSize = ElementTitleTextSize,
 				TextColor3 = Theme["Color Text"],
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextWrapped = true,
 				Text = ""
 			}), "Text")
+			local Media = CreateMediaImage(Content, Configs)
+			Media.ImageLabel.LayoutOrder = 2
+			Media.ImageLabel.Size = UDim2.new(1, 0, 0, Height)
 			local ImageControl = Media
 
 			function ImageControl:SetCaption(Value)
-				local CaptionText = TranslateText(DisplayString(Value))
-				Caption.Text = CaptionText
-				Caption.Visible = CaptionText ~= ""
+				local Text = TranslateText(DisplayString(Value))
+				Caption.Text = Text
+				Caption.Visible = Text ~= ""
+				return true
 			end
+			ImageControl.SetTitle = ImageControl.SetCaption
 
 			function ImageControl:SetHeight(Value)
 				Value = tonumber(Value)
 				if not Value or Value ~= Value then return false end
 				Height = math.clamp(Value, 48, 360)
-				local Size = Media.Frame.Size
-				Media.Frame.Size = UDim2.new(Size.X.Scale, Size.X.Offset, 0, Height)
+				Media.ImageLabel.Size = UDim2.new(1, 0, 0, Height)
 				return true
 			end
 
 			function ImageControl:SetWidth(Value)
-				local Size = Media.Frame.Size
 				if Value == nil then
-					Media.Frame.Size = UDim2.new(1, -16, 0, Size.Y.Offset)
+					Content.Size = UDim2.new(1, 0, 0, 0)
 					return true
 				end
 				Value = tonumber(Value)
 				if not Value or Value ~= Value then return false end
-				Media.Frame.Size = UDim2.fromOffset(math.clamp(Value, 48, 720), Size.Y.Offset)
+				Content.Size = UDim2.new(0, math.clamp(Value, 48, 720), 0, 0)
 				return true
 			end
 
@@ -5123,102 +5129,80 @@ function Library:MakeWindow(Configs)
 
 		function Tab:AddThumbnail(Configs)
 			Configs = type(Configs) == "table" and Configs or {Image = Configs}
-			local Height = math.clamp(tonumber(Configs.Height) or 76, 64, 160)
-			local ImageSize = math.clamp(tonumber(Configs.ImageSize) or 54, 28, 128)
+			local Height = math.clamp(tonumber(FirstDefined(Configs.ThumbnailSize, Configs.Height, Configs.ImageSize)) or 80, 40, 240)
 			local Holder = InsertTheme(Create("Frame", Container, {
-				Size = UDim2.new(1, 0, 0, Height),
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundColor3 = Theme["Color Hub 2"],
-				BackgroundTransparency = 0,
-				BorderSizePixel = 0,
-				ClipsDescendants = true
-			}), "Frame")
-			Make("Corner", Holder, UDim.new(0, 8))
-
-			local Media = CreateMediaSurface(Holder, UDim2.fromOffset(ImageSize, ImageSize), Configs)
-			Media.Frame.ZIndex = Holder.ZIndex + 1
-			Media.Frame.AnchorPoint = Vector2.new(0, 0.5)
-			Media.Frame.Position = UDim2.new(0, 12, 0.5, 0)
-			Media.ImageLabel.ZIndex = Media.Frame.ZIndex + 1
-
-			local InfoHolder = Create("Frame", Holder, {
-				BackgroundTransparency = 1,
-				BorderSizePixel = 0,
-				Position = UDim2.fromOffset(ImageSize + 24, 0),
-				Size = UDim2.new(1, -ImageSize - 36, 1, 0),
-				ZIndex = Holder.ZIndex + 1
+				BorderSizePixel = 0
 			}, {
+				Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
 				Create("UIListLayout", {
 					SortOrder = Enum.SortOrder.LayoutOrder,
-					VerticalAlignment = Enum.VerticalAlignment.Center,
-					HorizontalAlignment = Enum.HorizontalAlignment.Left,
-					Padding = UDim.new(0, 3)
+					HorizontalAlignment = Enum.HorizontalAlignment.Center,
+					Padding = UDim.new(0, 6)
+				}),
+				Create("UIPadding", {
+					PaddingTop = UDim.new(0, 9),
+					PaddingLeft = UDim.new(0, 10),
+					PaddingRight = UDim.new(0, 10),
+					PaddingBottom = UDim.new(0, 10)
 				})
-			})
-			local TitleLabel = InsertTheme(Create("TextLabel", InfoHolder, {
-				LayoutOrder = 1,
-				Size = UDim2.new(1, 0, 0, 20),
+			}), "Frame")
+			local Media = CreateMediaImage(Holder, Configs)
+			Media.ImageLabel.LayoutOrder = 1
+			Media.ImageLabel.Size = UDim2.new(1, 0, 0, Height)
+			local Title = InsertTheme(Create("TextLabel", Holder, {
+				LayoutOrder = 2,
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundTransparency = 1,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextWrapped = true,
 				Font = Enum.Font.GothamMedium,
 				TextSize = ElementTitleTextSize,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				TextYAlignment = Enum.TextYAlignment.Center,
-				TextTruncate = Enum.TextTruncate.AtEnd,
 				TextColor3 = Theme["Color Text"],
-				ZIndex = InfoHolder.ZIndex + 1,
 				Text = ""
 			}), "Text")
-			local DescLabel = InsertTheme(Create("TextLabel", InfoHolder, {
-				LayoutOrder = 2,
-				Size = UDim2.new(1, 0, 0, math.min(48, Height - 34)),
+			local Desc = InsertTheme(Create("TextLabel", Holder, {
+				LayoutOrder = 3,
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundTransparency = 1,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
 				Font = Enum.Font.Gotham,
 				TextSize = ElementDescriptionTextSize,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				TextYAlignment = Enum.TextYAlignment.Center,
-				TextWrapped = true,
 				TextColor3 = Theme["Color Dark Text"],
-				ZIndex = InfoHolder.ZIndex + 1,
 				Text = ""
 			}), "DarkText")
 			local Thumbnail = Media
 
-			local function RefreshLayout()
-				local Size = math.min(ImageSize, Height - 16)
-				Media.Frame.Size = UDim2.fromOffset(Size, Size)
-				InfoHolder.Position = UDim2.fromOffset(Size + 24, 0)
-				InfoHolder.Size = UDim2.new(1, -Size - 36, 1, 0)
-				DescLabel.Size = UDim2.new(1, 0, 0, math.min(48, Height - 34))
-			end
-
 			function Thumbnail:SetTitle(Value)
 				local Text = TranslateText(DisplayString(Value))
-				TitleLabel.Text = Text
-				TitleLabel.Visible = Text ~= ""
+				Title.Text = Text
+				Title.Visible = Text ~= ""
+				return true
 			end
 
 			function Thumbnail:SetDesc(Value)
 				local Text = TranslateText(DisplayString(Value))
-				DescLabel.Text = Text
-				DescLabel.Visible = Text ~= ""
+				Desc.Text = Text
+				Desc.Visible = Text ~= ""
+				return true
 			end
 			Thumbnail.SetDescription = Thumbnail.SetDesc
 
 			function Thumbnail:SetHeight(Value)
 				Value = tonumber(Value)
 				if not Value or Value ~= Value then return false end
-				Height = math.clamp(Value, 64, 160)
-				Holder.Size = UDim2.new(1, 0, 0, Height)
-				RefreshLayout()
+				Height = math.clamp(Value, 40, 240)
+				Media.ImageLabel.Size = UDim2.new(1, 0, 0, Height)
 				return true
 			end
-
-			function Thumbnail:SetImageSize(Value)
-				Value = tonumber(Value)
-				if not Value or Value ~= Value then return false end
-				ImageSize = math.clamp(Value, 28, 128)
-				RefreshLayout()
-				return true
-			end
+			Thumbnail.SetImageSize = Thumbnail.SetHeight
+			Thumbnail.SetThumbnailSize = Thumbnail.SetHeight
+			Thumbnail.SetThumbnail = Thumbnail.SetImage
 
 			function Thumbnail:SetUserId(Value)
 				local UserId = tonumber(Value)
@@ -5239,10 +5223,10 @@ function Library:MakeWindow(Configs)
 			elseif Thumbnail:GetImage() == "" then
 				Thumbnail:SetImage(RootConfig.Image)
 			end
-			RefreshLayout()
 			return RegisterFlagObject(Configs.Flag, Thumbnail, Holder)
 		end
-		function Tab:AddParagraph(Configs)
+
+				function Tab:AddParagraph(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local PName = Configs[1] or Configs.Title or TranslateText(ControlsConfig.Titles.Paragraph)
 			local PDesc = FirstDefined(Configs[2], Configs.Text, Configs.Desc, Configs.Description, "")
