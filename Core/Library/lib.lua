@@ -4966,9 +4966,6 @@ function Library:MakeWindow(Configs)
 				ScaleType = Enum.ScaleType.Crop
 			})
 			local ImageCorner = Make("Corner", Image, UDim.new(0, Radius))
-			if Configs.Stroke ~= false then
-				Make("Stroke", Surface, {Thickness = 1, Transparency = 0.75})
-			end
 			local CurrentImage = ""
 			local Media = {Frame = Surface, ImageLabel = Image}
 
