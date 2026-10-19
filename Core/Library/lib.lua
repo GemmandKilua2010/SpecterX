@@ -5109,6 +5109,9 @@ function Library:MakeWindow(Configs)
 				for Name, Alignment in pairs(Alignments) do
 					if Name:lower() == Value:lower() then
 						Layout.HorizontalAlignment = Alignment
+						Caption.TextXAlignment = (Alignment == Enum.HorizontalAlignment.Center and Enum.TextXAlignment.Center)
+							or (Alignment == Enum.HorizontalAlignment.Right and Enum.TextXAlignment.Right)
+							or Enum.TextXAlignment.Left
 						return true
 					end
 				end
@@ -5131,8 +5134,7 @@ function Library:MakeWindow(Configs)
 			Configs = type(Configs) == "table" and Configs or {Image = Configs}
 			local Height = math.clamp(tonumber(FirstDefined(Configs.ThumbnailSize, Configs.Height, Configs.ImageSize)) or 80, 40, 240)
 			local Holder = InsertTheme(Create("Frame", Container, {
-				Size = UDim2.new(1, 0, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
+				Size = UDim2.new(1, 0, 0, Height + 19),
 				BackgroundColor3 = Theme["Color Hub 2"],
 				BorderSizePixel = 0
 			}, {
@@ -5154,8 +5156,8 @@ function Library:MakeWindow(Configs)
 			Media.ImageLabel.Size = UDim2.new(1, 0, 0, Height)
 			local Title = InsertTheme(Create("TextLabel", Holder, {
 				LayoutOrder = 2,
-				Size = UDim2.new(1, 0, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
+				Size = UDim2.new(1, 0, 0, 20),
+				Visible = false,
 				BackgroundTransparency = 1,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextWrapped = true,
@@ -5166,8 +5168,8 @@ function Library:MakeWindow(Configs)
 			}), "Text")
 			local Desc = InsertTheme(Create("TextLabel", Holder, {
 				LayoutOrder = 3,
-				Size = UDim2.new(1, 0, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
+				Size = UDim2.new(1, 0, 0, 34),
+				Visible = false,
 				BackgroundTransparency = 1,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -5178,10 +5180,18 @@ function Library:MakeWindow(Configs)
 			}), "DarkText")
 			local Thumbnail = Media
 
+			local function RefreshLayout()
+				local Total = Height + 19
+				if Title.Visible then Total += 26 end
+				if Desc.Visible then Total += 40 end
+				Holder.Size = UDim2.new(1, 0, 0, Total)
+			end
+
 			function Thumbnail:SetTitle(Value)
 				local Text = TranslateText(DisplayString(Value))
 				Title.Text = Text
 				Title.Visible = Text ~= ""
+				RefreshLayout()
 				return true
 			end
 
@@ -5189,6 +5199,7 @@ function Library:MakeWindow(Configs)
 				local Text = TranslateText(DisplayString(Value))
 				Desc.Text = Text
 				Desc.Visible = Text ~= ""
+				RefreshLayout()
 				return true
 			end
 			Thumbnail.SetDescription = Thumbnail.SetDesc
@@ -5198,6 +5209,7 @@ function Library:MakeWindow(Configs)
 				if not Value or Value ~= Value then return false end
 				Height = math.clamp(Value, 40, 240)
 				Media.ImageLabel.Size = UDim2.new(1, 0, 0, Height)
+				RefreshLayout()
 				return true
 			end
 			Thumbnail.SetImageSize = Thumbnail.SetHeight
@@ -5223,6 +5235,7 @@ function Library:MakeWindow(Configs)
 			elseif Thumbnail:GetImage() == "" then
 				Thumbnail:SetImage(RootConfig.Image)
 			end
+			RefreshLayout()
 			return RegisterFlagObject(Configs.Flag, Thumbnail, Holder)
 		end
 
