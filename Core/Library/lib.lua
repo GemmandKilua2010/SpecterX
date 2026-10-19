@@ -4948,6 +4948,279 @@ function Library:MakeWindow(Configs)
 			Divider:SetColor(Configs.Color)
 			return RegisterFlagObject(Configs.Flag, Divider, Holder)
 		end
+
+		local function CreateMediaSurface(Parent, Size, Configs)
+			local Radius = math.clamp(tonumber(Configs.CornerRadius) or 8, 0, 40)
+			local Surface = InsertTheme(Create("Frame", Parent, {
+				Size = Size,
+				BackgroundColor3 = Theme["Color Hub 2"],
+				BorderSizePixel = 0
+			}), "Frame")
+			local SurfaceCorner = Make("Corner", Surface, UDim.new(0, Radius))
+			local Image = Create("ImageLabel", Surface, {
+				Size = UDim2.fromScale(1, 1),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				ImageColor3 = typeof(Configs.Tint) == "Color3" and Configs.Tint or Color3.new(1, 1, 1),
+				ImageTransparency = math.clamp(tonumber(FirstDefined(Configs.ImageTransparency, Configs.Transparency)) or 0, 0, 1),
+				ScaleType = Enum.ScaleType.Crop
+			})
+			local ImageCorner = Make("Corner", Image, UDim.new(0, Radius))
+			if Configs.Stroke ~= false then
+				Make("Stroke", Surface, {Thickness = 1, Transparency = 0.75})
+			end
+			local CurrentImage = ""
+			local Media = {Frame = Surface, ImageLabel = Image}
+
+			function Media:SetImage(Value)
+				if Value ~= nil and Value ~= false and type(Value) ~= "string" and type(Value) ~= "number" then
+					return false
+				end
+				CurrentImage = Value or ""
+				if type(CurrentImage) == "string" and CurrentImage:sub(1, 11) == "rbxthumb://" then
+					Image.Image = CurrentImage
+				else
+					Image.Image = ResolveGuiImage(CurrentImage)
+				end
+				return true
+			end
+
+			function Media:GetImage()
+				return CurrentImage
+			end
+
+			function Media:SetTransparency(Value)
+				Value = tonumber(Value)
+				if not Value or Value ~= Value then return false end
+				Image.ImageTransparency = math.clamp(Value, 0, 1)
+				return true
+			end
+
+			function Media:SetScaleType(Value)
+				if typeof(Value) == "EnumItem" and Value.EnumType == Enum.ScaleType then
+					Image.ScaleType = Value
+					return true
+				end
+				if type(Value) ~= "string" then return false end
+				for Name, EnumValue in pairs(BackgroundScaleTypes) do
+					if Name:lower() == Value:lower() then
+						Image.ScaleType = EnumValue
+						return true
+					end
+				end
+				return false
+			end
+
+			function Media:SetCornerRadius(Value)
+				Value = tonumber(Value)
+				if not Value or Value ~= Value then return false end
+				local Corner = UDim.new(0, math.clamp(Value, 0, 40))
+				SurfaceCorner.CornerRadius = Corner
+				ImageCorner.CornerRadius = Corner
+				return true
+			end
+
+			function Media:SetTint(Value)
+				if typeof(Value) ~= "Color3" then return false end
+				Image.ImageColor3 = Value
+				return true
+			end
+
+			Media:SetScaleType(Configs.ScaleType or "Crop")
+			Media:SetImage(FirstDefined(Configs.Image, Configs.ImageId, Configs.ID, Configs[1]))
+			return Media
+		end
+
+		function Tab:AddImage(Configs)
+			Configs = type(Configs) == "table" and Configs or {Image = Configs}
+			local Height = math.clamp(tonumber(Configs.Height) or 150, 48, 360)
+			local Holder = Create("Frame", Container, {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0
+			}, {
+				Create("UIListLayout", {
+					SortOrder = Enum.SortOrder.LayoutOrder,
+					HorizontalAlignment = Enum.HorizontalAlignment.Center,
+					Padding = UDim.new(0, 5)
+				}),
+				Create("UIPadding", {
+					PaddingTop = UDim.new(0, 4),
+					PaddingBottom = UDim.new(0, 4)
+				})
+			})
+			local SurfaceSize = UDim2.new(1, -16, 0, Height)
+			local Media = CreateMediaSurface(Holder, SurfaceSize, Configs)
+			Media.Frame.LayoutOrder = 1
+			local Caption = InsertTheme(Create("TextLabel", Holder, {
+				LayoutOrder = 2,
+				Size = UDim2.new(1, -16, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Enum.Font.Gotham,
+				TextSize = ElementDescriptionTextSize,
+				TextColor3 = Theme["Color Dark Text"],
+				Text = ""
+			}), "DarkText")
+			local ImageControl = Media
+
+			function ImageControl:SetCaption(Value)
+				local CaptionText = TranslateText(DisplayString(Value))
+				Caption.Text = CaptionText
+				Caption.Visible = CaptionText ~= ""
+			end
+
+			function ImageControl:SetHeight(Value)
+				Value = tonumber(Value)
+				if not Value or Value ~= Value then return false end
+				Height = math.clamp(Value, 48, 360)
+				local Size = Media.Frame.Size
+				Media.Frame.Size = UDim2.new(Size.X.Scale, Size.X.Offset, 0, Height)
+				return true
+			end
+
+			function ImageControl:SetWidth(Value)
+				local Size = Media.Frame.Size
+				if Value == nil then
+					Media.Frame.Size = UDim2.new(1, -16, 0, Size.Y.Offset)
+					return true
+				end
+				Value = tonumber(Value)
+				if not Value or Value ~= Value then return false end
+				Media.Frame.Size = UDim2.fromOffset(math.clamp(Value, 48, 720), Size.Y.Offset)
+				return true
+			end
+
+			function ImageControl:SetAlignment(Value)
+				if type(Value) ~= "string" then return false end
+				local Layout = Holder:FindFirstChildOfClass("UIListLayout")
+				if not Layout then return false end
+				local Alignments = {
+					Left = Enum.HorizontalAlignment.Left,
+					Center = Enum.HorizontalAlignment.Center,
+					Right = Enum.HorizontalAlignment.Right
+				}
+				for Name, Alignment in pairs(Alignments) do
+					if Name:lower() == Value:lower() then
+						Layout.HorizontalAlignment = Alignment
+						return true
+					end
+				end
+				return false
+			end
+
+			function ImageControl:Visible(Value)
+				if Value == nil then Value = not Holder.Visible end
+				Holder.Visible = Value == true
+			end
+			function ImageControl:Destroy() Holder:Destroy() end
+
+			ImageControl:SetCaption(FirstDefined(Configs.Caption, Configs.Desc, Configs.Description, ""))
+			ImageControl:SetAlignment(Configs.Alignment or "Center")
+			if Configs.Width ~= nil then ImageControl:SetWidth(Configs.Width) end
+			return RegisterFlagObject(Configs.Flag, ImageControl, Holder)
+		end
+
+		function Tab:AddThumbnail(Configs)
+			Configs = type(Configs) == "table" and Configs or {Image = Configs}
+			local Height = math.clamp(tonumber(Configs.Height) or 76, 64, 160)
+			local ImageSize = math.clamp(tonumber(Configs.ImageSize) or 54, 28, 128)
+			local Holder = InsertTheme(Create("Frame", Container, {
+				Size = UDim2.new(1, 0, 0, Height),
+				BackgroundColor3 = Theme["Color Hub 2"],
+				BorderSizePixel = 0
+			}), "Frame")
+			Make("Corner", Holder, UDim.new(0, 8))
+			local Media = CreateMediaSurface(Holder, UDim2.fromOffset(ImageSize, ImageSize), Configs)
+			Media.Frame.AnchorPoint = Vector2.new(0, 0.5)
+			Media.Frame.Position = UDim2.new(0, 12, 0.5, 0)
+			local TitleLabel = InsertTheme(Create("TextLabel", Holder, {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamMedium,
+				TextSize = ElementTitleTextSize,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Center,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				TextColor3 = Theme["Color Text"],
+				Text = ""
+			}), "Text")
+			local DescLabel = InsertTheme(Create("TextLabel", Holder, {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				TextSize = ElementDescriptionTextSize,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				TextWrapped = true,
+				TextColor3 = Theme["Color Dark Text"],
+				Text = ""
+			}), "DarkText")
+			local Thumbnail = Media
+			local Description = ""
+
+			local function RefreshLayout()
+				local Size = math.min(ImageSize, Height - 16)
+				Media.Frame.Size = UDim2.fromOffset(Size, Size)
+				local Offset = Size + 24
+				local HasDesc = Description ~= ""
+				TitleLabel.Position = UDim2.new(0, Offset, 0, HasDesc and 11 or 0)
+				TitleLabel.Size = UDim2.new(1, -Offset - 12, HasDesc and 0 or 1, HasDesc and 20 or 0)
+				DescLabel.Visible = HasDesc
+				DescLabel.Position = UDim2.fromOffset(Offset, 33)
+				DescLabel.Size = UDim2.new(1, -Offset - 12, 1, -41)
+			end
+
+			function Thumbnail:SetTitle(Value)
+				TitleLabel.Text = TranslateText(DisplayString(Value))
+			end
+
+			function Thumbnail:SetDesc(Value)
+				Description = TranslateText(DisplayString(Value))
+				DescLabel.Text = Description
+				RefreshLayout()
+			end
+			Thumbnail.SetDescription = Thumbnail.SetDesc
+
+			function Thumbnail:SetHeight(Value)
+				Value = tonumber(Value)
+				if not Value or Value ~= Value then return false end
+				Height = math.clamp(Value, 64, 160)
+				Holder.Size = UDim2.new(1, 0, 0, Height)
+				RefreshLayout()
+				return true
+			end
+
+			function Thumbnail:SetImageSize(Value)
+				Value = tonumber(Value)
+				if not Value or Value ~= Value then return false end
+				ImageSize = math.clamp(Value, 28, 128)
+				RefreshLayout()
+				return true
+			end
+
+			function Thumbnail:SetUserId(Value)
+				local UserId = tonumber(Value)
+				if not UserId or UserId ~= UserId or UserId < 1 or UserId == math.huge then return false end
+				return self:SetImage("rbxthumb://type=AvatarHeadShot&id=" .. tostring(math.floor(UserId)) .. "&w=150&h=150")
+			end
+
+			function Thumbnail:Visible(Value)
+				if Value == nil then Value = not Holder.Visible end
+				Holder.Visible = Value == true
+			end
+			function Thumbnail:Destroy() Holder:Destroy() end
+
+			Thumbnail:SetTitle(FirstDefined(Configs.Title, Configs.Name, ""))
+			Thumbnail:SetDesc(FirstDefined(Configs.Desc, Configs.Description, ""))
+			if Configs.Image == nil and Configs.ImageId == nil and Configs.ID == nil and Configs[1] == nil and Configs.UserId then
+				Thumbnail:SetUserId(Configs.UserId)
+			end
+			RefreshLayout()
+			return RegisterFlagObject(Configs.Flag, Thumbnail, Holder)
+		end
+
 		function Tab:AddParagraph(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local PName = Configs[1] or Configs.Title or TranslateText(ControlsConfig.Titles.Paragraph)
@@ -11722,7 +11995,7 @@ function Library:MakeWindow(Configs)
 			return RegisterFlagObject(Configs.Flag, DiscordInvite, InviteHolder)
 		end
 		for _, MethodName in ipairs({
-			"AddSection", "AddDivider", "AddParagraph", "AddButton", "AddToggle", "AddDropdown",
+			"AddSection", "AddDivider", "AddImage", "AddThumbnail", "AddParagraph", "AddButton", "AddToggle", "AddDropdown",
 			"AddPlayers", "AddSelector", "AddSlider", "AddTextBox", "AddKeybind",
 			"AddColorPicker", "AddCode", "AddDiscordInvite"
 		}) do
