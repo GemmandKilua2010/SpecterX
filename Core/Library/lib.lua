@@ -471,8 +471,9 @@ local function ReadDropdownFavorites(Data)
 
     for Key, Values in pairs(Data) do
         if type(Key) == "string" then
-            local HubName, TabName, Kind, Name, Index =
-                Key:match("^(.*)/([^/]+)/(%a+):(.+)#(%d+)$")
+            local Prefix, Kind, Name, Index = Key:match("^(.*)/(%a+):(.+)#(%d+)$")
+            local HubName, TabName
+            if Prefix then HubName, TabName = Prefix:match("^(.*)/([^/]+)$") end
             local Favorites = NormalizeFavoriteOptions(Values)
             if HubName and HubName ~= "" and (Kind == "flag" or Kind == "name") and Favorites then
                 local GroupName = Kind == "flag" and "Flags" or "Names"
@@ -516,6 +517,42 @@ local function SerializeDropdownFavorites()
         end
     end
     return Data
+end
+
+local function FormatFavoritesJSON(Value, Depth)
+    if type(Value) ~= "table" then
+        return HttpService:JSONEncode(Value)
+    end
+
+    local IsArray = #Value > 0
+    local Keys = {}
+    if IsArray then
+        for Index = 1, #Value do Keys[#Keys + 1] = Index end
+    else
+        for Key in pairs(Value) do Keys[#Keys + 1] = Key end
+        table.sort(Keys)
+    end
+
+    if #Keys == 0 then return "{}" end
+    local Items = {}
+    local Indent = string.rep("  ", Depth + 1)
+    for _, Key in ipairs(Keys) do
+        local Item = FormatFavoritesJSON(Value[Key], Depth + 1)
+        if not IsArray then
+            Item = HttpService:JSONEncode(Key) .. ": " .. Item
+        end
+        Items[#Items + 1] = Indent .. Item
+    end
+
+    return (IsArray and "[" or "{") .. "\n"
+        .. table.concat(Items, ",\n") .. "\n"
+        .. string.rep("  ", Depth) .. (IsArray and "]" or "}")
+end
+
+local function SaveDropdownFavorites()
+    if type(Hub) ~= "table" or type(Hub.CreateFile) ~= "function" then return false end
+    local Success, Encoded = pcall(FormatFavoritesJSON, SerializeDropdownFavorites(), 0)
+    return Success and Hub:CreateFile(DropdownFavoritesPath, Encoded) == true
 end
 
 local SetProps, SetChildren, InsertTheme, Create do
@@ -663,7 +700,7 @@ local SetProps, SetChildren, InsertTheme, Create do
         ReadDropdownFavorites(LegacyDropdownFavorites)
     end
     if not SavedFavorites or SavedFavorites.Version ~= 2 then
-        JsonFiles.Write(DropdownFavoritesPath, SerializeDropdownFavorites())
+        SaveDropdownFavorites()
     end
     EnsureSoundPreset(Library.Save.SoundId)
 	Draggable = Library.Save.Draggable ~= false
@@ -4679,6 +4716,7 @@ function Library:MakeWindow(Configs)
 
 	local ContainerList = {}
 	local ConfigTab
+	local FavoriteTabCounts = {}
 	ScreenGui.Destroying:Connect(function()
 		for _, Container in ipairs(ContainerList) do Container:Destroy() end
 		table.clear(ContainerList)
@@ -4688,7 +4726,10 @@ function Library:MakeWindow(Configs)
 		Configs = type(Configs) == "table" and Configs or {}
 		local Hidden = Configs.Hidden == true
 		local TName = TranslateText(tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Tab))
-		local FavoriteTabKey = tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Tab)
+		local BaseTabKey = tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Tab)
+		FavoriteTabCounts[BaseTabKey] = (FavoriteTabCounts[BaseTabKey] or 0) + 1
+		local TabIndex = FavoriteTabCounts[BaseTabKey]
+		local FavoriteTabKey = BaseTabKey .. (TabIndex == 1 and "" or "#" .. TabIndex)
 		local TIcon = Configs[2] or Configs.Icon or ""
 		local TabSelect, LabelTitle, LabelIcon, Selected
 
@@ -6243,7 +6284,7 @@ function Library:MakeWindow(Configs)
 							FavoriteGroup[FavoriteIdentity] =
 								next(FavoriteEntries) and FavoriteEntries or nil
 							AnimateFavoriteOrder(Entry)
-							JsonFiles.Write(DropdownFavoritesPath, SerializeDropdownFavorites())
+							SaveDropdownFavorites()
 							if Entry.StarTween then Entry.StarTween:Cancel() end
 							Entry.StarScale.Scale = 0.8
 							Entry.StarTween = TweenService:Create(
