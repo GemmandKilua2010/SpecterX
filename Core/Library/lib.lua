@@ -424,6 +424,100 @@ end
 local DropdownFavorites = {}
 local LegacyDropdownFavorites
 
+local function NormalizeFavoriteOptions(Values)
+    if type(Values) ~= "table" then return nil end
+    local Result = {}
+    for Key, Value in pairs(Values) do
+        if type(Key) == "number" and type(Value) == "string" and Value ~= "" then
+            Result[Value] = true
+        elseif type(Key) == "string" and Value == true then
+            Result[Key] = true
+        end
+    end
+    return next(Result) and Result or nil
+end
+
+local function ReadDropdownFavorites(Data)
+    if type(Data) ~= "table" then return end
+
+    if Data.Version == 2 and type(Data.Hubs) == "table" then
+        for HubName, Tabs in pairs(Data.Hubs) do
+            if type(HubName) == "string" and type(Tabs) == "table" then
+                for TabName, Groups in pairs(Tabs) do
+                    if type(TabName) == "string" and type(Groups) == "table" then
+                        for _, GroupName in ipairs({"Flags", "Names"}) do
+                            local Group = Groups[GroupName]
+                            if type(Group) == "table" then
+                                for DropdownName, Values in pairs(Group) do
+                                    if type(DropdownName) == "string" then
+                                        local Favorites = NormalizeFavoriteOptions(Values)
+                                        if Favorites then
+                                            DropdownFavorites[HubName] = DropdownFavorites[HubName] or {}
+                                            local HubFavorites = DropdownFavorites[HubName]
+                                            HubFavorites[TabName] = HubFavorites[TabName] or {}
+                                            HubFavorites[TabName][GroupName] = HubFavorites[TabName][GroupName] or {}
+                                            HubFavorites[TabName][GroupName][DropdownName] = Favorites
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return
+    end
+
+    for Key, Values in pairs(Data) do
+        if type(Key) == "string" then
+            local HubName, TabName, Kind, Name, Index =
+                Key:match("^(.*)/([^/]+)/(%a+):(.+)#(%d+)$")
+            local Favorites = NormalizeFavoriteOptions(Values)
+            if HubName and HubName ~= "" and (Kind == "flag" or Kind == "name") and Favorites then
+                local GroupName = Kind == "flag" and "Flags" or "Names"
+                local DropdownName = Name .. (tonumber(Index) == 1 and "" or "#" .. Index)
+                DropdownFavorites[HubName] = DropdownFavorites[HubName] or {}
+                local HubFavorites = DropdownFavorites[HubName]
+                HubFavorites[TabName] = HubFavorites[TabName] or {}
+                HubFavorites[TabName][GroupName] = HubFavorites[TabName][GroupName] or {}
+                HubFavorites[TabName][GroupName][DropdownName] = Favorites
+            end
+        end
+    end
+end
+
+local function SerializeDropdownFavorites()
+    local Data = {Version = 2, Hubs = {}}
+    for HubName, Tabs in pairs(DropdownFavorites) do
+        for TabName, Groups in pairs(Tabs) do
+            for _, GroupName in ipairs({"Flags", "Names"}) do
+                local Group = Groups[GroupName]
+                if type(Group) == "table" then
+                    for DropdownName, Favorites in pairs(Group) do
+                        local Names = {}
+                        for Name, Enabled in pairs(Favorites) do
+                            if type(Name) == "string" and Enabled == true then
+                                Names[#Names + 1] = Name
+                            end
+                        end
+                        if #Names > 0 then
+                            table.sort(Names)
+                            Data.Hubs[HubName] = Data.Hubs[HubName] or {}
+                            local HubData = Data.Hubs[HubName]
+                            HubData[TabName] = HubData[TabName] or {}
+                            local TabData = HubData[TabName]
+                            TabData[GroupName] = TabData[GroupName] or {}
+                            TabData[GroupName][DropdownName] = Names
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return Data
+end
+
 local SetProps, SetChildren, InsertTheme, Create do
 	InsertTheme = function(Instance, Type)
 		local Entry = {Instance = Instance, Type = Type}
@@ -562,26 +656,14 @@ local SetProps, SetChildren, InsertTheme, Create do
     Library.DefaultSettings = table.clone(Library.Save)
 
 	pcall(LoadSettings)
-    local HasFavoritesFile = Hub:FileExists(DropdownFavoritesPath)
     local SavedFavorites = JsonFiles.Read(DropdownFavoritesPath)
-    if not HasFavoritesFile then
-        SavedFavorites = LegacyDropdownFavorites
+    if SavedFavorites then
+        ReadDropdownFavorites(SavedFavorites)
+    else
+        ReadDropdownFavorites(LegacyDropdownFavorites)
     end
-    if type(SavedFavorites) == "table" then
-        for Key, Entries in pairs(SavedFavorites) do
-            if type(Key) == "string" and type(Entries) == "table" then
-                local Favorites = {}
-                for Name, Enabled in pairs(Entries) do
-                    if type(Name) == "string" and Enabled == true then
-                        Favorites[Name] = true
-                    end
-                end
-                if next(Favorites) then DropdownFavorites[Key] = Favorites end
-            end
-        end
-    end
-    if not HasFavoritesFile then
-        JsonFiles.Write(DropdownFavoritesPath, DropdownFavorites)
+    if not SavedFavorites or SavedFavorites.Version ~= 2 then
+        JsonFiles.Write(DropdownFavoritesPath, SerializeDropdownFavorites())
     end
     EnsureSoundPreset(Library.Save.SoundId)
 	Draggable = Library.Save.Draggable ~= false
@@ -5352,15 +5434,23 @@ function Library:MakeWindow(Configs)
 			local Callback = Funcs:GetCallback(Configs, 4)
 			local Flag = Configs[5] or Configs.Flag or false
 			local FavoriteEnabled = Configs.Favorite == true
-			local FavoriteStorageKey, FavoriteEntries
+			local FavoriteGroup, FavoriteIdentity, FavoriteEntries
 			if FavoriteEnabled then
-				local FavoriteIdentity = type(Flag) == "string" and Flag ~= ""
-					and ("flag:" .. Flag) or ("name:" .. tostring(DName))
-				local BaseKey = WTitle .. "/" .. FavoriteTabKey .. "/" .. FavoriteIdentity
-				local Number = (FavoriteDropdownCounts[BaseKey] or 0) + 1
-				FavoriteDropdownCounts[BaseKey] = Number
-				FavoriteStorageKey = BaseKey .. "#" .. Number
-				local Saved = DropdownFavorites[FavoriteStorageKey]
+				local HasFlag = type(Flag) == "string" and Flag ~= ""
+				local GroupName = HasFlag and "Flags" or "Names"
+				local BaseIdentity = HasFlag and Flag
+					or tostring(Configs.FavoriteKey or Configs[1] or Configs.Name or Configs.Title or DName)
+				local CountKey = GroupName .. "/" .. BaseIdentity
+				local Number = (FavoriteDropdownCounts[CountKey] or 0) + 1
+				FavoriteDropdownCounts[CountKey] = Number
+				FavoriteIdentity = BaseIdentity .. (Number == 1 and "" or "#" .. Number)
+				DropdownFavorites[WTitle] = DropdownFavorites[WTitle] or {}
+				local HubFavorites = DropdownFavorites[WTitle]
+				HubFavorites[FavoriteTabKey] = HubFavorites[FavoriteTabKey] or {}
+				local TabFavorites = HubFavorites[FavoriteTabKey]
+				TabFavorites[GroupName] = TabFavorites[GroupName] or {}
+				FavoriteGroup = TabFavorites[GroupName]
+				local Saved = FavoriteGroup[FavoriteIdentity]
 				FavoriteEntries = type(Saved) == "table" and table.clone(Saved) or {}
 			end
 			local DropdownConnections = {}
@@ -6150,10 +6240,10 @@ function Library:MakeWindow(Configs)
 							if Options[Name] ~= Entry then return end
 							Entry.Favorite = not Entry.Favorite
 							FavoriteEntries[Name] = Entry.Favorite or nil
-							DropdownFavorites[FavoriteStorageKey] =
+							FavoriteGroup[FavoriteIdentity] =
 								next(FavoriteEntries) and FavoriteEntries or nil
 							AnimateFavoriteOrder(Entry)
-							JsonFiles.Write(DropdownFavoritesPath, DropdownFavorites)
+							JsonFiles.Write(DropdownFavoritesPath, SerializeDropdownFavorites())
 							if Entry.StarTween then Entry.StarTween:Cancel() end
 							Entry.StarScale.Scale = 0.8
 							Entry.StarTween = TweenService:Create(
