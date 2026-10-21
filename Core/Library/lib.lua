@@ -5875,7 +5875,7 @@ function Library:MakeWindow(Configs)
 					Entry.Holder.LayoutOrder = Entry.Favorite and Entry.SortIndex - 100000000 or Entry.SortIndex
 					if Entry.StarIcon then
 						local Color = Entry.Favorite and Theme["Color Theme"] or Theme["Color Dark Text"]
-						local Transparency = Entry.Favorite and 0 or 0.5
+						local Transparency = Entry.Favorite and 0 or (Entry.StarHovered and 0.18 or 0.5)
 						if Entry.ColorTween then
 							Entry.ColorTween:Cancel()
 							Entry.ColorTween = nil
@@ -6255,7 +6255,7 @@ function Library:MakeWindow(Configs)
 
 					if FavoriteEnabled then
 						local StarButton = Create("ImageButton", OptionButton, {
-							Size = UDim2.fromOffset(22, 21),
+							Size = UDim2.fromOffset(26, 21),
 							Position = UDim2.new(1, 0, 0.5, 0),
 							AnchorPoint = Vector2.new(1, 0.5),
 							BackgroundTransparency = 1,
@@ -6265,7 +6265,7 @@ function Library:MakeWindow(Configs)
 							ZIndex = OptionButton.ZIndex + 1
 						})
 						local StarIcon = Create("ImageLabel", StarButton, {
-							Size = UDim2.fromOffset(10, 10),
+							Size = UDim2.fromOffset(12, 12),
 							Position = UDim2.fromScale(0.5, 0.5),
 							AnchorPoint = Vector2.new(0.5, 0.5),
 							BackgroundTransparency = 1,
@@ -6276,6 +6276,29 @@ function Library:MakeWindow(Configs)
 						Entry.StarButton = StarButton
 						Entry.StarIcon = StarIcon
 						Entry.StarScale = Create("UIScale", StarIcon, {Scale = 1})
+						Entry.StarHovered = false
+
+						local function TweenStarScale(Scale, Duration, EasingStyle)
+							if Entry.StarTween then Entry.StarTween:Cancel() end
+							Entry.StarTween = TweenService:Create(
+								Entry.StarScale,
+								TweenInfo.new(Duration, EasingStyle, Enum.EasingDirection.Out),
+								{Scale = Scale}
+							)
+							Entry.StarTween:Play()
+						end
+
+						TrackDropdownConnection(StarButton.MouseEnter:Connect(function()
+							Entry.StarHovered = true
+							TweenStarScale(1.18, 0.16, Enum.EasingStyle.Quad)
+							UpdateFavoriteVisual(Entry, true)
+						end))
+						TrackDropdownConnection(StarButton.MouseLeave:Connect(function()
+							Entry.StarHovered = false
+							TweenStarScale(1, 0.16, Enum.EasingStyle.Quad)
+							UpdateFavoriteVisual(Entry, true)
+						end))
+
 						UpdateFavoriteVisual(Entry)
 						StarButton.Activated:Connect(function()
 							if Options[Name] ~= Entry then return end
@@ -6286,13 +6309,8 @@ function Library:MakeWindow(Configs)
 							AnimateFavoriteOrder(Entry)
 							SaveDropdownFavorites()
 							if Entry.StarTween then Entry.StarTween:Cancel() end
-							Entry.StarScale.Scale = 0.8
-							Entry.StarTween = TweenService:Create(
-								Entry.StarScale,
-								TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-								{Scale = 1}
-							)
-							Entry.StarTween:Play()
+							Entry.StarScale.Scale = 0.88
+							TweenStarScale(Entry.StarHovered and 1.18 or 1, 0.2, Enum.EasingStyle.Back)
 							PlayUISound()
 						end)
 					end
