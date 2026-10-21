@@ -6019,7 +6019,7 @@ function Library:MakeWindow(Configs)
 
 					local OptioneName = InsertTheme(Create("TextLabel", OptionButton, {
 						Size = UDim2.new(1, FavoriteEnabled and -36 or 0, 1, 0),
-						TextTruncate = Enum.TextTruncate.AtEnd,
+						TextTruncate = FavoriteEnabled and Enum.TextTruncate.AtEnd or Enum.TextTruncate.None,
 						Position = UDim2.new(0, 10),
 						Text = TranslateText(Name),
 						TextColor3 = Theme["Color Text"],
