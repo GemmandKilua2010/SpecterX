@@ -5761,12 +5761,24 @@ function Library:MakeWindow(Configs)
 					for Index, Entry in ipairs(Visible) do
 						if Entry.MoveTween then Entry.MoveTween:Cancel() end
 						local Row = Entry.nodes[1]
-						local Offset = Row.Position.Y.Offset + (PreviousPositions[Entry] - Index) * 25
-						if Offset ~= 0 then
+						local OldY = (PreviousPositions[Entry] - 1) * 25
+						local NewY = (Index - 1) * 25
+						local ViewTop = ScrollFrame.CanvasPosition.Y
+						local ViewBottom = ViewTop + ScrollFrame.AbsoluteSize.Y
+						local InView = (OldY + 21 >= ViewTop and OldY <= ViewBottom)
+							or (NewY + 21 >= ViewTop and NewY <= ViewBottom)
+						local Offset = Row.Position.Y.Offset + OldY - NewY
+						if InView and Offset ~= 0 then
 							Row.Position = UDim2.fromOffset(0, Offset)
 							local Tween = TweenService:Create(Row, FavoriteTweenInfo, {Position = UDim2.fromOffset(0, 0)})
 							Entry.MoveTween = Tween
+							Tween.Completed:Once(function()
+								if Entry.MoveTween == Tween then Entry.MoveTween = nil end
+							end)
 							Tween:Play()
+						else
+							Row.Position = UDim2.fromOffset(0, 0)
+							Entry.MoveTween = nil
 						end
 					end
 				end
@@ -6104,6 +6116,10 @@ function Library:MakeWindow(Configs)
 							Library.Save.DropdownFavorites[FavoriteStorageKey] =
 								next(FavoriteEntries) and FavoriteEntries or nil
 							AnimateFavoriteOrder()
+							StarButton.TextSize = 13
+							TweenService:Create(StarButton, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+								TextSize = 16
+							}):Play()
 							QueueSettingsSave()
 							PlayUISound()
 						end)
