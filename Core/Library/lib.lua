@@ -5870,26 +5870,32 @@ function Library:MakeWindow(Configs)
 				local NextOptionOrder = 0
 
 				local FavoriteTweenInfo = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+				local FavoriteGold = Color3.fromRGB(255, 197, 74)
+				local FavoriteGoldHover = Color3.fromRGB(255, 225, 145)
+				local FavoriteColorTweenInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 				local function UpdateFavoriteVisual(Entry, AnimateColor)
 					if not FavoriteEnabled then return end
 					Entry.Holder.LayoutOrder = Entry.Favorite and Entry.SortIndex - 100000000 or Entry.SortIndex
 					if Entry.StarIcon then
-						local Color = Entry.Favorite and Theme["Color Theme"] or Theme["Color Dark Text"]
+						local Color = Entry.Favorite and (Entry.StarHovered and FavoriteGoldHover or FavoriteGold) or Theme["Color Dark Text"]
 						local Transparency = Entry.Favorite and 0 or (Entry.StarHovered and 0.18 or 0.5)
-						if Entry.ColorTween then
-							Entry.ColorTween:Cancel()
-							Entry.ColorTween = nil
-						end
+						local LabelColor = Entry.Favorite and Theme["Color Text"]:Lerp(FavoriteGold, 0.4) or Theme["Color Text"]
+						if Entry.ColorTween then Entry.ColorTween:Cancel() end
+						if Entry.LabelTween then Entry.LabelTween:Cancel() end
 						if AnimateColor then
-							Entry.ColorTween = TweenService:Create(
-								Entry.StarIcon,
-								TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-								{ImageColor3 = Color, ImageTransparency = Transparency}
-							)
+							Entry.ColorTween = TweenService:Create(Entry.StarIcon, FavoriteColorTweenInfo, {
+								ImageColor3 = Color,
+								ImageTransparency = Transparency
+							})
+							Entry.LabelTween = TweenService:Create(Entry.nodes[3], FavoriteColorTweenInfo, {
+								TextColor3 = LabelColor
+							})
 							Entry.ColorTween:Play()
+							Entry.LabelTween:Play()
 						else
 							Entry.StarIcon.ImageColor3 = Color
 							Entry.StarIcon.ImageTransparency = Transparency
+							Entry.nodes[3].TextColor3 = LabelColor
 						end
 					end
 				end
@@ -6341,6 +6347,7 @@ function Library:MakeWindow(Configs)
 						if Options[Name].MoveTween then Options[Name].MoveTween:Cancel() end
 						if Options[Name].StarTween then Options[Name].StarTween:Cancel() end
 						if Options[Name].ColorTween then Options[Name].ColorTween:Cancel() end
+						if Options[Name].LabelTween then Options[Name].LabelTween:Cancel() end
 						(Options[Name].Holder or Options[Name].nodes[1]):Destroy()
 						table.clear(Options[Name])
 						Options[Name] = nil
@@ -6447,6 +6454,7 @@ function Library:MakeWindow(Configs)
 							if Entry.MoveTween then Entry.MoveTween:Cancel() end
 							if Entry.StarTween then Entry.StarTween:Cancel() end
 							if Entry.ColorTween then Entry.ColorTween:Cancel() end
+							if Entry.LabelTween then Entry.LabelTween:Cancel() end
 						end
 					end
 					DropdownSearchListeners[self] = nil
