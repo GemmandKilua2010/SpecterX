@@ -384,6 +384,7 @@ Library.Save.DropdownSearch = DefaultDropdownSearch
 Library.Save.DropdownPrefixOnly = DefaultDropdownPrefixOnly
 Library.Save.DropdownCloseOnSelect = DefaultDropdownCloseOnSelect
 Library.Save.DropdownMaxVisibleOptions = DefaultDropdownMaxVisibleOptions
+Library.Save.DropdownFavorites = {}
 
 Library.Save.Theme = RootTheme
 Library.Save.Language = assert(RootConfig.Language.Default, "Config.Language.Default is required.")
@@ -508,6 +509,21 @@ local SetProps, SetChildren, InsertTheme, Create do
         end
         for _, Key in ipairs({"Draggable", "Resizable", "TabResizable", "SoundEnabled", "DropdownSearch", "DropdownPrefixOnly", "DropdownCloseOnSelect", "SectionIndicator", "ShowFloatingMinimizeButton", "KeybindIcon", "KeybindHighlight", "KeybindRightClick", "UnlockCursorOnOpen", "CameraWithRightMouseButton", "UnlockCursorWhenMinimized", "SavePosition", "StartupGreetingDismissed"}) do
             if type(Decode[Key]) == "boolean" then Accept(Key, Decode[Key]) end
+        end
+        if type(Decode.DropdownFavorites) == "table" then
+            local SavedFavorites = {}
+            for Key, Entries in pairs(Decode.DropdownFavorites) do
+                if type(Key) == "string" and type(Entries) == "table" then
+                    local Favorites = {}
+                    for Name, Enabled in pairs(Entries) do
+                        if type(Name) == "string" and Enabled == true then
+                            Favorites[Name] = true
+                        end
+                    end
+                    if next(Favorites) then SavedFavorites[Key] = Favorites end
+                end
+            end
+            Accept("DropdownFavorites", SavedFavorites)
         end
         if type(Decode.Positions) == "table" then
             local Positions = {}
@@ -4578,6 +4594,7 @@ function Library:MakeWindow(Configs)
 		Configs = type(Configs) == "table" and Configs or {}
 		local Hidden = Configs.Hidden == true
 		local TName = TranslateText(tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Tab))
+		local FavoriteTabKey = tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Tab)
 		local TIcon = Configs[2] or Configs.Icon or ""
 		local TabSelect, LabelTitle, LabelIcon, Selected
 
@@ -4658,6 +4675,7 @@ function Library:MakeWindow(Configs)
 		Container.Visible = InitiallySelected
 		
 		local Tab = {}
+		local FavoriteDropdownCounts = {}
 		if Hidden then
 			local Locked = Configs.Locked == true
 			local LockedMessage = type(Configs.LockedMessage) == "string" and Configs.LockedMessage or LibraryConfig.LockedMessage
@@ -5321,6 +5339,18 @@ function Library:MakeWindow(Configs)
 			local OnSearch = Configs.OnSearch
 			local Callback = Funcs:GetCallback(Configs, 4)
 			local Flag = Configs[5] or Configs.Flag or false
+			local FavoriteEnabled = Configs.Favorite == true
+			local FavoriteStorageKey, FavoriteEntries
+			if FavoriteEnabled then
+				local FavoriteIdentity = type(Flag) == "string" and Flag ~= ""
+					and ("flag:" .. Flag) or ("name:" .. tostring(DName))
+				local BaseKey = WTitle .. "/" .. FavoriteTabKey .. "/" .. FavoriteIdentity
+				local Number = (FavoriteDropdownCounts[BaseKey] or 0) + 1
+				FavoriteDropdownCounts[BaseKey] = Number
+				FavoriteStorageKey = BaseKey .. "#" .. Number
+				local Saved = Library.Save.DropdownFavorites[FavoriteStorageKey]
+				FavoriteEntries = type(Saved) == "table" and table.clone(Saved) or {}
+			end
 			local DropdownConnections = {}
 
 			local function TrackDropdownConnection(ConnectionObject)
@@ -5542,6 +5572,7 @@ function Library:MakeWindow(Configs)
 					PaddingBottom = UDim.new(0, 5)
 				}),
 				Create("UIListLayout", {
+					SortOrder = Enum.SortOrder.LayoutOrder,
 					Padding = UDim.new(0, 4)
 				})
 			}), "ScrollBar")
@@ -5619,6 +5650,7 @@ function Library:MakeWindow(Configs)
 					CreateTween({DropFrame, "Size", UDim2.new(0, 152, 0, 0), AnimationDropdown, true})
 					NoClickFrame.Visible = false
 				else
+					if FavoriteEnabled then ScrollFrame.CanvasPosition = Vector2.new(0, 0) end
 					CalculatePos()
 					NoClickFrame.Visible = true
 					Arrow.Image = "rbxassetid://10709790948"
@@ -5692,6 +5724,16 @@ function Library:MakeWindow(Configs)
 				end
 
 				local Options = {}
+				local NextOptionOrder = 0
+
+				local function UpdateFavoriteVisual(Entry)
+					if not FavoriteEnabled then return end
+					Entry.nodes[1].LayoutOrder = Entry.Favorite and Entry.SortIndex - 100000000 or Entry.SortIndex
+					if Entry.StarButton then
+						Entry.StarButton.Text = Entry.Favorite and "★" or "☆"
+						Entry.StarButton.TextColor3 = Entry.Favorite and Theme["Color Theme"] or Theme["Color Dark Text"]
+					end
+				end
 
 				if MultiSelect then
 					Selected = {}
@@ -5941,11 +5983,14 @@ function Library:MakeWindow(Configs)
 						return
 					end
 
+					NextOptionOrder += 1
 					Options[Name] = {
 						index = Index,
 						Value = Value,
 						Name = Name,
-						Stats = false
+						Stats = false,
+						SortIndex = NextOptionOrder,
+						Favorite = FavoriteEnabled and FavoriteEntries[Name] == true or false
 					}
 
 					if MultiSelect then
@@ -5973,7 +6018,8 @@ function Library:MakeWindow(Configs)
 					Make("Corner", IsSelected, UDim.new(0.5, 0))
 
 					local OptioneName = InsertTheme(Create("TextLabel", OptionButton, {
-						Size = UDim2.new(1, 0, 1, 0),
+						Size = UDim2.new(1, FavoriteEnabled and -36 or 0, 1, 0),
+						TextTruncate = Enum.TextTruncate.AtEnd,
 						Position = UDim2.new(0, 10),
 						Text = TranslateText(Name),
 						TextColor3 = Theme["Color Text"],
@@ -5983,11 +6029,38 @@ function Library:MakeWindow(Configs)
 						TextTransparency = 0.4
 					}), "Text")
 
-					Options[Name].nodes = {
+					local Entry = Options[Name]
+					Entry.nodes = {
 						OptionButton,
 						IsSelected,
 						OptioneName
 					}
+
+					if FavoriteEnabled then
+						local StarButton = Create("TextButton", OptionButton, {
+							Size = UDim2.fromOffset(24, 21),
+							Position = UDim2.new(1, 0, 0.5, 0),
+							AnchorPoint = Vector2.new(1, 0.5),
+							BackgroundTransparency = 1,
+							BorderSizePixel = 0,
+							AutoButtonColor = false,
+							Font = Enum.Font.GothamBold,
+							TextSize = 19,
+							ZIndex = OptionButton.ZIndex + 1
+						})
+						Entry.StarButton = StarButton
+						UpdateFavoriteVisual(Entry)
+						StarButton.Activated:Connect(function()
+							if Options[Name] ~= Entry then return end
+							Entry.Favorite = not Entry.Favorite
+							FavoriteEntries[Name] = Entry.Favorite or nil
+							Library.Save.DropdownFavorites[FavoriteStorageKey] =
+								next(FavoriteEntries) and FavoriteEntries or nil
+							UpdateFavoriteVisual(Entry)
+							QueueSettingsSave()
+							PlayUISound()
+						end)
+					end
 
 					if type(OptionRenderer) == "function" then
 						OptionRenderer(Value, OptionButton, OptioneName, IsSelected)
@@ -6071,6 +6144,14 @@ function Library:MakeWindow(Configs)
 				TrackDropdownConnection(SearchInput:GetPropertyChangedSignal("Text"):Connect(UpdateSearch))
 
 				local Dropdown = {}
+
+				if FavoriteEnabled then
+					TrackDropdownConnection(Connection.ThemeChanged:Connect(function()
+						for _, Entry in pairs(Options) do
+							UpdateFavoriteVisual(Entry)
+						end
+					end))
+				end
 
 				TrackDropdownConnection(Connection.LanguageChanged:Connect(function()
 					for _, Option in pairs(Options) do
