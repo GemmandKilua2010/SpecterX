@@ -214,6 +214,7 @@ local ScreenPadding = math.max(0, ConfigNumber(LibraryConfig, "ScreenPadding"))
 local SettingsFolder = assert(LibraryConfig.SettingsFolder, "Config.Library.SettingsFolder is required.")
 local SettingsFile = assert(LibraryConfig.SettingsFile, "Config.Library.SettingsFile is required.")
 local SettingsPath = SettingsFolder .. "/" .. SettingsFile
+local DropdownFavoritesPath = "Library/Dropdown/favorites.json"
 local DefaultKeybind = assert(GetKeyCode(LibraryConfig.Keybind), "Config.Library.Keybind is invalid.").Name
 local DefaultTransparency = math.clamp(ConfigNumber(LibraryConfig, "Transparency"), 0, 100)
 local DefaultMinimizedWidth = math.clamp(ConfigNumber(LibraryConfig, "MinimizedWidth"), 160, 320)
@@ -384,7 +385,6 @@ Library.Save.DropdownSearch = DefaultDropdownSearch
 Library.Save.DropdownPrefixOnly = DefaultDropdownPrefixOnly
 Library.Save.DropdownCloseOnSelect = DefaultDropdownCloseOnSelect
 Library.Save.DropdownMaxVisibleOptions = DefaultDropdownMaxVisibleOptions
-Library.Save.DropdownFavorites = {}
 
 Library.Save.Theme = RootTheme
 Library.Save.Language = assert(RootConfig.Language.Default, "Config.Language.Default is required.")
@@ -420,6 +420,9 @@ function JsonFiles.Write(Path, Data)
     if not Success then return false end
     return Hub:CreateFile(Path, Encoded) == true, Encoded
 end
+
+local DropdownFavorites = {}
+local LegacyDropdownFavorites
 
 local SetProps, SetChildren, InsertTheme, Create do
 	InsertTheme = function(Instance, Type)
@@ -511,19 +514,7 @@ local SetProps, SetChildren, InsertTheme, Create do
             if type(Decode[Key]) == "boolean" then Accept(Key, Decode[Key]) end
         end
         if type(Decode.DropdownFavorites) == "table" then
-            local SavedFavorites = {}
-            for Key, Entries in pairs(Decode.DropdownFavorites) do
-                if type(Key) == "string" and type(Entries) == "table" then
-                    local Favorites = {}
-                    for Name, Enabled in pairs(Entries) do
-                        if type(Name) == "string" and Enabled == true then
-                            Favorites[Name] = true
-                        end
-                    end
-                    if next(Favorites) then SavedFavorites[Key] = Favorites end
-                end
-            end
-            Accept("DropdownFavorites", SavedFavorites)
+            LegacyDropdownFavorites = Decode.DropdownFavorites
         end
         if type(Decode.Positions) == "table" then
             local Positions = {}
@@ -571,6 +562,27 @@ local SetProps, SetChildren, InsertTheme, Create do
     Library.DefaultSettings = table.clone(Library.Save)
 
 	pcall(LoadSettings)
+    local HasFavoritesFile = Hub:FileExists(DropdownFavoritesPath)
+    local SavedFavorites = JsonFiles.Read(DropdownFavoritesPath)
+    if not HasFavoritesFile then
+        SavedFavorites = LegacyDropdownFavorites
+    end
+    if type(SavedFavorites) == "table" then
+        for Key, Entries in pairs(SavedFavorites) do
+            if type(Key) == "string" and type(Entries) == "table" then
+                local Favorites = {}
+                for Name, Enabled in pairs(Entries) do
+                    if type(Name) == "string" and Enabled == true then
+                        Favorites[Name] = true
+                    end
+                end
+                if next(Favorites) then DropdownFavorites[Key] = Favorites end
+            end
+        end
+    end
+    if not HasFavoritesFile then
+        JsonFiles.Write(DropdownFavoritesPath, DropdownFavorites)
+    end
     EnsureSoundPreset(Library.Save.SoundId)
 	Draggable = Library.Save.Draggable ~= false
 	Resizable = Library.Save.Resizable ~= false
@@ -5348,7 +5360,7 @@ function Library:MakeWindow(Configs)
 				local Number = (FavoriteDropdownCounts[BaseKey] or 0) + 1
 				FavoriteDropdownCounts[BaseKey] = Number
 				FavoriteStorageKey = BaseKey .. "#" .. Number
-				local Saved = Library.Save.DropdownFavorites[FavoriteStorageKey]
+				local Saved = DropdownFavorites[FavoriteStorageKey]
 				FavoriteEntries = type(Saved) == "table" and table.clone(Saved) or {}
 			end
 			local DropdownConnections = {}
@@ -5727,16 +5739,31 @@ function Library:MakeWindow(Configs)
 				local NextOptionOrder = 0
 
 				local FavoriteTweenInfo = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-				local function UpdateFavoriteVisual(Entry)
+				local function UpdateFavoriteVisual(Entry, AnimateColor)
 					if not FavoriteEnabled then return end
 					Entry.Holder.LayoutOrder = Entry.Favorite and Entry.SortIndex - 100000000 or Entry.SortIndex
 					if Entry.StarIcon then
-						Entry.StarIcon.ImageColor3 = Entry.Favorite and Theme["Color Theme"] or Theme["Color Dark Text"]
-						Entry.StarIcon.ImageTransparency = Entry.Favorite and 0 or 0.5
+						local Color = Entry.Favorite and Theme["Color Theme"] or Theme["Color Dark Text"]
+						local Transparency = Entry.Favorite and 0 or 0.5
+						if Entry.ColorTween then
+							Entry.ColorTween:Cancel()
+							Entry.ColorTween = nil
+						end
+						if AnimateColor then
+							Entry.ColorTween = TweenService:Create(
+								Entry.StarIcon,
+								TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+								{ImageColor3 = Color, ImageTransparency = Transparency}
+							)
+							Entry.ColorTween:Play()
+						else
+							Entry.StarIcon.ImageColor3 = Color
+							Entry.StarIcon.ImageTransparency = Transparency
+						end
 					end
 				end
 
-				local function AnimateFavoriteOrder()
+				local function AnimateFavoriteOrder(ChangedEntry)
 					local Visible = {}
 					local PreviousPositions = {}
 					for _, Entry in pairs(Options) do
@@ -5751,7 +5778,11 @@ function Library:MakeWindow(Configs)
 						PreviousPositions[Entry] = Index
 					end
 					for _, Entry in pairs(Options) do
-						UpdateFavoriteVisual(Entry)
+						if Entry == ChangedEntry then
+							UpdateFavoriteVisual(Entry, true)
+						else
+							Entry.Holder.LayoutOrder = Entry.Favorite and Entry.SortIndex - 100000000 or Entry.SortIndex
+						end
 					end
 					table.sort(Visible, function(A, B)
 						return A.Holder.LayoutOrder < B.Holder.LayoutOrder
@@ -6103,7 +6134,7 @@ function Library:MakeWindow(Configs)
 							ZIndex = OptionButton.ZIndex + 1
 						})
 						local StarIcon = Create("ImageLabel", StarButton, {
-							Size = UDim2.fromOffset(12, 12),
+							Size = UDim2.fromOffset(10, 10),
 							Position = UDim2.fromScale(0.5, 0.5),
 							AnchorPoint = Vector2.new(0.5, 0.5),
 							BackgroundTransparency = 1,
@@ -6119,9 +6150,10 @@ function Library:MakeWindow(Configs)
 							if Options[Name] ~= Entry then return end
 							Entry.Favorite = not Entry.Favorite
 							FavoriteEntries[Name] = Entry.Favorite or nil
-							Library.Save.DropdownFavorites[FavoriteStorageKey] =
+							DropdownFavorites[FavoriteStorageKey] =
 								next(FavoriteEntries) and FavoriteEntries or nil
-							AnimateFavoriteOrder()
+							AnimateFavoriteOrder(Entry)
+							JsonFiles.Write(DropdownFavoritesPath, DropdownFavorites)
 							if Entry.StarTween then Entry.StarTween:Cancel() end
 							Entry.StarScale.Scale = 0.8
 							Entry.StarTween = TweenService:Create(
@@ -6130,7 +6162,6 @@ function Library:MakeWindow(Configs)
 								{Scale = 1}
 							)
 							Entry.StarTween:Play()
-							QueueSettingsSave()
 							PlayUISound()
 						end)
 					end
@@ -6160,6 +6191,7 @@ function Library:MakeWindow(Configs)
 
 						if Options[Name].MoveTween then Options[Name].MoveTween:Cancel() end
 						if Options[Name].StarTween then Options[Name].StarTween:Cancel() end
+						if Options[Name].ColorTween then Options[Name].ColorTween:Cancel() end
 						(Options[Name].Holder or Options[Name].nodes[1]):Destroy()
 						table.clear(Options[Name])
 						Options[Name] = nil
@@ -6265,6 +6297,7 @@ function Library:MakeWindow(Configs)
 						for _, Entry in pairs(Options) do
 							if Entry.MoveTween then Entry.MoveTween:Cancel() end
 							if Entry.StarTween then Entry.StarTween:Cancel() end
+							if Entry.ColorTween then Entry.ColorTween:Cancel() end
 						end
 					end
 					DropdownSearchListeners[self] = nil
