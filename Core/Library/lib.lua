@@ -5730,11 +5730,9 @@ function Library:MakeWindow(Configs)
 				local function UpdateFavoriteVisual(Entry)
 					if not FavoriteEnabled then return end
 					Entry.Holder.LayoutOrder = Entry.Favorite and Entry.SortIndex - 100000000 or Entry.SortIndex
-					if Entry.StarButton then
-						local Color = Entry.Favorite and Theme["Color Theme"] or Theme["Color Dark Text"]
-						Entry.StarButton.TextColor3 = Color
-						Entry.StarButton.TextStrokeColor3 = Color
-						Entry.StarButton.TextTransparency = Entry.Favorite and 0 or 0.4
+					if Entry.StarIcon then
+						Entry.StarIcon.ImageColor3 = Entry.Favorite and Theme["Color Theme"] or Theme["Color Dark Text"]
+						Entry.StarIcon.ImageTransparency = Entry.Favorite and 0 or 0.35
 					end
 				end
 
@@ -6094,20 +6092,28 @@ function Library:MakeWindow(Configs)
 					}
 
 					if FavoriteEnabled then
-						local StarButton = Create("TextButton", OptionButton, {
+						local StarButton = Create("ImageButton", OptionButton, {
 							Size = UDim2.fromOffset(24, 21),
 							Position = UDim2.new(1, 0, 0.5, 0),
 							AnchorPoint = Vector2.new(1, 0.5),
 							BackgroundTransparency = 1,
 							BorderSizePixel = 0,
+							ImageTransparency = 1,
 							AutoButtonColor = false,
-							Font = Enum.Font.GothamBlack,
-							Text = "★",
-							TextSize = 16,
-							TextStrokeTransparency = 0.42,
 							ZIndex = OptionButton.ZIndex + 1
 						})
+						local StarIcon = Create("ImageLabel", StarButton, {
+							Size = UDim2.fromOffset(15, 15),
+							Position = UDim2.fromScale(0.5, 0.5),
+							AnchorPoint = Vector2.new(0.5, 0.5),
+							BackgroundTransparency = 1,
+							Image = Library:GetIcon("star"),
+							ScaleType = Enum.ScaleType.Fit,
+							ZIndex = StarButton.ZIndex + 1
+						})
 						Entry.StarButton = StarButton
+						Entry.StarIcon = StarIcon
+						Entry.StarScale = Create("UIScale", StarIcon, {Scale = 1})
 						UpdateFavoriteVisual(Entry)
 						StarButton.Activated:Connect(function()
 							if Options[Name] ~= Entry then return end
@@ -6116,10 +6122,14 @@ function Library:MakeWindow(Configs)
 							Library.Save.DropdownFavorites[FavoriteStorageKey] =
 								next(FavoriteEntries) and FavoriteEntries or nil
 							AnimateFavoriteOrder()
-							StarButton.TextSize = 13
-							TweenService:Create(StarButton, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-								TextSize = 16
-							}):Play()
+							if Entry.StarTween then Entry.StarTween:Cancel() end
+							Entry.StarScale.Scale = 0.8
+							Entry.StarTween = TweenService:Create(
+								Entry.StarScale,
+								TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+								{Scale = 1}
+							)
+							Entry.StarTween:Play()
 							QueueSettingsSave()
 							PlayUISound()
 						end)
@@ -6149,6 +6159,7 @@ function Library:MakeWindow(Configs)
 						end
 
 						if Options[Name].MoveTween then Options[Name].MoveTween:Cancel() end
+						if Options[Name].StarTween then Options[Name].StarTween:Cancel() end
 						(Options[Name].Holder or Options[Name].nodes[1]):Destroy()
 						table.clear(Options[Name])
 						Options[Name] = nil
@@ -6253,6 +6264,7 @@ function Library:MakeWindow(Configs)
 					if FavoriteEnabled then
 						for _, Entry in pairs(Options) do
 							if Entry.MoveTween then Entry.MoveTween:Cancel() end
+							if Entry.StarTween then Entry.StarTween:Cancel() end
 						end
 					end
 					DropdownSearchListeners[self] = nil
