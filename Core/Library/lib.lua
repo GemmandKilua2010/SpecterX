@@ -5616,7 +5616,7 @@ function Library:MakeWindow(Configs)
 				local Count = 0
 
 				for _, Frame in pairs(ScrollFrame:GetChildren()) do
-					if Frame:IsA("TextButton") then
+					if Frame:IsA(FavoriteEnabled and "Frame" or "TextButton") then
 						Count = Count + 1
 					end
 				end
@@ -5726,12 +5726,48 @@ function Library:MakeWindow(Configs)
 				local Options = {}
 				local NextOptionOrder = 0
 
+				local FavoriteTweenInfo = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 				local function UpdateFavoriteVisual(Entry)
 					if not FavoriteEnabled then return end
-					Entry.nodes[1].LayoutOrder = Entry.Favorite and Entry.SortIndex - 100000000 or Entry.SortIndex
+					Entry.Holder.LayoutOrder = Entry.Favorite and Entry.SortIndex - 100000000 or Entry.SortIndex
 					if Entry.StarButton then
-						Entry.StarButton.Text = Entry.Favorite and "★" or "☆"
-						Entry.StarButton.TextColor3 = Entry.Favorite and Theme["Color Theme"] or Theme["Color Dark Text"]
+						local Color = Entry.Favorite and Theme["Color Theme"] or Theme["Color Dark Text"]
+						Entry.StarButton.TextColor3 = Color
+						Entry.StarButton.TextStrokeColor3 = Color
+						Entry.StarButton.TextTransparency = Entry.Favorite and 0 or 0.4
+					end
+				end
+
+				local function AnimateFavoriteOrder()
+					local Visible = {}
+					local PreviousPositions = {}
+					for _, Entry in pairs(Options) do
+						if Entry.Holder.Visible then
+							Visible[#Visible + 1] = Entry
+						end
+					end
+					table.sort(Visible, function(A, B)
+						return A.Holder.LayoutOrder < B.Holder.LayoutOrder
+					end)
+					for Index, Entry in ipairs(Visible) do
+						PreviousPositions[Entry] = Index
+					end
+					for _, Entry in pairs(Options) do
+						UpdateFavoriteVisual(Entry)
+					end
+					table.sort(Visible, function(A, B)
+						return A.Holder.LayoutOrder < B.Holder.LayoutOrder
+					end)
+					for Index, Entry in ipairs(Visible) do
+						if Entry.MoveTween then Entry.MoveTween:Cancel() end
+						local Row = Entry.nodes[1]
+						local Offset = Row.Position.Y.Offset + (PreviousPositions[Entry] - Index) * 25
+						if Offset ~= 0 then
+							Row.Position = UDim2.fromOffset(0, Offset)
+							local Tween = TweenService:Create(Row, FavoriteTweenInfo, {Position = UDim2.fromOffset(0, 0)})
+							Entry.MoveTween = Tween
+							Tween:Play()
+						end
 					end
 				end
 
@@ -5852,7 +5888,7 @@ function Library:MakeWindow(Configs)
 					local Found = false
 
 					for _, Value in pairs(Options) do
-						local OptionButton = Value.nodes[1]
+						local OptionButton = Value.Holder or Value.nodes[1]
 						local OptionName = TranslateText(Value.Name)
 
 						if type(OnSearch) == "function" then
@@ -5908,7 +5944,7 @@ function Library:MakeWindow(Configs)
 
 						for _, Option in pairs(Options) do
 							if Option.nodes and Option.nodes[1] then
-								Option.nodes[1].Visible = true
+								(Option.Holder or Option.nodes[1]).Visible = true
 							end
 						end
 					end
@@ -5999,7 +6035,15 @@ function Library:MakeWindow(Configs)
 						Options[Name].Stats = Stats
 					end
 
-					local OptionButton = Make("Button", ScrollFrame, {
+					local Holder = FavoriteEnabled and Create("Frame", ScrollFrame, {
+						Size = UDim2.new(1, 0, 0, 21),
+						BackgroundTransparency = 1
+					}) or ScrollFrame
+					local OptionButton = Make("Button", Holder, FavoriteEnabled and {
+						Size = UDim2.new(1, 0, 1, 0),
+						Position = UDim2.fromOffset(0, 0),
+						AnchorPoint = Vector2.new(0, 0)
+					} or {
 						Size = UDim2.new(1, 0, 0, 21),
 						Position = UDim2.new(0, 0, 0.5),
 						AnchorPoint = Vector2.new(0, 0.5)
@@ -6030,6 +6074,7 @@ function Library:MakeWindow(Configs)
 					}), "Text")
 
 					local Entry = Options[Name]
+					Entry.Holder = FavoriteEnabled and Holder or nil
 					Entry.nodes = {
 						OptionButton,
 						IsSelected,
@@ -6044,8 +6089,10 @@ function Library:MakeWindow(Configs)
 							BackgroundTransparency = 1,
 							BorderSizePixel = 0,
 							AutoButtonColor = false,
-							Font = Enum.Font.GothamBold,
-							TextSize = 19,
+							Font = Enum.Font.GothamBlack,
+							Text = "★",
+							TextSize = 16,
+							TextStrokeTransparency = 0.42,
 							ZIndex = OptionButton.ZIndex + 1
 						})
 						Entry.StarButton = StarButton
@@ -6056,7 +6103,7 @@ function Library:MakeWindow(Configs)
 							FavoriteEntries[Name] = Entry.Favorite or nil
 							Library.Save.DropdownFavorites[FavoriteStorageKey] =
 								next(FavoriteEntries) and FavoriteEntries or nil
-							UpdateFavoriteVisual(Entry)
+							AnimateFavoriteOrder()
 							QueueSettingsSave()
 							PlayUISound()
 						end)
@@ -6085,7 +6132,8 @@ function Library:MakeWindow(Configs)
 							Selected = nil
 						end
 
-						Options[Name].nodes[1]:Destroy()
+						if Options[Name].MoveTween then Options[Name].MoveTween:Cancel() end
+						(Options[Name].Holder or Options[Name].nodes[1]):Destroy()
 						table.clear(Options[Name])
 						Options[Name] = nil
 					end
@@ -6186,6 +6234,11 @@ function Library:MakeWindow(Configs)
 				end
 
 				function Dropdown:Destroy()
+					if FavoriteEnabled then
+						for _, Entry in pairs(Options) do
+							if Entry.MoveTween then Entry.MoveTween:Cancel() end
+						end
+					end
 					DropdownSearchListeners[self] = nil
 					DropdownPrefixListeners[self] = nil
 					DropdownSizeListeners[self] = nil
