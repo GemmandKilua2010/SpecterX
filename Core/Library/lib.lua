@@ -5731,13 +5731,8 @@ function Library:MakeWindow(Configs)
 					if not FavoriteEnabled then return end
 					Entry.Holder.LayoutOrder = Entry.Favorite and Entry.SortIndex - 100000000 or Entry.SortIndex
 					if Entry.StarIcon then
-						local Accent = Theme["Color Theme"]
-						Entry.StarIcon.ImageColor3 = Entry.Favorite and Theme["Color Text"] or Theme["Color Dark Text"]
-						Entry.StarIcon.ImageTransparency = Entry.Favorite and 0 or 0.45
-						Entry.StarBadge.BackgroundColor3 = Accent
-						Entry.StarBadge.BackgroundTransparency = Entry.Favorite and 0.8 or 1
-						Entry.StarStroke.Color = Accent
-						Entry.StarStroke.Transparency = Entry.Favorite and 0.5 or 1
+						Entry.StarIcon.ImageColor3 = Entry.Favorite and Theme["Color Theme"] or Theme["Color Dark Text"]
+						Entry.StarIcon.ImageTransparency = Entry.Favorite and 0 or 0.5
 					end
 				end
 
@@ -6098,7 +6093,7 @@ function Library:MakeWindow(Configs)
 
 					if FavoriteEnabled then
 						local StarButton = Create("ImageButton", OptionButton, {
-							Size = UDim2.fromOffset(24, 21),
+							Size = UDim2.fromOffset(22, 21),
 							Position = UDim2.new(1, 0, 0.5, 0),
 							AnchorPoint = Vector2.new(1, 0.5),
 							BackgroundTransparency = 1,
@@ -6107,21 +6102,8 @@ function Library:MakeWindow(Configs)
 							AutoButtonColor = false,
 							ZIndex = OptionButton.ZIndex + 1
 						})
-						local StarBadge = Create("Frame", StarButton, {
-							Size = UDim2.fromOffset(19, 19),
-							Position = UDim2.fromScale(0.5, 0.5),
-							AnchorPoint = Vector2.new(0.5, 0.5),
-							BackgroundTransparency = 1,
-							BorderSizePixel = 0,
-							ZIndex = StarButton.ZIndex
-						})
-						Make("Corner", StarBadge, UDim.new(1, 0))
-						local StarStroke = Create("UIStroke", StarBadge, {
-							Thickness = 1,
-							Transparency = 1
-						})
 						local StarIcon = Create("ImageLabel", StarButton, {
-							Size = UDim2.fromOffset(13, 13),
+							Size = UDim2.fromOffset(12, 12),
 							Position = UDim2.fromScale(0.5, 0.5),
 							AnchorPoint = Vector2.new(0.5, 0.5),
 							BackgroundTransparency = 1,
@@ -6130,8 +6112,6 @@ function Library:MakeWindow(Configs)
 							ZIndex = StarButton.ZIndex + 1
 						})
 						Entry.StarButton = StarButton
-						Entry.StarBadge = StarBadge
-						Entry.StarStroke = StarStroke
 						Entry.StarIcon = StarIcon
 						Entry.StarScale = Create("UIScale", StarIcon, {Scale = 1})
 						UpdateFavoriteVisual(Entry)
