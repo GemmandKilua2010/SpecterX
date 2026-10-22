@@ -8953,7 +8953,7 @@ function Library:MakeWindow(Configs)
 				end
 			end
 
-			local OptionWidth = UDim2.new(1, -160)
+			local OptionWidth = UDim2.new(1, -150)
 
 			local Option, Label = ButtonFrame(
 				Container,
@@ -8988,7 +8988,7 @@ function Library:MakeWindow(Configs)
 				HexFrame = Create("Frame", Controls, {
 					Size = UDim2.new(0, 96, 1, 0),
 					BackgroundColor3 = Theme["Color Stroke"],
-					BackgroundTransparency = 0.72,
+					BackgroundTransparency = 0.82,
 					LayoutOrder = 1,
 					ClipsDescendants = true
 				})
@@ -9017,7 +9017,7 @@ function Library:MakeWindow(Configs)
 				RGBFrame = Create("Frame", Controls, {
 					Size = UDim2.new(0, 104, 1, 0),
 					BackgroundColor3 = Theme["Color Stroke"],
-					BackgroundTransparency = 0.72,
+					BackgroundTransparency = 0.82,
 					LayoutOrder = 2,
 					ClipsDescendants = true
 				})
@@ -9047,7 +9047,7 @@ function Library:MakeWindow(Configs)
 			end
 
 			local PreviewButton = Create("TextButton", Controls, {
-				Size = UDim2.fromOffset(130, 28),
+				Size = UDim2.fromOffset(120, 28),
 				BackgroundColor3 = Theme["Color Stroke"],
 				BackgroundTransparency = 0.75,
 				AutoButtonColor = false,
@@ -9105,7 +9105,7 @@ function Library:MakeWindow(Configs)
 				ZIndex = 1
 			})
 			local PickerFrame = InsertTheme(Create("Frame", PopupOverlay, {
-				Size = UDim2.new(0.84, 0, 0, 310),
+				Size = UDim2.new(0.82, 0, 0, 314),
 				Position = UDim2.fromScale(0.5, 0.5),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				BackgroundColor3 = Theme["Color Hub 2"],
@@ -9116,13 +9116,20 @@ function Library:MakeWindow(Configs)
 			}), "Hub 2")
 			Make("Corner", PickerFrame, UDim.new(0, 10))
 			Create("UISizeConstraint", PickerFrame, {
-				MinSize = Vector2.new(220, 300),
-				MaxSize = Vector2.new(380, 310)
+				MinSize = Vector2.new(240, 305),
+				MaxSize = Vector2.new(360, 314)
 			})
 			local PickerScale = Create("UIScale", PickerFrame, {Scale = 1})
+			local HeaderAccent = InsertTheme(Create("Frame", PickerFrame, {
+				Position = UDim2.fromOffset(14, 12),
+				Size = UDim2.fromOffset(3, 19),
+				BackgroundColor3 = Theme["Color Theme"],
+				BorderSizePixel = 0
+			}), "Theme")
+			Make("Corner", HeaderAccent, UDim.new(1, 0))
 			local PanelTitle = InsertTheme(Create("TextLabel", PickerFrame, {
-				Position = UDim2.fromOffset(16, 11),
-				Size = UDim2.new(1, -62, 0, 20),
+				Position = UDim2.fromOffset(25, 9),
+				Size = UDim2.new(1, -88, 0, 21),
 				BackgroundTransparency = 1,
 				Font = Enum.Font.GothamBold,
 				TextColor3 = Theme["Color Text"],
@@ -9132,8 +9139,8 @@ function Library:MakeWindow(Configs)
 				Text = TranslateText(Name)
 			}), "Text")
 			local PanelSubtitle = InsertTheme(Create("TextLabel", PickerFrame, {
-				Position = UDim2.fromOffset(16, 30),
-				Size = UDim2.new(1, -62, 0, 15),
+				Position = UDim2.fromOffset(25, 29),
+				Size = UDim2.new(1, -88, 0, 15),
 				BackgroundTransparency = 1,
 				Font = Enum.Font.Gotham,
 				TextColor3 = Theme["Color Dark Text"],
@@ -9143,18 +9150,20 @@ function Library:MakeWindow(Configs)
 				Text = Description ~= "" and TranslateText(Description) or "HSV · HEX · RGB"
 			}), "DarkText")
 			local CloseButton = InsertTheme(Create("TextButton", PickerFrame, {
-				Position = UDim2.new(1, -12, 0, 11),
+				Position = UDim2.new(1, -10, 0, 8),
 				AnchorPoint = Vector2.new(1, 0),
-				Size = UDim2.fromOffset(26, 26),
-				BackgroundTransparency = 1,
+				Size = UDim2.fromOffset(36, 36),
+				BackgroundColor3 = Theme["Color Stroke"],
+				BackgroundTransparency = 0.82,
 				AutoButtonColor = false,
 				Font = Enum.Font.GothamMedium,
 				TextColor3 = Theme["Color Text"],
-				TextTransparency = 0.2,
-				TextSize = 19,
+				TextTransparency = 0.05,
+				TextSize = 26,
 				Text = "×"
 			}), "Text")
-			BindHover(CloseButton, "TextTransparency", 0, 0.2)
+			Make("Corner", CloseButton, UDim.new(0, 8))
+			BindHover(CloseButton, "BackgroundTransparency", 0.65, 0.82)
 
 			local PickerContent = Create("Frame", PickerFrame, {
 				Size = UDim2.fromScale(1, 1),
@@ -9165,42 +9174,42 @@ function Library:MakeWindow(Configs)
 					Padding = UDim.new(0, 5)
 				}),
 				Create("UIPadding", {
-					PaddingLeft = UDim.new(0, 14),
-					PaddingRight = UDim.new(0, 14),
-					PaddingTop = UDim.new(0, 52),
-					PaddingBottom = UDim.new(0, 10)
+					PaddingLeft = UDim.new(0, 15),
+					PaddingRight = UDim.new(0, 15),
+					PaddingTop = UDim.new(0, 54),
+					PaddingBottom = UDim.new(0, 11)
 				})
 			})
 
 			local SummaryRow = InsertTheme(Create("Frame", PickerContent, {
-				Size = UDim2.new(1, 0, 0, 34),
+				Size = UDim2.new(1, 0, 0, 42),
 				BackgroundColor3 = Theme["Color Stroke"],
-				BackgroundTransparency = 0.82,
+				BackgroundTransparency = 0.86,
 				BorderSizePixel = 0,
 				LayoutOrder = 0
 			}), "Stroke")
-			Make("Corner", SummaryRow, UDim.new(0, 6))
+			Make("Corner", SummaryRow, UDim.new(0, 8))
 			local SummaryPreview = Create("Frame", SummaryRow, {
-				Size = UDim2.fromOffset(26, 26),
-				Position = UDim2.new(0, 4, 0.5, 0),
+				Size = UDim2.fromOffset(32, 32),
+				Position = UDim2.new(0, 5, 0.5, 0),
 				AnchorPoint = Vector2.new(0, 0.5),
 				BackgroundColor3 = CurrentColor,
 				BorderSizePixel = 0
 			})
-			Make("Corner", SummaryPreview, UDim.new(0, 5))
+			Make("Corner", SummaryPreview, UDim.new(0, 6))
 			local SummaryValue = InsertTheme(Create("TextLabel", SummaryRow, {
-				Position = UDim2.fromOffset(40, 2),
-				Size = UDim2.new(1, -48, 0, 17),
+				Position = UDim2.fromOffset(47, 6),
+				Size = UDim2.new(1, -55, 0, 18),
 				BackgroundTransparency = 1,
 				TextColor3 = Theme["Color Text"],
 				Font = Enum.Font.GothamBold,
-				TextSize = 12,
+				TextSize = 13,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Text = ColorToHex(CurrentColor)
 			}), "Text")
 			local SummaryRGB = InsertTheme(Create("TextLabel", SummaryRow, {
-				Position = UDim2.fromOffset(40, 18),
-				Size = UDim2.new(1, -48, 0, 12),
+				Position = UDim2.fromOffset(47, 23),
+				Size = UDim2.new(1, -55, 0, 13),
 				BackgroundTransparency = 1,
 				TextColor3 = Theme["Color Dark Text"],
 				Font = Enum.Font.GothamMedium,
@@ -9389,6 +9398,7 @@ function Library:MakeWindow(Configs)
 			TrackConnection(TrackColorConnection(Connection.ThemeChanged:Connect(function()
 				if PreviewButton.Parent then
 					PreviewButton.BackgroundColor3 = Theme["Color Stroke"]
+					CloseButton.BackgroundColor3 = Theme["Color Stroke"]
 				end
 			end)))
 
@@ -9473,7 +9483,7 @@ function Library:MakeWindow(Configs)
 					Text = ""
 				})
 				Make("Corner", Button, UDim.new(0, 6))
-				Button.BackgroundTransparency = ColorToHex(Color) == ColorToHex(CurrentColorValue) and 0 or 0.2
+				Button.BackgroundTransparency = 0
 				return Button
 			end
 
