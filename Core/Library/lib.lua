@@ -7717,7 +7717,7 @@ function Library:MakeWindow(Configs)
 			local Max = tonumber(Configs[3] or Configs.MaxValue or Configs.Max) or ControlsConfig.Slider.Max
 			if Min > Max then Min, Max = Max, Min end
 			local Step = math.abs(tonumber(Configs[4] or Configs.Increase) or ControlsConfig.Slider.Step)
-			if Step <= 0 or Step ~= Step then Step = 1 end
+			if Step <= 0 or Step ~= Step or Step == math.huge then Step = 1 end
 			local Callback = Funcs:GetCallback(Configs, 6)
 			local Flag = Configs[7] or Configs.Flag or false
 			local Default = Configs[5] or Configs.Default or ControlsConfig.Slider.Default
@@ -7725,18 +7725,21 @@ function Library:MakeWindow(Configs)
 
 			local Button, LabelFunc = ButtonFrame(Container, SName, SDesc, UDim2.new(1, -180), false)
 			local SliderHolder = Create("TextButton", Button, {
-				Size = UDim2.new(0.45, 0, 1),
-				Position = UDim2.new(1),
+				Size = UDim2.new(0.45, 0, 1, 0),
+				Position = UDim2.new(1, -8, 0, 0),
 				AnchorPoint = Vector2.new(1, 0),
 				AutoButtonColor = false,
 				Text = "",
-				BackgroundTransparency = 1
+				BackgroundTransparency = 1,
+				Active = true
 			})
 			local SliderBar = InsertTheme(Create("Frame", SliderHolder, {
 				BackgroundColor3 = Theme["Color Stroke"],
-				Size = UDim2.new(1, -20, 0, 6),
-				Position = UDim2.new(0.5, 0, 0.5),
-				AnchorPoint = Vector2.new(0.5, 0.5)
+				Size = UDim2.new(1, -62, 0, 6),
+				Position = UDim2.new(0, 8, 0.5, 0),
+				AnchorPoint = Vector2.new(0, 0.5),
+				BorderSizePixel = 0,
+				Active = true
 			}), "Stroke")Make("Corner", SliderBar)
 			local Indicator = InsertTheme(Create("Frame", SliderBar, {
 				BackgroundColor3 = Theme["Color Theme"],
@@ -7744,89 +7747,115 @@ function Library:MakeWindow(Configs)
 				BorderSizePixel = 0
 			}), "Theme")Make("Corner", Indicator)
 			local SliderIcon = Create("Frame", SliderBar, {
-				Size = UDim2.new(0, 6, 0, 12),
+				Size = UDim2.fromOffset(8, 14),
 				BackgroundColor3 = ControlColors.Light,
 				Position = UDim2.fromScale(0, 0.5),
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				BackgroundTransparency = 0.2
+				BackgroundTransparency = 0.15,
+				Active = true
 			})Make("Corner", SliderIcon)
 			local LabelVal = InsertTheme(Create("TextLabel", SliderHolder, {
-				Size = UDim2.new(0, 14, 0, 14),
+				Size = UDim2.fromOffset(48, 16),
 				AnchorPoint = Vector2.new(1, 0.5),
-				Position = UDim2.new(0, 0, 0.5),
+				Position = UDim2.new(1, 0, 0.5, 0),
 				BackgroundTransparency = 1,
 				TextColor3 = Theme["Color Text"],
-				Font = Enum.Font.FredokaOne,
-				TextSize = 12
+				Font = Enum.Font.GothamBold,
+				TextSize = 11,
+				TextXAlignment = Enum.TextXAlignment.Right
 			}), "Text")
 
 			local Value
 			local Dragging = false
-			local DragInput
+			local ActiveInput
 			local MoveConnection
 			local EndConnection
+			local FocusConnection
 			local WasScrolling
 			local Destroyed = false
+
+			local function RefreshValue()
+				if Value == nil then return end
+				local Fraction = Max == Min and 0 or math.clamp((Value - Min) / (Max - Min), 0, 1)
+				SliderIcon.Position = UDim2.fromScale(Fraction, 0.5)
+				Indicator.Size = UDim2.fromScale(Fraction, 1)
+				LabelVal.Text = tostring(Value)
+			end
+
 			local function SetValue(ValueInput, Silent, Force)
 				local Number = tonumber(ValueInput)
-				if not Number or Number ~= Number then return false end
+				if not Number or Number ~= Number or math.abs(Number) == math.huge then return false end
 				Number = math.clamp(Number, Min, Max)
-				Number = math.min(Max, Min + math.floor((Number - Min) / Step + 0.5) * Step)
+				if Number ~= Max then
+					Number = math.clamp(Min + math.floor((Number - Min) / Step + 0.5) * Step, Min, Max)
+				end
 				Number = tonumber(string.format("%.6f", Number))
 				if not Force and Value == Number then return true end
 				Value = Number
-				local Fraction = Max == Min and 0 or math.clamp((Number - Min) / (Max - Min), 0, 1)
-				SliderIcon.Position = UDim2.fromScale(Fraction, 0.5)
-				Indicator.Size = UDim2.fromScale(Fraction, 1)
-				LabelVal.Text = tostring(Number)
+				RefreshValue()
 				SetFlag(Flag, Number)
 				if not Silent then Funcs:FireCallback(Callback, Number) end
 				return true
 			end
+
 			local function UpdateFromPosition(ScreenX)
 				local Width = SliderBar.AbsoluteSize.X
 				if Width <= 0 then return end
 				local Fraction = math.clamp((ScreenX - SliderBar.AbsolutePosition.X) / Width, 0, 1)
-				SetValue(Min + (Max - Min) * Fraction, false)
+				SetValue(Fraction == 1 and Max or Min + (Max - Min) * Fraction, false)
 			end
+
 			local function FinishDrag()
 				if not Dragging then return end
 				Dragging = false
-				DragInput = nil
+				ActiveInput = nil
 				if MoveConnection then MoveConnection:Disconnect() MoveConnection = nil end
 				if EndConnection then EndConnection:Disconnect() EndConnection = nil end
+				if FocusConnection then FocusConnection:Disconnect() FocusConnection = nil end
 				Container.ScrollingEnabled = WasScrolling
-				SliderIcon.BackgroundTransparency = 0.2
+				SliderIcon.BackgroundTransparency = 0.15
+				SliderIcon.Size = UDim2.fromOffset(8, 14)
+			end
+
+			local function BeginDrag(Input)
+				if Destroyed or Dragging or not Button.Interactable or SliderBar.AbsoluteSize.X <= 0 then return end
+				local InputType = Input.UserInputType
+				if InputType ~= Enum.UserInputType.MouseButton1 and InputType ~= Enum.UserInputType.Touch then return end
+				Dragging = true
+				ActiveInput = Input
+				WasScrolling = Container.ScrollingEnabled
+				Container.ScrollingEnabled = false
+				SliderIcon.BackgroundTransparency = 0
+				SliderIcon.Size = UDim2.fromOffset(10, 16)
+				UpdateFromPosition(Input.Position.X)
+				MoveConnection = UserInputService.InputChanged:Connect(function(Changed)
+					if not Dragging then return end
+					if InputType == Enum.UserInputType.Touch then
+						if Changed ~= ActiveInput then return end
+					elseif Changed.UserInputType ~= Enum.UserInputType.MouseMovement then
+						return
+					end
+					UpdateFromPosition(Changed.Position.X)
+				end)
+				EndConnection = UserInputService.InputEnded:Connect(function(Ended)
+					if InputType == Enum.UserInputType.Touch then
+						if Ended ~= ActiveInput then return end
+						UpdateFromPosition(Ended.Position.X)
+					elseif Ended.UserInputType ~= Enum.UserInputType.MouseButton1 then
+						return
+					end
+					FinishDrag()
+				end)
+				FocusConnection = UserInputService.WindowFocusReleased:Connect(FinishDrag)
 			end
 
 			local TabVisibilityConnection = Container:GetPropertyChangedSignal("Visible"):Connect(function()
 				if not Container.Visible then FinishDrag() end
 			end)
-			SliderHolder.InputBegan:Connect(function(Input)
-				if Destroyed or not Button.Interactable or Dragging then return end
-				if Input.UserInputType ~= Enum.UserInputType.MouseButton1
-					and Input.UserInputType ~= Enum.UserInputType.Touch then return end
-				Dragging = true
-				DragInput = Input.UserInputType == Enum.UserInputType.Touch and Input or nil
-				WasScrolling = Container.ScrollingEnabled
-				Container.ScrollingEnabled = false
-				SliderIcon.BackgroundTransparency = 0
-				UpdateFromPosition(Input.Position.X)
-				MoveConnection = UserInputService.InputChanged:Connect(function(Changed)
-					if DragInput then
-						if Changed == DragInput then UpdateFromPosition(Changed.Position.X) end
-					elseif Changed.UserInputType == Enum.UserInputType.MouseMovement then
-						UpdateFromPosition(Changed.Position.X)
-					end
-				end)
-			EndConnection = UserInputService.InputEnded:Connect(function(Ended)
-					if DragInput then
-						if Ended == DragInput then FinishDrag() end
-					elseif Ended.UserInputType == Enum.UserInputType.MouseButton1 then
-						FinishDrag()
-					end
-				end)
-			end)
+			SliderHolder.InputBegan:Connect(BeginDrag)
+			SliderBar.InputBegan:Connect(BeginDrag)
+			SliderIcon.InputBegan:Connect(BeginDrag)
+			SliderBar:GetPropertyChangedSignal("AbsoluteSize"):Connect(RefreshValue)
 
 			local Slider = {}
 			function Slider:Set(Val1, Val2)
@@ -7861,8 +7890,15 @@ function Library:MakeWindow(Configs)
 				TabVisibilityConnection:Disconnect()
 				Button:Destroy()
 			end
+			Button.Destroying:Connect(function()
+				FinishDrag()
+				Destroyed = true
+				if TabVisibilityConnection.Connected then TabVisibilityConnection:Disconnect() end
+			end)
 
-			SetValue(Default, false, true)
+			if not SetValue(Default, false, true) then
+				SetValue(Min, false, true)
+			end
 			ApplyLocked(Slider, Button, Configs, function(IsLocked)
 				if IsLocked then FinishDrag() end
 			end)
