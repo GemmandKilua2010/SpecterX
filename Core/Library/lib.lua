@@ -1486,12 +1486,6 @@ local function InputSurface(Frame)
 	Frame.BackgroundColor3 = InputSurfaceColor()
 	Frame.BackgroundTransparency = 0
 	InsertTheme(Frame, "InputSurface")
-	Create("UIStroke", Frame, {
-		Color = Color3.new(1, 1, 1),
-		Transparency = 0.7,
-		Thickness = 1,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	})
 	return Frame
 end
 
@@ -8280,12 +8274,6 @@ function Library:MakeWindow(Configs)
 				ClipsDescendants = true
 			}))
 			Make("Corner", Editor, UDim.new(0, 5))
-			local Outline = InsertTheme(Create("UIStroke", Editor, {
-				Color = Theme["Color Theme"],
-				Thickness = 0.65,
-				Enabled = false,
-				ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-			}), "Theme")
 
 			local Scroll = InsertTheme(Create("ScrollingFrame", Editor, {
 				Size = UDim2.new(1, -24, 1, -(EditorPadding + (MaxLength and CounterPadding or 0))),
@@ -8577,12 +8565,10 @@ function Library:MakeWindow(Configs)
 
 			Track(Input.Focused, function()
 				if Destroyed then return end
-				if not TextArea.Locked then Outline.Enabled = true end
 				Refresh()
 			end)
 			Track(Input.FocusLost, function()
 				if Destroyed then return end
-				Outline.Enabled = false
 				Scroll.ScrollingEnabled = Overflow
 				if not TextArea.Locked then Submit(false) end
 			end)
@@ -8696,7 +8682,6 @@ function Library:MakeWindow(Configs)
 
 			ApplyLocked(TextArea, Frame, Configs, function(Locked)
 				Input.TextEditable = not Locked and not ReadOnly
-				if Locked then Outline.Enabled = false end
 			end)
 			return RegisterFlagObject(Flag, TextArea, Frame)
 		end
