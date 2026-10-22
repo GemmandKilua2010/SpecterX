@@ -1471,6 +1471,26 @@ end)
 
 local TranslateText
 
+-- Muted theme surfaces avoid the washed-out white overlay on saturated themes.
+local function ComponentColor()
+	local Base = Theme["Color Hub 2"]
+	local Gray = Base.R * 0.2126 + Base.G * 0.7152 + Base.B * 0.0722
+	return Base:Lerp(Color3.new(Gray, Gray, Gray), 0.65):Lerp(Color3.new(1, 1, 1), 0.025)
+end
+
+local function PickerColors()
+	local Base = Theme["Color Hub 2"]
+	return ColorSequence.new(Base:Lerp(Color3.new(1, 1, 1), 0.015), Base:Lerp(Color3.new(0, 0, 0), 0.08))
+end
+
+local function ComponentSurface(Frame)
+	Frame.BackgroundColor3 = ComponentColor()
+	Frame.BackgroundTransparency = 0.18
+	InsertTheme(Frame, "ComponentSurface")
+	BindHover(Frame, "BackgroundTransparency", 0.18 * ButtonHoverTransparency, 0.18)
+	return Frame
+end
+
 local function ButtonFrame(Instance, Title, Description, HolderSize, Clickable)
 	local TitleL = InsertTheme(Create("TextLabel", {
 		Font = Enum.Font.GothamMedium,
@@ -1501,18 +1521,14 @@ local function ButtonFrame(Instance, Title, Description, HolderSize, Clickable)
 		RichText = true
 	}), "DescriptionText")
 
-	-- A translucent neutral surface separates controls while preserving the window gradient.
-	local Frame = Create(Clickable == false and "Frame" or "TextButton", Instance, {
+	local Frame = ComponentSurface(Create(Clickable == false and "Frame" or "TextButton", Instance, {
 		Size = UDim2.new(1, 0, 0, ElementHeight),
 		AutomaticSize = "Y",
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		BackgroundTransparency = 0.94
-	})
+	}))
 	if Clickable ~= false then
 		Frame.Text = ""
 		Frame.AutoButtonColor = false
 	end
-	BindHover(Frame, "BackgroundTransparency", 0.94 - 0.1 * (1 - ButtonHoverTransparency), 0.94)
 	Make("Corner", Frame, UDim.new(0, ElementCornerRadius))
 	
 	TitleL.LayoutOrder = 1
@@ -2083,6 +2099,10 @@ function Library:SetTheme(NewTheme)
 	for _, Val in ipairs(Library.Instances) do
 		if Val.Type == "Gradient" or Val.Type == "MainGradient" then
 			Val.Instance.Color = Theme["Color Hub 1"]
+		elseif Val.Type == "PickerGradient" then
+			Val.Instance.Color = PickerColors()
+		elseif Val.Type == "ComponentSurface" then
+			Val.Instance.BackgroundColor3 = ComponentColor()
 		elseif Val.Type == "TitleText" then
 			Val.Instance.TextColor3 = Color3.new(1, 1, 1)
 		elseif Val.Type == "DescriptionText" then
@@ -8170,12 +8190,12 @@ function Library:MakeWindow(Configs)
 				return Connection
 			end
 
-			local Frame = InsertTheme(Create("Frame", Container, {
+			local Frame = ComponentSurface(Create("Frame", Container, {
 				Size = UDim2.new(1, 0, 0, 0),
 				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundColor3 = Theme["Color Hub 2"],
 				BorderSizePixel = 0
-			}), "Frame")
+			}))
 			Make("Corner", Frame, UDim.new(0, ElementCornerRadius))
 			local Content = Create("Frame", Frame, {
 				Size = UDim2.new(1, 0, 0, 0),
@@ -9060,14 +9080,13 @@ function Library:MakeWindow(Configs)
 
 			local PreviewButton = InsertTheme(Create("TextButton", Controls, {
 				Size = UDim2.fromOffset(104, 23),
-				BackgroundColor3 = Theme["Color Hub 2"],
-				BackgroundTransparency = 0.16,
+				BackgroundColor3 = Theme["Color Stroke"],
+				BackgroundTransparency = 0,
 				AutoButtonColor = false,
 				Text = "",
 				LayoutOrder = 3
-			}), "Frame")
-			Make("Corner", PreviewButton, UDim.new(0, 5))
-			BindHover(PreviewButton, "BackgroundTransparency", 0.08, 0.16)
+			}), "Stroke")
+			Make("Corner", PreviewButton, UDim.new(0, 4))
 
 			local ColorPreview = Create("Frame", PreviewButton, {
 				Size = UDim2.fromOffset(16, 16),
@@ -9117,10 +9136,6 @@ function Library:MakeWindow(Configs)
 				ZIndex = 1
 			}), "Frame")
 			MainCorner:Clone().Parent = PopupBackdrop
-			-- Neutral charcoal keeps the picker readable without tinting its content.
-			local PickerBackground = ColorSequence.new(
-				Color3.fromRGB(35, 35, 39), Color3.fromRGB(27, 27, 30)
-			)
 			local PickerFrame = Create("Frame", PopupOverlay, {
 				Size = UDim2.new(0.82, 0, 0, 314),
 				Position = UDim2.fromScale(0.5, 0.5),
@@ -9132,10 +9147,10 @@ function Library:MakeWindow(Configs)
 				ZIndex = 2
 			})
 			Make("Corner", PickerFrame, UDim.new(0, 10))
-			Create("UIGradient", PickerFrame, {
-				Color = PickerBackground,
+			InsertTheme(Create("UIGradient", PickerFrame, {
+				Color = PickerColors(),
 				Rotation = 90
-			})
+			}), "PickerGradient")
 			Create("UISizeConstraint", PickerFrame, {
 				MinSize = Vector2.new(240, 305),
 				MaxSize = Vector2.new(360, 314)
@@ -10201,14 +10216,14 @@ function Library:MakeWindow(Configs)
 				return Theme["Color Hub 2"]:Lerp(Color3.new(0, 0, 0), IsEditable and 0.37 or 0.28)
 			end
 
-			local Holder = InsertTheme(Create("Frame", Container, {
+			local Holder = ComponentSurface(Create("Frame", Container, {
 				Name = "CodeElement",
 				ZIndex = 10,
 				Size = UDim2.new(1, 0, 0, 60),
 				BackgroundColor3 = Theme["Color Hub 2"],
 				BorderSizePixel = 0,
 				ClipsDescendants = false
-			}), "Frame")
+			}))
 			Make("Corner", Holder, UDim.new(0, ElementCornerRadius))
 
 			local Header = Create("Frame", Holder, {
