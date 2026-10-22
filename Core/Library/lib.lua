@@ -9113,7 +9113,7 @@ function Library:MakeWindow(Configs)
 				BorderSizePixel = 0,
 				Active = true,
 				ZIndex = 2
-			}), "Hub 2")
+			}), "Frame")
 			Make("Corner", PickerFrame, UDim.new(0, 10))
 			Create("UISizeConstraint", PickerFrame, {
 				MinSize = Vector2.new(240, 305),
