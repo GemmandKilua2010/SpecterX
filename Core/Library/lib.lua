@@ -2072,6 +2072,7 @@ end
 function Library:SetTheme(NewTheme)
 	if not VerifyTheme(NewTheme) then return false end
 	if Library.Save.Theme == NewTheme then return true end
+	local PreviousTheme = Theme
 	Library.Save.Theme = NewTheme
 	QueueSettingsSave()
 	Theme = Library.Themes[NewTheme]
@@ -2091,7 +2092,15 @@ function Library:SetTheme(NewTheme)
 		elseif Val.Type == "Theme" then
 			Val.Instance[GetColor(Val.Instance)] = Theme["Color Theme"]
 		elseif Val.Type == "Text" then
-			Val.Instance[GetColor(Val.Instance)] = Theme["Color Text"]
+			local Instance = Val.Instance
+			if Instance:IsA("TextButton") then
+				Instance.TextColor3 = Theme["Color Text"]
+			else
+				Instance[GetColor(Instance)] = Theme["Color Text"]
+			end
+			if Instance:IsA("TextBox") and Instance.PlaceholderColor3 == PreviousTheme["Color Dark Text"] then
+				Instance.PlaceholderColor3 = Theme["Color Dark Text"]
+			end
 		elseif Val.Type == "IconSurface" then
 			Val.Instance.BackgroundColor3 = Theme["Color Hub 2"]
 
@@ -5540,13 +5549,14 @@ function Library:MakeWindow(Configs)
 				Text = "..."
 			}), "Text")
 
-			local Arrow = Create("ImageLabel", SelectedFrame, {
+			local Arrow = InsertTheme(Create("ImageLabel", SelectedFrame, {
 				Size = UDim2.new(0, 15, 0, 15),
 				Position = UDim2.new(0, -5, 0.5),
 				AnchorPoint = Vector2.new(1, 0.5),
 				Image = "rbxassetid://10709791523",
+				ImageColor3 = Theme["Color Dark Text"],
 				BackgroundTransparency = 1
-			})
+			}), "DarkText")
 
 			local NoClickFrame = Create("TextButton", DropdownHolder, {
 				Size = UDim2.new(1, 0, 1, 0),
@@ -5581,18 +5591,18 @@ function Library:MakeWindow(Configs)
 					Position = UDim2.new(0, 8, 0, SearchConfig.SearchFrameOffset),
 					BackgroundColor3 = Theme["Color Hub 2"],
 					Visible = SearchConfig.Enabled
-				}), "Stroke")
+				}), "Frame")
 
 				Make("Corner", SearchFrame, UDim.new(0, 4))
 
-				SearchIcon = Create("ImageLabel", SearchFrame, {
+				SearchIcon = InsertTheme(Create("ImageLabel", SearchFrame, {
 					Size = UDim2.fromOffset(SearchConfig.IconSize, SearchConfig.IconSize),
 					Position = UDim2.new(0, SearchConfig.IconPosition, 0.5),
 					AnchorPoint = Vector2.new(0, 0.5),
 					BackgroundTransparency = 1,
 					Image = "rbxassetid://10734943674",
 					ImageColor3 = Theme["Color Dark Text"]
-				})
+				}), "DarkText")
 
 				SearchInputFrame = Create("Frame", SearchFrame, {
 					Size = UDim2.new(1, -27, 1, 0),
@@ -5630,7 +5640,7 @@ function Library:MakeWindow(Configs)
 					TextYAlignment = "Center",
 					Visible = false,
 					ZIndex = 5
-				}), "Text")
+				}), "DarkText")
 
 				TrackConnection(TrackDropdownConnection(Connection.LanguageChanged:Connect(function()
 					if SearchInput and SearchInput.Parent and not CustomSearchPlaceholder then
@@ -8987,13 +8997,13 @@ function Library:MakeWindow(Configs)
 			if ShowHex then
 				HexFrame = Create("Frame", Controls, {
 					Size = UDim2.new(0, 96, 1, 0),
-					BackgroundColor3 = Theme["Color Stroke"],
-					BackgroundTransparency = 0.82,
+					BackgroundColor3 = Theme["Color Hub 2"],
+					BackgroundTransparency = 0.15,
 					LayoutOrder = 1,
 					ClipsDescendants = true
 				})
 
-				InsertTheme(HexFrame, "Stroke")
+				InsertTheme(HexFrame, "Frame")
 				Make("Corner", HexFrame, UDim.new(0, 5))
 
 				HexInput = Create("TextBox", HexFrame, {
@@ -9016,13 +9026,13 @@ function Library:MakeWindow(Configs)
 			if ShowRGB then
 				RGBFrame = Create("Frame", Controls, {
 					Size = UDim2.new(0, 104, 1, 0),
-					BackgroundColor3 = Theme["Color Stroke"],
-					BackgroundTransparency = 0.82,
+					BackgroundColor3 = Theme["Color Hub 2"],
+					BackgroundTransparency = 0.15,
 					LayoutOrder = 2,
 					ClipsDescendants = true
 				})
 
-				InsertTheme(RGBFrame, "Stroke")
+				InsertTheme(RGBFrame, "Frame")
 				Make("Corner", RGBFrame, UDim.new(0, 5))
 
 				RGBInput = Create("TextBox", RGBFrame, {
@@ -9046,16 +9056,16 @@ function Library:MakeWindow(Configs)
 				return ShowHex and ColorToHex(Color) or ColorToRGB(Color)
 			end
 
-			local PreviewButton = Create("TextButton", Controls, {
+			local PreviewButton = InsertTheme(Create("TextButton", Controls, {
 				Size = UDim2.fromOffset(104, 23),
-				BackgroundColor3 = Theme["Color Stroke"],
-				BackgroundTransparency = 0.82,
+				BackgroundColor3 = Theme["Color Hub 2"],
+				BackgroundTransparency = 0.16,
 				AutoButtonColor = false,
 				Text = "",
 				LayoutOrder = 3
-			})
+			}), "Frame")
 			Make("Corner", PreviewButton, UDim.new(0, 5))
-			BindHover(PreviewButton, "BackgroundTransparency", 0.68, 0.82)
+			BindHover(PreviewButton, "BackgroundTransparency", 0.08, 0.16)
 
 			local ColorPreview = Create("Frame", PreviewButton, {
 				Size = UDim2.fromOffset(16, 16),
@@ -9094,27 +9104,32 @@ function Library:MakeWindow(Configs)
 				Active = true,
 				ZIndex = 200
 			})
-			local PopupBackdrop = Create("TextButton", PopupOverlay, {
+			local PopupBackdrop = InsertTheme(Create("TextButton", PopupOverlay, {
 				Size = UDim2.fromScale(1, 1),
-				BackgroundColor3 = Color3.new(0, 0, 0),
+				BackgroundColor3 = Theme["Color Hub 2"],
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
 				Text = "",
 				AutoButtonColor = false,
 				Active = true,
 				ZIndex = 1
-			})
-			local PickerFrame = InsertTheme(Create("Frame", PopupOverlay, {
+			}), "Frame")
+			MainCorner:Clone().Parent = PopupBackdrop
+			local PickerFrame = Create("Frame", PopupOverlay, {
 				Size = UDim2.new(0.82, 0, 0, 314),
 				Position = UDim2.fromScale(0.5, 0.5),
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				BackgroundColor3 = Theme["Color Hub 2"],
+				BackgroundColor3 = Color3.new(1, 1, 1),
 				ClipsDescendants = true,
 				BorderSizePixel = 0,
 				Active = true,
 				ZIndex = 2
-			}), "Frame")
+			})
 			Make("Corner", PickerFrame, UDim.new(0, 10))
+			local PickerGradient = InsertTheme(Create("UIGradient", PickerFrame, {
+				Color = Theme["Color Hub 1"],
+				Rotation = GradientRotation
+			}), "Gradient")
 			Create("UISizeConstraint", PickerFrame, {
 				MinSize = Vector2.new(240, 305),
 				MaxSize = Vector2.new(360, 314)
@@ -9173,11 +9188,11 @@ function Library:MakeWindow(Configs)
 
 			local SummaryRow = InsertTheme(Create("Frame", PickerContent, {
 				Size = UDim2.new(1, 0, 0, 42),
-				BackgroundColor3 = Theme["Color Stroke"],
-				BackgroundTransparency = 0.86,
+				BackgroundColor3 = Theme["Color Hub 2"],
+				BackgroundTransparency = 0.12,
 				BorderSizePixel = 0,
 				LayoutOrder = 0
-			}), "Stroke")
+			}), "Frame")
 			Make("Corner", SummaryRow, UDim.new(0, 8))
 			local SummaryPreview = Create("Frame", SummaryRow, {
 				Size = UDim2.fromOffset(32, 32),
@@ -9390,11 +9405,18 @@ function Library:MakeWindow(Configs)
 
 			InsertTheme(BrightnessLabel, "DarkText")
 
-			TrackConnection(TrackColorConnection(Connection.ThemeChanged:Connect(function()
-				if PreviewButton.Parent then
-					PreviewButton.BackgroundColor3 = Theme["Color Stroke"]
-				end
-			end)))
+			local function RefreshPickerTheme()
+				if not PopupOverlay.Parent then return end
+				PopupBackdrop.BackgroundColor3 = Theme["Color Hub 2"]
+				PickerFrame.BackgroundColor3 = Color3.new(1, 1, 1)
+				PickerGradient.Color = Theme["Color Hub 1"]
+				SummaryRow.BackgroundColor3 = Theme["Color Hub 2"]
+				PreviewButton.BackgroundColor3 = Theme["Color Hub 2"]
+				if HexFrame then HexFrame.BackgroundColor3 = Theme["Color Hub 2"] end
+				if RGBFrame then RGBFrame.BackgroundColor3 = Theme["Color Hub 2"] end
+				CloseButton.TextColor3 = Theme["Color Text"]
+			end
+			TrackConnection(TrackColorConnection(Connection.ThemeChanged:Connect(RefreshPickerTheme)))
 
 			TrackConnection(TrackColorConnection(Connection.LanguageChanged:Connect(function()
 				if RecentLabel.Parent then
@@ -9689,6 +9711,7 @@ function Library:MakeWindow(Configs)
 				local Token = PopupAnimationToken
 
 				if Expanded and not PopupOverlay.Visible then
+					RefreshPickerTheme()
 					PopupOverlay.Visible = true
 					PickerScale.Scale = 0.96
 					PopupBackdrop.BackgroundTransparency = 1
