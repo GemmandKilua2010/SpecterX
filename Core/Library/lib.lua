@@ -7719,6 +7719,7 @@ function Library:MakeWindow(Configs)
 			local Step = math.abs(tonumber(Configs[4] or Configs.Increase) or ControlsConfig.Slider.Step)
 			if Step <= 0 or Step ~= Step or Step == math.huge then Step = 1 end
 			local Callback = Funcs:GetCallback(Configs, 6)
+			local LiveUpdate = FirstDefined(Configs.LiveUpdate, Configs.UpdateOnDrag, Configs.UpdateWhileDragging, true) ~= false
 			local Flag = Configs[7] or Configs.Flag or false
 			local Default = Configs[5] or Configs.Default or ControlsConfig.Slider.Default
 			if CheckFlag(Flag) then Default = GetFlag(Flag) end
@@ -7772,6 +7773,7 @@ function Library:MakeWindow(Configs)
 			local EndConnection
 			local FocusConnection
 			local WasScrolling
+			local DragStartValue
 			local Destroyed = false
 
 			local function RefreshValue()
@@ -7802,10 +7804,10 @@ function Library:MakeWindow(Configs)
 				local Width = SliderBar.AbsoluteSize.X
 				if Width <= 0 then return end
 				local Fraction = math.clamp((ScreenX - SliderBar.AbsolutePosition.X) / Width, 0, 1)
-				SetValue(Fraction == 1 and Max or Min + (Max - Min) * Fraction, false)
+				SetValue(Fraction == 1 and Max or Min + (Max - Min) * Fraction, not LiveUpdate)
 			end
 
-			local function FinishDrag()
+			local function FinishDrag(Commit)
 				if not Dragging then return end
 				Dragging = false
 				ActiveInput = nil
@@ -7815,6 +7817,11 @@ function Library:MakeWindow(Configs)
 				Container.ScrollingEnabled = WasScrolling
 				SliderIcon.BackgroundTransparency = 0.15
 				SliderIcon.Size = UDim2.fromOffset(8, 14)
+				local Changed = Value ~= DragStartValue
+				DragStartValue = nil
+				if Commit and Changed and not LiveUpdate then
+					Funcs:FireCallback(Callback, Value)
+				end
 			end
 
 			local function BeginDrag(Input)
@@ -7823,6 +7830,7 @@ function Library:MakeWindow(Configs)
 				if InputType ~= Enum.UserInputType.MouseButton1 and InputType ~= Enum.UserInputType.Touch then return end
 				Dragging = true
 				ActiveInput = Input
+				DragStartValue = Value
 				WasScrolling = Container.ScrollingEnabled
 				Container.ScrollingEnabled = false
 				SliderIcon.BackgroundTransparency = 0
@@ -7846,13 +7854,15 @@ function Library:MakeWindow(Configs)
 					else
 						UpdateFromPosition(Ended.Position.X)
 					end
-					FinishDrag()
+					FinishDrag(true)
 				end)
-				FocusConnection = UserInputService.WindowFocusReleased:Connect(FinishDrag)
+				FocusConnection = UserInputService.WindowFocusReleased:Connect(function()
+					FinishDrag(false)
+				end)
 			end
 
 			local TabVisibilityConnection = Container:GetPropertyChangedSignal("Visible"):Connect(function()
-				if not Container.Visible then FinishDrag() end
+				if not Container.Visible then FinishDrag(false) end
 			end)
 			SliderHolder.InputBegan:Connect(BeginDrag)
 			SliderBar.InputBegan:Connect(BeginDrag)
@@ -7888,13 +7898,13 @@ function Library:MakeWindow(Configs)
 			function Slider:Visible(...) Funcs:ToggleVisible(Button, ...) end
 			function Slider:Destroy()
 				if Destroyed then return end
-				FinishDrag()
+				FinishDrag(false)
 				Destroyed = true
 				TabVisibilityConnection:Disconnect()
 				Button:Destroy()
 			end
 			Button.Destroying:Connect(function()
-				FinishDrag()
+				FinishDrag(false)
 				Destroyed = true
 				if TabVisibilityConnection.Connected then TabVisibilityConnection:Disconnect() end
 			end)
@@ -7903,7 +7913,7 @@ function Library:MakeWindow(Configs)
 				SetValue(Min, false, true)
 			end
 			ApplyLocked(Slider, Button, Configs, function(IsLocked)
-				if IsLocked then FinishDrag() end
+				if IsLocked then FinishDrag(false) end
 			end)
 			return RegisterFlagObject(Flag, Slider, Button)
 		end
