@@ -7779,7 +7779,7 @@ function Library:MakeWindow(Configs)
 				local Fraction = Max == Min and 0 or math.clamp((Value - Min) / (Max - Min), 0, 1)
 				SliderIcon.Position = UDim2.fromScale(Fraction, 0.5)
 				Indicator.Size = UDim2.fromScale(Fraction, 1)
-				LabelVal.Text = tostring(Value)
+				LabelVal.Text = string.format("%.15g", Value)
 			end
 
 			local function SetValue(ValueInput, Silent, Force)
@@ -7789,7 +7789,7 @@ function Library:MakeWindow(Configs)
 				if Number ~= Max then
 					Number = math.clamp(Min + math.floor((Number - Min) / Step + 0.5) * Step, Min, Max)
 				end
-				Number = tonumber(string.format("%.6f", Number))
+				Number = tonumber(string.format("%.15g", Number))
 				if not Force and Value == Number then return true end
 				Value = Number
 				RefreshValue()
@@ -7843,6 +7843,8 @@ function Library:MakeWindow(Configs)
 						UpdateFromPosition(Ended.Position.X)
 					elseif Ended.UserInputType ~= Enum.UserInputType.MouseButton1 then
 						return
+					else
+						UpdateFromPosition(Ended.Position.X)
 					end
 					FinishDrag()
 				end)
@@ -7855,6 +7857,7 @@ function Library:MakeWindow(Configs)
 			SliderHolder.InputBegan:Connect(BeginDrag)
 			SliderBar.InputBegan:Connect(BeginDrag)
 			SliderIcon.InputBegan:Connect(BeginDrag)
+			Indicator.InputBegan:Connect(BeginDrag)
 			SliderBar:GetPropertyChangedSignal("AbsoluteSize"):Connect(RefreshValue)
 
 			local Slider = {}
@@ -9313,11 +9316,8 @@ function Library:MakeWindow(Configs)
 			end
 
 			local function UpdateIndicator(Indicator, Background, Value, Smooth)
-				local Width = Background.AbsoluteSize.X
-				if Width <= 0 then return end
-				local Half = Indicator.AbsoluteSize.X / 2
-				local Scale = math.clamp((Value * (Width - Half * 2) + Half) / Width, 0, 1)
-				local Target = UDim2.new(Scale, 0, 0.5, 0)
+				if Background.AbsoluteSize.X <= 0 then return end
+				local Target = UDim2.fromScale(math.clamp(Value, 0, 1), 0.5)
 
 				if not Smooth or SmoothTime <= 0 then
 					IndicatorTargets[Indicator] = nil
@@ -9344,20 +9344,20 @@ function Library:MakeWindow(Configs)
 				end)
 			end
 
-			local function UpdateIndicators(SmoothIndicator)
-				UpdateIndicator(HueIndicator, HueBackground, Hue, SmoothIndicator == HueIndicator)
-				UpdateIndicator(SaturationIndicator, SaturationBackground, Saturation, SmoothIndicator == SaturationIndicator)
-				UpdateIndicator(BrightnessIndicator, BrightnessBackground, Brightness, SmoothIndicator == BrightnessIndicator)
+			local function UpdateIndicators(Animate)
+				UpdateIndicator(HueIndicator, HueBackground, Hue, Animate == true)
+				UpdateIndicator(SaturationIndicator, SaturationBackground, Saturation, Animate == true)
+				UpdateIndicator(BrightnessIndicator, BrightnessBackground, Brightness, Animate == true)
 			end
 
-			local function UpdateGradients()
-				local HueColor = Color3.fromHSV(Hue, 1, 1)
-
-				SaturationGradient.Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-					ColorSequenceKeypoint.new(1, HueColor)
-				})
-
+			local function UpdateGradients(Component)
+				if Component == "Brightness" then return end
+				if Component ~= "Saturation" then
+					SaturationGradient.Color = ColorSequence.new({
+						ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+						ColorSequenceKeypoint.new(1, Color3.fromHSV(Hue, 1, 1))
+					})
+				end
 				BrightnessGradient.Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, Color3.new(0, 0, 0)),
 					ColorSequenceKeypoint.new(1, Color3.fromHSV(Hue, Saturation, 1))
@@ -9380,6 +9380,46 @@ function Library:MakeWindow(Configs)
 				end
 
 				UpdateGradients()
+				UpdateIndicators(true)
+
+				if Flag then
+					SetFlag(Flag, ColorToHex(Color))
+				end
+
+				if AddToRecent then
+					AddRecent(Color)
+				end
+
+				if FireCallback and Callback then
+					local Value, Hex = GetOutput(Color)
+
+					Funcs:FireCallback(
+						Callback,
+						Value,
+						Hex
+					)
+				end
+			end
+
+			local function ApplyHSV(FireCallback, AddToRecent, ChangedComponent)
+				local Color = Color3.fromHSV(
+					Hue,
+					Saturation,
+					Brightness
+				)
+
+				CurrentColorValue = Color
+				ColorPreview.BackgroundColor3 = Color
+
+				if HexInput and not HexInput:IsFocused() then
+					HexInput.Text = ColorToHex(Color)
+				end
+
+				if RGBInput and not RGBInput:IsFocused() then
+					RGBInput.Text = ColorToRGB(Color)
+				end
+
+				UpdateGradients(ChangedComponent)
 				UpdateIndicators()
 
 				if Flag then
@@ -9401,48 +9441,10 @@ function Library:MakeWindow(Configs)
 				end
 			end
 
-			local function ApplyHSV(FireCallback, AddToRecent, SmoothIndicator)
-				local Color = Color3.fromHSV(
-					Hue,
-					Saturation,
-					Brightness
-				)
-
-				CurrentColorValue = Color
-				ColorPreview.BackgroundColor3 = Color
-
-				if HexInput and not HexInput:IsFocused() then
-					HexInput.Text = ColorToHex(Color)
-				end
-
-				if RGBInput and not RGBInput:IsFocused() then
-					RGBInput.Text = ColorToRGB(Color)
-				end
-
-				UpdateGradients()
-				UpdateIndicators(SmoothIndicator)
-
-				if Flag then
-					SetFlag(Flag, ColorToHex(Color))
-				end
-
-				if AddToRecent then
-					AddRecent(Color)
-				end
-
-				if FireCallback and Callback then
-					local Value, Hex = GetOutput(Color)
-
-					Funcs:FireCallback(
-						Callback,
-						Value,
-						Hex
-					)
-				end
-			end
-
+			local FinishColorDrag
 			local function SetExpanded(Value)
 				Expanded = Value == nil and not Expanded or Value
+				if not Expanded and FinishColorDrag then FinishColorDrag(false) end
 
 				if Expanded then
 					PickerFrame.Visible = true
@@ -9491,14 +9493,10 @@ function Library:MakeWindow(Configs)
 				SetExpanded()
 			end)
 
-			local function GetSliderValue(Input, Background, Indicator)
+			local function GetSliderValue(Input, Background)
 				local Width = Background.AbsoluteSize.X
-				local X = Input.Position.X - Background.AbsolutePosition.X
-				local Half = Indicator.AbsoluteSize.X / 2
-
-				local Range = math.max(Width - Half * 2, 1)
-
-				return math.clamp((X - Half) / Range, 0, 1)
+				if Width <= 0 then return nil end
+				return math.clamp((Input.Position.X - Background.AbsolutePosition.X) / Width, 0, 1)
 			end
 
 			local HueDragging = false
@@ -9511,33 +9509,39 @@ function Library:MakeWindow(Configs)
 			local PreviousScrolling
 
 			local function UpdateHue(Input)
-				Hue = GetSliderValue(Input, HueBackground, HueIndicator)
-				ApplyHSV(false, false, HueIndicator)
+				local NewHue = GetSliderValue(Input, HueBackground)
+				if NewHue == nil then return end
+				Hue = NewHue
+				ApplyHSV(false, false, "Hue")
 			end
 
 			local function UpdateSaturation(Input)
-				Saturation = GetSliderValue(Input, SaturationBackground, SaturationIndicator)
-				ApplyHSV(false, false, SaturationIndicator)
+				local NewSaturation = GetSliderValue(Input, SaturationBackground)
+				if NewSaturation == nil then return end
+				Saturation = NewSaturation
+				ApplyHSV(false, false, "Saturation")
 			end
 
 			local function UpdateBrightness(Input)
-				Brightness = GetSliderValue(Input, BrightnessBackground, BrightnessIndicator)
-				ApplyHSV(false, false, BrightnessIndicator)
+				local NewBrightness = GetSliderValue(Input, BrightnessBackground)
+				if NewBrightness == nil then return end
+				Brightness = NewBrightness
+				ApplyHSV(false, false, "Brightness")
 			end
 
-			local function FinishColorDrag(Commit)
-				local Changed = HueDragging or SaturationDragging or BrightnessDragging
-				if not Changed then return end
+			FinishColorDrag = function(Commit)
+				local ActiveIndicator = HueDragging and HueIndicator
+					or SaturationDragging and SaturationIndicator
+					or BrightnessDragging and BrightnessIndicator
+				if not ActiveIndicator then return end
 				HueDragging, SaturationDragging, BrightnessDragging = false, false, false
 				DragInput = nil
 				if MoveConnection then MoveConnection:Disconnect() MoveConnection = nil end
 				if EndConnection then EndConnection:Disconnect() EndConnection = nil end
 				if FocusConnection then FocusConnection:Disconnect() FocusConnection = nil end
 				Container.ScrollingEnabled = PreviousScrolling
-				CreateTween({HueIndicator, "Size", UDim2.new(0, 7, 0, 22), 0.15})
-				CreateTween({SaturationIndicator, "Size", UDim2.new(0, 7, 0, 22), 0.15})
-				CreateTween({BrightnessIndicator, "Size", UDim2.new(0, 7, 0, 22), 0.15})
-				if Commit then ApplyHSV(true, true) end
+				ActiveIndicator.Size = UDim2.fromOffset(7, 22)
+				if Commit then ApplyHSV(true, true, "Brightness") end
 			end
 
 			local function StartDrag(Indicator, CallbackFunction, Input)
@@ -9545,7 +9549,7 @@ function Library:MakeWindow(Configs)
 				DragInput = Input.UserInputType == Enum.UserInputType.Touch and Input or nil
 				PreviousScrolling = Container.ScrollingEnabled
 				Container.ScrollingEnabled = false
-				CreateTween({Indicator, "Size", UDim2.new(0, 9, 0, 24), 0.15})
+				Indicator.Size = UDim2.fromOffset(9, 24)
 				CallbackFunction(Input)
 				MoveConnection = UserInputService.InputChanged:Connect(function(Changed)
 					if DragInput then
@@ -9564,10 +9568,10 @@ function Library:MakeWindow(Configs)
 				EndConnection = UserInputService.InputEnded:Connect(function(Ended)
 					if DragInput then
 						if Ended ~= DragInput then return end
-						CallbackFunction(Ended)
 					elseif Ended.UserInputType ~= Enum.UserInputType.MouseButton1 then
 						return
 					end
+					CallbackFunction(Ended)
 					FinishColorDrag(true)
 				end)
 				FocusConnection = UserInputService.WindowFocusReleased:Connect(function()
@@ -9575,32 +9579,37 @@ function Library:MakeWindow(Configs)
 				end)
 			end
 
-			HueBar.InputBegan:Connect(function(Input)
-				if not Option.Interactable or MoveConnection then return end
-				if Input.UserInputType == Enum.UserInputType.MouseButton1
-					or Input.UserInputType == Enum.UserInputType.Touch then
-					HueDragging = true
-					StartDrag(HueIndicator, UpdateHue, Input)
-				end
-			end)
+			local function CanStartSlider(Input)
+				local Kind = Input.UserInputType
+				return Expanded and PickerFrame.Visible and Option.Interactable and not MoveConnection
+					and (Kind == Enum.UserInputType.MouseButton1 or Kind == Enum.UserInputType.Touch)
+			end
 
-			SaturationBar.InputBegan:Connect(function(Input)
-				if not Option.Interactable or MoveConnection then return end
-				if Input.UserInputType == Enum.UserInputType.MouseButton1
-					or Input.UserInputType == Enum.UserInputType.Touch then
-					SaturationDragging = true
-					StartDrag(SaturationIndicator, UpdateSaturation, Input)
-				end
-			end)
+			local function BeginHue(Input)
+				if not CanStartSlider(Input) then return end
+				HueDragging = true
+				StartDrag(HueIndicator, UpdateHue, Input)
+			end
+			local function BeginSaturation(Input)
+				if not CanStartSlider(Input) then return end
+				SaturationDragging = true
+				StartDrag(SaturationIndicator, UpdateSaturation, Input)
+			end
+			local function BeginBrightness(Input)
+				if not CanStartSlider(Input) then return end
+				BrightnessDragging = true
+				StartDrag(BrightnessIndicator, UpdateBrightness, Input)
+			end
 
-			BrightnessBar.InputBegan:Connect(function(Input)
-				if not Option.Interactable or MoveConnection then return end
-				if Input.UserInputType == Enum.UserInputType.MouseButton1
-					or Input.UserInputType == Enum.UserInputType.Touch then
-					BrightnessDragging = true
-					StartDrag(BrightnessIndicator, UpdateBrightness, Input)
-				end
-			end)
+			for _, Surface in ipairs({HueBar, HueBackground, HueIndicator}) do
+				Surface.InputBegan:Connect(BeginHue)
+			end
+			for _, Surface in ipairs({SaturationBar, SaturationBackground, SaturationIndicator}) do
+				Surface.InputBegan:Connect(BeginSaturation)
+			end
+			for _, Surface in ipairs({BrightnessBar, BrightnessBackground, BrightnessIndicator}) do
+				Surface.InputBegan:Connect(BeginBrightness)
+			end
 
 			TrackColorConnection(Container:GetPropertyChangedSignal("Visible"):Connect(function()
 				if not Container.Visible then FinishColorDrag(false) end
