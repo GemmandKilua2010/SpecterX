@@ -9252,10 +9252,6 @@ function Library:MakeWindow(Configs)
 			local CurrentColorValue = CurrentColor
 			local Hue, Saturation, Brightness = CurrentColor:ToHSV()
 
-			if Saturation == 0 then
-				Saturation = 1
-			end
-
 			local function CreateRecentButton(Parent, Color)
 				local Button = Create("TextButton", Parent, {
 					Size = UDim2.new(0, 22, 0, 22),
@@ -9305,35 +9301,47 @@ function Library:MakeWindow(Configs)
 				RefreshRecent()
 			end
 
-			local IndicatorLastUpdate = setmetatable({}, {__mode = "k"})
+			local IndicatorTargets = setmetatable({}, {__mode = "k"})
+			local IndicatorUpdateConnection
+
+			local function StopIndicatorAnimation()
+				if IndicatorUpdateConnection then
+					IndicatorUpdateConnection:Disconnect()
+					IndicatorUpdateConnection = nil
+				end
+				table.clear(IndicatorTargets)
+			end
 
 			local function UpdateIndicator(Indicator, Background, Value, Smooth)
 				local Width = Background.AbsoluteSize.X
+				if Width <= 0 then return end
 				local Half = Indicator.AbsoluteSize.X / 2
+				local Scale = math.clamp((Value * (Width - Half * 2) + Half) / Width, 0, 1)
+				local Target = UDim2.new(Scale, 0, 0.5, 0)
 
-				if Width <= 0 then
+				if not Smooth or SmoothTime <= 0 then
+					IndicatorTargets[Indicator] = nil
+					Indicator.Position = Target
 					return
 				end
 
-				local Scale = math.clamp(
-					(Value * (Width - Half * 2) + Half) / Width,
-					0,
-					1
-				)
-
-				local Target = UDim2.new(Scale, 0, 0.5, 0)
-
-				if Smooth and SmoothTime > 0 then
-					local Now = os.clock()
-					local Last = IndicatorLastUpdate[Indicator] or (Now - 1 / 60)
-					local Delta = math.clamp(Now - Last, 1 / 240, 0.05)
-					local Alpha = 1 - math.exp(-Delta / SmoothTime)
-					IndicatorLastUpdate[Indicator] = Now
-					Indicator.Position = Indicator.Position:Lerp(Target, Alpha)
-				else
-					IndicatorLastUpdate[Indicator] = nil
-					Indicator.Position = Target
-				end
+				IndicatorTargets[Indicator] = Target
+				if IndicatorUpdateConnection then return end
+				IndicatorUpdateConnection = game:GetService("RunService").RenderStepped:Connect(function(Delta)
+					local Pending = false
+					local Alpha = 1 - math.exp(-math.min(Delta, 0.05) / SmoothTime)
+					for ActiveIndicator, Position in pairs(IndicatorTargets) do
+						local Current = ActiveIndicator.Position
+						if math.abs(Current.X.Scale - Position.X.Scale) < 0.001 then
+							ActiveIndicator.Position = Position
+							IndicatorTargets[ActiveIndicator] = nil
+						else
+							ActiveIndicator.Position = Current:Lerp(Position, Alpha)
+							Pending = true
+						end
+					end
+					if not Pending then StopIndicatorAnimation() end
+				end)
 			end
 
 			local function UpdateIndicators(SmoothIndicator)
@@ -9360,10 +9368,6 @@ function Library:MakeWindow(Configs)
 				CurrentColorValue = Color
 
 				Hue, Saturation, Brightness = Color:ToHSV()
-
-				if Saturation == 0 then
-					Saturation = 1
-				end
 
 				ColorPreview.BackgroundColor3 = Color
 
@@ -9503,6 +9507,7 @@ function Library:MakeWindow(Configs)
 			local DragInput
 			local MoveConnection
 			local EndConnection
+			local FocusConnection
 			local PreviousScrolling
 
 			local function UpdateHue(Input)
@@ -9527,6 +9532,7 @@ function Library:MakeWindow(Configs)
 				DragInput = nil
 				if MoveConnection then MoveConnection:Disconnect() MoveConnection = nil end
 				if EndConnection then EndConnection:Disconnect() EndConnection = nil end
+				if FocusConnection then FocusConnection:Disconnect() FocusConnection = nil end
 				Container.ScrollingEnabled = PreviousScrolling
 				CreateTween({HueIndicator, "Size", UDim2.new(0, 7, 0, 22), 0.15})
 				CreateTween({SaturationIndicator, "Size", UDim2.new(0, 7, 0, 22), 0.15})
@@ -9555,12 +9561,17 @@ function Library:MakeWindow(Configs)
 						UpdateBrightness(Changed)
 					end
 				end)
-			EndConnection = UserInputService.InputEnded:Connect(function(Ended)
+				EndConnection = UserInputService.InputEnded:Connect(function(Ended)
 					if DragInput then
-						if Ended == DragInput then FinishColorDrag(true) end
-					elseif Ended.UserInputType == Enum.UserInputType.MouseButton1 then
-						FinishColorDrag(true)
+						if Ended ~= DragInput then return end
+						CallbackFunction(Ended)
+					elseif Ended.UserInputType ~= Enum.UserInputType.MouseButton1 then
+						return
 					end
+					FinishColorDrag(true)
+				end)
+				FocusConnection = UserInputService.WindowFocusReleased:Connect(function()
+					FinishColorDrag(true)
 				end)
 			end
 
@@ -9761,7 +9772,7 @@ function Library:MakeWindow(Configs)
 				end
 				table.clear(ColorConnections)
 
-				table.clear(IndicatorLastUpdate)
+				StopIndicatorAnimation()
 
 				Option:Destroy()
 				PickerFrame:Destroy()
