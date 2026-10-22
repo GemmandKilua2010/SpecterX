@@ -9118,17 +9118,29 @@ function Library:MakeWindow(Configs)
 			local function GetPickerBackground()
 				return Theme["Color Hub 2"]:Lerp(Theme["Color Theme"], 0.09):Lerp(Color3.new(0, 0, 0), 0.08)
 			end
+			local function GetPickerGradient()
+				local Base = GetPickerBackground()
+				return ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Base:Lerp(Theme["Color Theme"], 0.06)),
+					ColorSequenceKeypoint.new(0.5, Base),
+					ColorSequenceKeypoint.new(1, Base:Lerp(Color3.new(0, 0, 0), 0.05))
+				})
+			end
 			local PickerFrame = Create("Frame", PopupOverlay, {
 				Size = UDim2.new(0.82, 0, 0, 314),
 				Position = UDim2.fromScale(0.5, 0.5),
 				AnchorPoint = Vector2.new(0.5, 0.5),
-				BackgroundColor3 = GetPickerBackground(),
+				BackgroundColor3 = Color3.new(1, 1, 1),
 				ClipsDescendants = true,
 				BorderSizePixel = 0,
 				Active = true,
 				ZIndex = 2
 			})
 			Make("Corner", PickerFrame, UDim.new(0, 10))
+			local PickerGradient = Create("UIGradient", PickerFrame, {
+				Color = GetPickerGradient(),
+				Rotation = 90
+			})
 			Create("UISizeConstraint", PickerFrame, {
 				MinSize = Vector2.new(240, 305),
 				MaxSize = Vector2.new(360, 314)
@@ -9407,7 +9419,7 @@ function Library:MakeWindow(Configs)
 			local function RefreshPickerTheme()
 				if not PopupOverlay.Parent then return end
 				PopupBackdrop.BackgroundColor3 = Theme["Color Hub 2"]
-				PickerFrame.BackgroundColor3 = GetPickerBackground()
+				PickerGradient.Color = GetPickerGradient()
 				SummaryRow.BackgroundColor3 = Theme["Color Hub 2"]
 				PreviewButton.BackgroundColor3 = Theme["Color Hub 2"]
 				if HexFrame then HexFrame.BackgroundColor3 = Theme["Color Hub 2"] end
