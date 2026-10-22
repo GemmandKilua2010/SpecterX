@@ -1478,8 +1478,13 @@ local function ComponentColor()
 	return Base:Lerp(Color3.new(Gray, Gray, Gray), 0.65):Lerp(Color3.new(1, 1, 1), 0.025)
 end
 
+local function InputSurfaceColor()
+	-- A small lift from the panel surface, without the stronger control accent.
+	return ComponentColor():Lerp(Color3.new(1, 1, 1), 0.035)
+end
+
 local function InputSurface(Frame)
-	Frame.BackgroundColor3 = Theme["Color Stroke"]
+	Frame.BackgroundColor3 = InputSurfaceColor()
 	Frame.BackgroundTransparency = 0
 	InsertTheme(Frame, "InputSurface")
 	return Frame
@@ -2109,7 +2114,7 @@ function Library:SetTheme(NewTheme)
 		elseif Val.Type == "PickerGradient" then
 			Val.Instance.Color = PickerColors()
 		elseif Val.Type == "InputSurface" then
-			Val.Instance.BackgroundColor3 = Theme["Color Stroke"]
+			Val.Instance.BackgroundColor3 = InputSurfaceColor()
 		elseif Val.Type == "ComponentSurface" then
 			Val.Instance.BackgroundColor3 = ComponentColor()
 		elseif Val.Type == "TitleText" then
