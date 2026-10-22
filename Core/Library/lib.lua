@@ -8728,6 +8728,7 @@ function Library:MakeWindow(Configs)
 			local Name = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.ColorPicker)
 			local Description = Configs.Desc or Configs.Description or ""
 			local Callback = Funcs:GetCallback(Configs, 3)
+			local LiveUpdate = FirstDefined(Configs.LiveUpdate, Configs.UpdateOnDrag, true) ~= false
 			local Flag = Configs[4] or Configs.Flag or false
 			local MaxRecent = math.clamp(math.floor(tonumber(Configs.MaxRecent) or ControlsConfig.ColorPicker.MaxRecent), 0, 32)
 			local SmoothTime = math.clamp(tonumber(Configs.SmoothTime) or ColorPickerSmoothTime, 0, 0.2)
@@ -9044,7 +9045,6 @@ function Library:MakeWindow(Configs)
 				LayoutOrder = 3
 			}), "Stroke")
 			Make("Corner", PreviewButton, UDim.new(0, 7))
-			Make("Stroke", PreviewButton, {Thickness = 0.65, Transparency = 0.65})
 			BindHover(PreviewButton, "BackgroundTransparency", 0.55, 0.75)
 
 			local ColorPreview = Create("Frame", PreviewButton, {
@@ -9077,20 +9077,77 @@ function Library:MakeWindow(Configs)
 				ImageColor3 = Theme["Color Dark Text"]
 			}), "DarkText")
 
-			local PickerFrame = Create("Frame", Container, {
-				Size = UDim2.new(1, 0, 0, 0),
+			local PopupOverlay = Create("Frame", MainFrame, {
+				Size = UDim2.fromScale(1, 1),
+				BackgroundTransparency = 1,
+				Visible = false,
+				Active = true,
+				ZIndex = 200
+			})
+			local PopupBackdrop = Create("TextButton", PopupOverlay, {
+				Size = UDim2.fromScale(1, 1),
+				BackgroundColor3 = Color3.new(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				Text = "",
+				AutoButtonColor = false,
+				Active = true,
+				ZIndex = 1
+			})
+			local PickerFrame = InsertTheme(Create("Frame", PopupOverlay, {
+				Size = UDim2.new(0.88, 0, 0, 330),
+				Position = UDim2.fromScale(0.5, 0.5),
+				AnchorPoint = Vector2.new(0.5, 0.5),
 				BackgroundColor3 = Theme["Color Hub 2"],
 				ClipsDescendants = true,
-				Visible = false
+				BorderSizePixel = 0,
+				ZIndex = 2
+			}), "Hub 2")
+			Make("Corner", PickerFrame, UDim.new(0, 10))
+			Create("UISizeConstraint", PickerFrame, {
+				MinSize = Vector2.new(220, 310),
+				MaxSize = Vector2.new(410, 330)
 			})
-
-			InsertTheme(PickerFrame, "Hub 2")
-			Make("Corner", PickerFrame, UDim.new(0, 7))
-			Make("Stroke", PickerFrame, {Thickness = 0.65, Transparency = 0.66})
+			local PickerScale = Create("UIScale", PickerFrame, {Scale = 1})
+			local PanelTitle = InsertTheme(Create("TextLabel", PickerFrame, {
+				Position = UDim2.fromOffset(16, 11),
+				Size = UDim2.new(1, -62, 0, 20),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamBold,
+				TextColor3 = Theme["Color Text"],
+				TextSize = 14,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Text = TranslateText(Name)
+			}), "Text")
+			local PanelSubtitle = InsertTheme(Create("TextLabel", PickerFrame, {
+				Position = UDim2.fromOffset(16, 30),
+				Size = UDim2.new(1, -62, 0, 15),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				TextColor3 = Theme["Color Dark Text"],
+				TextSize = 10,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Text = Description ~= "" and TranslateText(Description) or "HSV · HEX · RGB"
+			}), "DarkText")
+			local CloseButton = InsertTheme(Create("TextButton", PickerFrame, {
+				Position = UDim2.new(1, -12, 0, 11),
+				AnchorPoint = Vector2.new(1, 0),
+				Size = UDim2.fromOffset(26, 26),
+				BackgroundColor3 = Theme["Color Stroke"],
+				BackgroundTransparency = 0.82,
+				AutoButtonColor = false,
+				Font = Enum.Font.GothamMedium,
+				TextColor3 = Theme["Color Text"],
+				TextSize = 17,
+				Text = "×"
+			}), "Stroke")
+			Make("Corner", CloseButton, UDim.new(0, 6))
+			BindHover(CloseButton, "BackgroundTransparency", 0.65, 0.82)
 
 			local PickerContent = Create("Frame", PickerFrame, {
-				Size = UDim2.new(1, 0, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
+				Size = UDim2.fromScale(1, 1),
 				BackgroundTransparency = 1
 			}, {
 				Create("UIListLayout", {
@@ -9098,9 +9155,9 @@ function Library:MakeWindow(Configs)
 					Padding = UDim.new(0, 6)
 				}),
 				Create("UIPadding", {
-					PaddingLeft = UDim.new(0, 12),
-					PaddingRight = UDim.new(0, 12),
-					PaddingTop = UDim.new(0, 12),
+					PaddingLeft = UDim.new(0, 14),
+					PaddingRight = UDim.new(0, 14),
+					PaddingTop = UDim.new(0, 55),
 					PaddingBottom = UDim.new(0, 12)
 				})
 			})
@@ -9162,7 +9219,6 @@ function Library:MakeWindow(Configs)
 					local Input = Entry.Input
 					Frame.Parent = InputRow
 					Frame.Size = UDim2.new(ShowHex and ShowRGB and 0.5 or 1, ShowHex and ShowRGB and -4 or 0, 1, 0)
-					Make("Stroke", Frame, {Thickness = 0.55, Transparency = 0.55})
 					Input.Position = UDim2.fromOffset(8, 0)
 					Input.Size = UDim2.new(1, -48, 1, 0)
 					InsertTheme(Create("TextLabel", Frame, {
@@ -9326,6 +9382,8 @@ function Library:MakeWindow(Configs)
 					HueLabel.Text = TranslateText("Hue")
 					SaturationLabel.Text = TranslateText("Saturation")
 					BrightnessLabel.Text = TranslateText("Brightness")
+					PanelTitle.Text = TranslateText(Name)
+					PanelSubtitle.Text = Description ~= "" and TranslateText(Description) or "HSV · HEX · RGB"
 				end
 			end)))
 
@@ -9399,10 +9457,7 @@ function Library:MakeWindow(Configs)
 					Text = ""
 				})
 				Make("Corner", Button, UDim.new(0, 6))
-				Make("Stroke", Button, {
-					Thickness = ColorToHex(Color) == ColorToHex(CurrentColorValue) and 1.35 or 0.7,
-					Transparency = ColorToHex(Color) == ColorToHex(CurrentColorValue) and 0 or 0.6
-				})
+				Button.BackgroundTransparency = ColorToHex(Color) == ColorToHex(CurrentColorValue) and 0 or 0.2
 				return Button
 			end
 
@@ -9580,14 +9635,21 @@ function Library:MakeWindow(Configs)
 			end
 
 			local FinishColorDrag
-			local PickerSizeTween
+			local PickerScaleTween
+			local PickerBackdropTween
 			local PickerArrowTween
-			local PickerTweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+			local PopupTweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			local PopupAnimationToken = 0
 
 			local function StopPickerTweens()
-				if PickerSizeTween then
-					PickerSizeTween:Cancel()
-					PickerSizeTween = nil
+				PopupAnimationToken += 1
+				if PickerScaleTween then
+					PickerScaleTween:Cancel()
+					PickerScaleTween = nil
+				end
+				if PickerBackdropTween then
+					PickerBackdropTween:Cancel()
+					PickerBackdropTween = nil
 				end
 				if PickerArrowTween then
 					PickerArrowTween:Cancel()
@@ -9597,37 +9659,53 @@ function Library:MakeWindow(Configs)
 
 			local function SetExpanded(Value)
 				local ShouldExpand = Value == nil and not Expanded or Value == true
-				if Expanded == ShouldExpand then return end
+				if ShouldExpand == Expanded then return end
+				if ShouldExpand and (not Container.Visible or not Option.Visible or not Option.Interactable or ColorPicker.Locked) then
+					return
+				end
 				Expanded = ShouldExpand
 				if not Expanded and FinishColorDrag then FinishColorDrag(false) end
-
 				StopPickerTweens()
-				PickerFrame.Visible = true
+				local Token = PopupAnimationToken
 
-				local SizeTween = TweenService:Create(PickerFrame, PickerTweenInfo, {
-					Size = UDim2.new(1, 0, 0, Expanded and 260 or 0)
+				if Expanded and not PopupOverlay.Visible then
+					PopupOverlay.Visible = true
+					PickerScale.Scale = 0.96
+					PopupBackdrop.BackgroundTransparency = 1
+				end
+
+				PickerScaleTween = TweenService:Create(PickerScale, PopupTweenInfo, {
+					Scale = Expanded and 1 or 0.96
 				})
-				PickerSizeTween = SizeTween
-				PickerArrowTween = TweenService:Create(Arrow, PickerTweenInfo, {
+				PickerBackdropTween = TweenService:Create(PopupBackdrop, PopupTweenInfo, {
+					BackgroundTransparency = Expanded and 0.48 or 1
+				})
+				PickerArrowTween = TweenService:Create(Arrow, PopupTweenInfo, {
 					Rotation = Expanded and 180 or 0
 				})
+				if not Expanded then
+					PickerScaleTween.Completed:Once(function(State)
+						if Token == PopupAnimationToken and State == Enum.PlaybackState.Completed
+							and not Expanded and PopupOverlay.Parent then
+							PopupOverlay.Visible = false
+						end
+					end)
+				end
 
-				SizeTween.Completed:Once(function(State)
-					if PickerSizeTween ~= SizeTween then return end
-					PickerSizeTween = nil
-					if State == Enum.PlaybackState.Completed and not Expanded and PickerFrame.Parent then
-						PickerFrame.Visible = false
-					end
-				end)
-
-				SizeTween:Play()
+				PickerScaleTween:Play()
+				PickerBackdropTween:Play()
 				PickerArrowTween:Play()
-
 				if Expanded then task.defer(UpdateIndicators) end
 			end
 
 			PreviewButton.Activated:Connect(function()
 				SetExpanded()
+			end)
+			CloseButton.Activated:Connect(function()
+				SetExpanded(false)
+			end)
+			PopupBackdrop.Activated:Connect(function()
+				SetExpanded(false)
 			end)
 
 			local function GetSliderValue(Input, Background)
@@ -9649,21 +9727,21 @@ function Library:MakeWindow(Configs)
 				local NewHue = GetSliderValue(Input, HueBackground)
 				if NewHue == nil then return end
 				Hue = NewHue
-				ApplyHSV(false, false, "Hue")
+				ApplyHSV(LiveUpdate, false, "Hue")
 			end
 
 			local function UpdateSaturation(Input)
 				local NewSaturation = GetSliderValue(Input, SaturationBackground)
 				if NewSaturation == nil then return end
 				Saturation = NewSaturation
-				ApplyHSV(false, false, "Saturation")
+				ApplyHSV(LiveUpdate, false, "Saturation")
 			end
 
 			local function UpdateBrightness(Input)
 				local NewBrightness = GetSliderValue(Input, BrightnessBackground)
 				if NewBrightness == nil then return end
 				Brightness = NewBrightness
-				ApplyHSV(false, false, "Brightness")
+				ApplyHSV(LiveUpdate, false, "Brightness")
 			end
 
 			FinishColorDrag = function(Commit)
@@ -9678,7 +9756,7 @@ function Library:MakeWindow(Configs)
 				if FocusConnection then FocusConnection:Disconnect() FocusConnection = nil end
 				Container.ScrollingEnabled = PreviousScrolling
 				ActiveIndicator.Size = UDim2.fromOffset(10, 19)
-				if Commit then ApplyHSV(true, true, "Brightness") end
+				if Commit then ApplyHSV(not LiveUpdate, true, "Brightness") end
 			end
 
 			local function StartDrag(Indicator, CallbackFunction, Input)
@@ -9749,7 +9827,7 @@ function Library:MakeWindow(Configs)
 			end
 
 			TrackColorConnection(Container:GetPropertyChangedSignal("Visible"):Connect(function()
-				if not Container.Visible then FinishColorDrag(false) end
+				if not Container.Visible then SetExpanded(false) end
 			end))
 
 			HueBackground:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateIndicators)
@@ -9883,17 +9961,13 @@ function Library:MakeWindow(Configs)
 			function ColorPicker:Visible(Value)
 				if Value == nil then Value = not Option.Visible end
 				Funcs:ToggleVisible(Option, Value)
-
 				if Value == false then
 					FinishColorDrag(false)
 					Expanded = false
 					StopPickerTweens()
 					Arrow.Rotation = 0
-					PickerFrame.Visible = false
-					PickerFrame.Size = UDim2.new(1, 0, 0, 0)
+					PopupOverlay.Visible = false
 				end
-
-				Funcs:ToggleVisible(PickerFrame, Value and Expanded)
 			end
 
 			function ColorPicker:Expand(Value)
@@ -9924,7 +9998,7 @@ function Library:MakeWindow(Configs)
 				StopIndicatorAnimation()
 
 				Option:Destroy()
-				PickerFrame:Destroy()
+				PopupOverlay:Destroy()
 			end
 
 			SetColor(CurrentColorValue, false, false)
@@ -9948,6 +10022,12 @@ function Library:MakeWindow(Configs)
 					FinishColorDrag(false)
 					SetExpanded(false)
 				end
+			end)
+
+			Option.Destroying:Connect(function()
+				FinishColorDrag(false)
+				StopPickerTweens()
+				if PopupOverlay.Parent then PopupOverlay:Destroy() end
 			end)
 
 			return RegisterFlagObject(Flag, ColorPicker, Option)
