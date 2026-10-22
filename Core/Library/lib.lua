@@ -1478,6 +1478,23 @@ local function ComponentColor()
 	return Base:Lerp(Color3.new(Gray, Gray, Gray), 0.65):Lerp(Color3.new(1, 1, 1), 0.025)
 end
 
+local function InputSurfaceColor()
+	return ComponentColor():Lerp(Color3.new(1, 1, 1), 0.065)
+end
+
+local function InputSurface(Frame)
+	Frame.BackgroundColor3 = InputSurfaceColor()
+	Frame.BackgroundTransparency = 0
+	InsertTheme(Frame, "InputSurface")
+	Create("UIStroke", Frame, {
+		Color = Color3.new(1, 1, 1),
+		Transparency = 0.9,
+		Thickness = 1,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	})
+	return Frame
+end
+
 local function PickerColors()
 	local Base = Theme["Color Hub 2"]
 	return ColorSequence.new(Base:Lerp(Color3.new(1, 1, 1), 0.015), Base:Lerp(Color3.new(0, 0, 0), 0.08))
@@ -2101,6 +2118,8 @@ function Library:SetTheme(NewTheme)
 			Val.Instance.Color = Theme["Color Hub 1"]
 		elseif Val.Type == "PickerGradient" then
 			Val.Instance.Color = PickerColors()
+		elseif Val.Type == "InputSurface" then
+			Val.Instance.BackgroundColor3 = InputSurfaceColor()
 		elseif Val.Type == "ComponentSurface" then
 			Val.Instance.BackgroundColor3 = ComponentColor()
 		elseif Val.Type == "TitleText" then
@@ -8254,17 +8273,12 @@ function Library:MakeWindow(Configs)
 				Visible = false
 			}), "DarkText")
 
-			local function EditorColor()
-				return Theme["Color Hub 2"]:Lerp(Theme["Color Stroke"], 0.13)
-			end
-
-			local Editor = Create("Frame", Content, {
+			local Editor = InputSurface(Create("Frame", Content, {
 				LayoutOrder = 2,
 				Size = UDim2.new(1, 0, 0, Height),
-				BackgroundColor3 = EditorColor(),
 				BorderSizePixel = 0,
 				ClipsDescendants = true
-			})
+			}))
 			Make("Corner", Editor, UDim.new(0, 5))
 			local Outline = InsertTheme(Create("UIStroke", Editor, {
 				Color = Theme["Color Theme"],
@@ -8667,7 +8681,6 @@ function Library:MakeWindow(Configs)
 			end
 			Track(Connection.ThemeChanged, function()
 				if Destroyed then return end
-				Editor.BackgroundColor3 = EditorColor()
 				Input.PlaceholderColor3 = Theme["Color Dark Text"]
 				UpdateCounter()
 			end)
@@ -9019,13 +9032,11 @@ function Library:MakeWindow(Configs)
 			if ShowHex then
 				HexFrame = Create("Frame", Controls, {
 					Size = UDim2.new(0, 96, 1, 0),
-					BackgroundColor3 = Theme["Color Hub 2"],
-					BackgroundTransparency = 0.15,
 					LayoutOrder = 1,
 					ClipsDescendants = true
 				})
 
-				InsertTheme(HexFrame, "Frame")
+				InputSurface(HexFrame)
 				Make("Corner", HexFrame, UDim.new(0, 5))
 
 				HexInput = Create("TextBox", HexFrame, {
@@ -9048,13 +9059,11 @@ function Library:MakeWindow(Configs)
 			if ShowRGB then
 				RGBFrame = Create("Frame", Controls, {
 					Size = UDim2.new(0, 104, 1, 0),
-					BackgroundColor3 = Theme["Color Hub 2"],
-					BackgroundTransparency = 0.15,
 					LayoutOrder = 2,
 					ClipsDescendants = true
 				})
 
-				InsertTheme(RGBFrame, "Frame")
+				InputSurface(RGBFrame)
 				Make("Corner", RGBFrame, UDim.new(0, 5))
 
 				RGBInput = Create("TextBox", RGBFrame, {
