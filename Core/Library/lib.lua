@@ -9095,7 +9095,7 @@ function Library:MakeWindow(Configs)
 				ZIndex = 1
 			})
 			local PickerFrame = InsertTheme(Create("Frame", PopupOverlay, {
-				Size = UDim2.new(0.88, 0, 0, 330),
+				Size = UDim2.new(0.84, 0, 0, 310),
 				Position = UDim2.fromScale(0.5, 0.5),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				BackgroundColor3 = Theme["Color Hub 2"],
@@ -9106,8 +9106,8 @@ function Library:MakeWindow(Configs)
 			}), "Hub 2")
 			Make("Corner", PickerFrame, UDim.new(0, 10))
 			Create("UISizeConstraint", PickerFrame, {
-				MinSize = Vector2.new(220, 310),
-				MaxSize = Vector2.new(410, 330)
+				MinSize = Vector2.new(220, 300),
+				MaxSize = Vector2.new(380, 310)
 			})
 			local PickerScale = Create("UIScale", PickerFrame, {Scale = 1})
 			local PanelTitle = InsertTheme(Create("TextLabel", PickerFrame, {
@@ -9152,13 +9152,13 @@ function Library:MakeWindow(Configs)
 			}, {
 				Create("UIListLayout", {
 					SortOrder = Enum.SortOrder.LayoutOrder,
-					Padding = UDim.new(0, 6)
+					Padding = UDim.new(0, 5)
 				}),
 				Create("UIPadding", {
 					PaddingLeft = UDim.new(0, 14),
 					PaddingRight = UDim.new(0, 14),
-					PaddingTop = UDim.new(0, 55),
-					PaddingBottom = UDim.new(0, 12)
+					PaddingTop = UDim.new(0, 52),
+					PaddingBottom = UDim.new(0, 10)
 				})
 			})
 
