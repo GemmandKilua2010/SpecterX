@@ -1479,7 +1479,7 @@ local function ComponentColor()
 end
 
 local function InputSurfaceColor()
-	return ComponentColor():Lerp(Color3.new(1, 1, 1), 0.065)
+	return ComponentColor():Lerp(Color3.new(1, 1, 1), 0.14)
 end
 
 local function InputSurface(Frame)
@@ -1488,7 +1488,7 @@ local function InputSurface(Frame)
 	InsertTheme(Frame, "InputSurface")
 	Create("UIStroke", Frame, {
 		Color = Color3.new(1, 1, 1),
-		Transparency = 0.9,
+		Transparency = 0.7,
 		Thickness = 1,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	})
