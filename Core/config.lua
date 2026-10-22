@@ -12,7 +12,7 @@ local Config = {
         Description = "Good to see you, {Player}! {Title} is ready. Make yourself at home and enjoy!"
     },
 
-    Whitelist = true,
+    Whitelist = false,
 
     --// Icon
     Icon = {
