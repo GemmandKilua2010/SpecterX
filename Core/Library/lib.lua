@@ -8942,9 +8942,7 @@ function Library:MakeWindow(Configs)
 				end
 			end
 
-			local OptionWidth = ShowHex and ShowRGB
-				and UDim2.new(1, -300)
-				or UDim2.new(1, -230)
+			local OptionWidth = UDim2.new(1, -160)
 
 			local Option, Label = ButtonFrame(
 				Container,
@@ -8955,7 +8953,7 @@ function Library:MakeWindow(Configs)
 			)
 
 			local Controls = Create("Frame", Option, {
-				Size = UDim2.new(0, 0, 0, 20),
+				Size = UDim2.new(0, 0, 0, 28),
 				AutomaticSize = Enum.AutomaticSize.X,
 				Position = UDim2.new(1, -10, 0.5, 0),
 				AnchorPoint = Vector2.new(1, 0.5),
@@ -8972,11 +8970,14 @@ function Library:MakeWindow(Configs)
 
 			local HexInput
 			local RGBInput
+			local HexFrame
+			local RGBFrame
 
 			if ShowHex then
-				local HexFrame = Create("Frame", Controls, {
+				HexFrame = Create("Frame", Controls, {
 					Size = UDim2.new(0, 96, 1, 0),
 					BackgroundColor3 = Theme["Color Stroke"],
+					BackgroundTransparency = 0.72,
 					LayoutOrder = 1,
 					ClipsDescendants = true
 				})
@@ -9002,9 +9003,10 @@ function Library:MakeWindow(Configs)
 			end
 
 			if ShowRGB then
-				local RGBFrame = Create("Frame", Controls, {
+				RGBFrame = Create("Frame", Controls, {
 					Size = UDim2.new(0, 104, 1, 0),
 					BackgroundColor3 = Theme["Color Stroke"],
+					BackgroundTransparency = 0.72,
 					LayoutOrder = 2,
 					ClipsDescendants = true
 				})
@@ -9029,34 +9031,51 @@ function Library:MakeWindow(Configs)
 				InsertTheme(RGBInput, "Text")
 			end
 
-			local PreviewButton = Create("TextButton", Controls, {
-				Size = UDim2.new(0, 50, 1, 0),
-				BackgroundTransparency = 1,
+			local function PreviewFormat(Color)
+				return ShowHex and ColorToHex(Color) or ColorToRGB(Color)
+			end
+
+			local PreviewButton = InsertTheme(Create("TextButton", Controls, {
+				Size = UDim2.fromOffset(130, 28),
+				BackgroundColor3 = Theme["Color Stroke"],
+				BackgroundTransparency = 0.75,
 				AutoButtonColor = false,
 				Text = "",
 				LayoutOrder = 3
-			})
+			}), "Stroke")
+			Make("Corner", PreviewButton, UDim.new(0, 7))
+			Make("Stroke", PreviewButton, {Thickness = 0.65, Transparency = 0.65})
+			BindHover(PreviewButton, "BackgroundTransparency", 0.55, 0.75)
 
 			local ColorPreview = Create("Frame", PreviewButton, {
-				Size = UDim2.new(0, 20, 0, 20),
-				Position = UDim2.new(0, 0, 0.5, 0),
+				Size = UDim2.fromOffset(22, 22),
+				Position = UDim2.new(0, 4, 0.5, 0),
 				AnchorPoint = Vector2.new(0, 0.5),
 				BackgroundColor3 = CurrentColor,
 				BorderSizePixel = 0
 			})
-
 			Make("Corner", ColorPreview, UDim.new(0, 5))
 
-			local Arrow = Create("ImageLabel", PreviewButton, {
-				Size = UDim2.new(0, 16, 0, 16),
-				Position = UDim2.new(1, 0, 0.5, 0),
+			local PreviewValue = InsertTheme(Create("TextLabel", PreviewButton, {
+				Position = UDim2.fromOffset(33, 0),
+				Size = UDim2.new(1, -54, 1, 0),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamMedium,
+				TextColor3 = Theme["Color Text"],
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				TextSize = 10,
+				Text = PreviewFormat(CurrentColor)
+			}), "Text")
+
+			local Arrow = InsertTheme(Create("ImageLabel", PreviewButton, {
+				Size = UDim2.fromOffset(14, 14),
+				Position = UDim2.new(1, -7, 0.5, 0),
 				AnchorPoint = Vector2.new(1, 0.5),
 				BackgroundTransparency = 1,
 				Image = Library:GetIcon("chevrondown"),
-				ImageColor3 = Theme["Color Text"]
-			})
-
-			InsertTheme(Arrow, "Text")
+				ImageColor3 = Theme["Color Dark Text"]
+			}), "DarkText")
 
 			local PickerFrame = Create("Frame", Container, {
 				Size = UDim2.new(1, 0, 0, 0),
@@ -9066,7 +9085,8 @@ function Library:MakeWindow(Configs)
 			})
 
 			InsertTheme(PickerFrame, "Hub 2")
-			Make("Corner", PickerFrame, UDim.new(0, 6))
+			Make("Corner", PickerFrame, UDim.new(0, 7))
+			Make("Stroke", PickerFrame, {Thickness = 0.65, Transparency = 0.66})
 
 			local PickerContent = Create("Frame", PickerFrame, {
 				Size = UDim2.new(1, 0, 0, 0),
@@ -9075,7 +9095,7 @@ function Library:MakeWindow(Configs)
 			}, {
 				Create("UIListLayout", {
 					SortOrder = Enum.SortOrder.LayoutOrder,
-					Padding = UDim.new(0, 10)
+					Padding = UDim.new(0, 6)
 				}),
 				Create("UIPadding", {
 					PaddingLeft = UDim.new(0, 12),
@@ -9085,6 +9105,80 @@ function Library:MakeWindow(Configs)
 				})
 			})
 
+			local SummaryRow = InsertTheme(Create("Frame", PickerContent, {
+				Size = UDim2.new(1, 0, 0, 34),
+				BackgroundColor3 = Theme["Color Stroke"],
+				BackgroundTransparency = 0.82,
+				BorderSizePixel = 0,
+				LayoutOrder = 0
+			}), "Stroke")
+			Make("Corner", SummaryRow, UDim.new(0, 6))
+			local SummaryPreview = Create("Frame", SummaryRow, {
+				Size = UDim2.fromOffset(26, 26),
+				Position = UDim2.new(0, 4, 0.5, 0),
+				AnchorPoint = Vector2.new(0, 0.5),
+				BackgroundColor3 = CurrentColor,
+				BorderSizePixel = 0
+			})
+			Make("Corner", SummaryPreview, UDim.new(0, 5))
+			local SummaryValue = InsertTheme(Create("TextLabel", SummaryRow, {
+				Position = UDim2.fromOffset(40, 2),
+				Size = UDim2.new(1, -48, 0, 17),
+				BackgroundTransparency = 1,
+				TextColor3 = Theme["Color Text"],
+				Font = Enum.Font.GothamBold,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Text = ColorToHex(CurrentColor)
+			}), "Text")
+			local SummaryRGB = InsertTheme(Create("TextLabel", SummaryRow, {
+				Position = UDim2.fromOffset(40, 18),
+				Size = UDim2.new(1, -48, 0, 12),
+				BackgroundTransparency = 1,
+				TextColor3 = Theme["Color Dark Text"],
+				Font = Enum.Font.GothamMedium,
+				TextSize = 10,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Text = ColorToRGB(CurrentColor)
+			}), "DarkText")
+
+			local InputRow = Create("Frame", PickerContent, {
+				Size = UDim2.new(1, 0, 0, 26),
+				BackgroundTransparency = 1,
+				LayoutOrder = 10
+			}, {
+				Create("UIListLayout", {
+					SortOrder = Enum.SortOrder.LayoutOrder,
+					FillDirection = Enum.FillDirection.Horizontal,
+					Padding = UDim.new(0, 8)
+				})
+			})
+			for _, Entry in ipairs({
+				{Frame = HexFrame, Input = HexInput, Title = "HEX"},
+				{Frame = RGBFrame, Input = RGBInput, Title = "RGB"}
+			}) do
+				if Entry.Frame then
+					local Frame = Entry.Frame
+					local Input = Entry.Input
+					Frame.Parent = InputRow
+					Frame.Size = UDim2.new(ShowHex and ShowRGB and 0.5 or 1, ShowHex and ShowRGB and -4 or 0, 1, 0)
+					Make("Stroke", Frame, {Thickness = 0.55, Transparency = 0.55})
+					Input.Position = UDim2.fromOffset(8, 0)
+					Input.Size = UDim2.new(1, -48, 1, 0)
+					InsertTheme(Create("TextLabel", Frame, {
+						Position = UDim2.new(1, -6, 0.5, 0),
+						AnchorPoint = Vector2.new(1, 0.5),
+						Size = UDim2.fromOffset(30, 15),
+						BackgroundTransparency = 1,
+						TextColor3 = Theme["Color Dark Text"],
+						Font = Enum.Font.GothamMedium,
+						TextSize = 9,
+						TextXAlignment = Enum.TextXAlignment.Right,
+						Text = Entry.Title
+					}), "DarkText")
+				end
+			end
+
 			local RecentLabel = Create("TextLabel", PickerContent, {
 				Size = UDim2.new(1, 0, 0, 12),
 				BackgroundTransparency = 1,
@@ -9093,19 +9187,27 @@ function Library:MakeWindow(Configs)
 				TextSize = 10,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Text = TranslateText("Recent"),
-				LayoutOrder = 0
+				LayoutOrder = 8
 			})
 
 			InsertTheme(RecentLabel, "DarkText")
 
-			local RecentHolder = Create("Frame", PickerContent, {
+			local RecentHolder = Create("ScrollingFrame", PickerContent, {
 				Size = UDim2.new(1, 0, 0, 22),
 				BackgroundTransparency = 1,
-				LayoutOrder = 1
+				BorderSizePixel = 0,
+				CanvasSize = UDim2.new(),
+				AutomaticCanvasSize = Enum.AutomaticSize.X,
+				ScrollingDirection = Enum.ScrollingDirection.X,
+				ScrollBarThickness = 0,
+				ScrollingEnabled = true,
+				ClipsDescendants = true,
+				LayoutOrder = 9
 			}, {
 				Create("UIListLayout", {
 					FillDirection = Enum.FillDirection.Horizontal,
-					Padding = UDim.new(0, 8)
+					SortOrder = Enum.SortOrder.LayoutOrder,
+					Padding = UDim.new(0, 7)
 				})
 			})
 
@@ -9131,7 +9233,9 @@ function Library:MakeWindow(Configs)
 			})
 
 			local HueBackground = Create("Frame", HueBar, {
-				Size = UDim2.new(1, 0, 1, 0),
+				Size = UDim2.new(1, 0, 0, 10),
+				Position = UDim2.fromScale(0, 0.5),
+				AnchorPoint = Vector2.new(0, 0.5),
 				BorderSizePixel = 0,
 				BackgroundColor3 = ControlColors.White
 			}, {
@@ -9151,7 +9255,7 @@ function Library:MakeWindow(Configs)
 			Make("Corner", HueBackground, UDim.new(0.5, 0))
 
 			local HueIndicator = Create("Frame", HueBackground, {
-				Size = UDim2.new(0, 7, 0, 22),
+				Size = UDim2.new(0, 10, 0, 19),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.new(0, 0, 0.5, 0),
 				BackgroundColor3 = ControlColors.Handle,
@@ -9182,7 +9286,9 @@ function Library:MakeWindow(Configs)
 			})
 
 			local SaturationBackground = Create("Frame", SaturationBar, {
-				Size = UDim2.new(1, 0, 1, 0),
+				Size = UDim2.new(1, 0, 0, 10),
+				Position = UDim2.fromScale(0, 0.5),
+				AnchorPoint = Vector2.new(0, 0.5),
 				BorderSizePixel = 0,
 				BackgroundColor3 = Color3.new(1, 1, 1)
 			})
@@ -9192,7 +9298,7 @@ function Library:MakeWindow(Configs)
 			local SaturationGradient = Create("UIGradient", SaturationBackground)
 
 			local SaturationIndicator = Create("Frame", SaturationBackground, {
-				Size = UDim2.new(0, 7, 0, 22),
+				Size = UDim2.new(0, 10, 0, 19),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				BackgroundColor3 = ControlColors.Handle,
 				BackgroundTransparency = 0.1,
@@ -9232,7 +9338,9 @@ function Library:MakeWindow(Configs)
 			})
 
 			local BrightnessBackground = Create("Frame", BrightnessBar, {
-				Size = UDim2.new(1, 0, 1, 0),
+				Size = UDim2.new(1, 0, 0, 10),
+				Position = UDim2.fromScale(0, 0.5),
+				AnchorPoint = Vector2.new(0, 0.5),
 				BorderSizePixel = 0,
 				BackgroundColor3 = Color3.new(0, 0, 0)
 			})
@@ -9242,7 +9350,7 @@ function Library:MakeWindow(Configs)
 			local BrightnessGradient = Create("UIGradient", BrightnessBackground)
 
 			local BrightnessIndicator = Create("Frame", BrightnessBackground, {
-				Size = UDim2.new(0, 7, 0, 22),
+				Size = UDim2.new(0, 10, 0, 19),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				BackgroundColor3 = ControlColors.Handle,
 				BackgroundTransparency = 0.1,
@@ -9251,20 +9359,50 @@ function Library:MakeWindow(Configs)
 
 			Make("Corner", BrightnessIndicator)
 
+			local function CreateSliderValueLabel(Parent)
+				return InsertTheme(Create("TextLabel", Parent, {
+					Position = UDim2.new(1, 0, 0, 0),
+					AnchorPoint = Vector2.new(1, 0),
+					Size = UDim2.fromOffset(50, 12),
+					BackgroundTransparency = 1,
+					TextColor3 = Theme["Color Dark Text"],
+					Font = Enum.Font.GothamMedium,
+					TextSize = 10,
+					TextXAlignment = Enum.TextXAlignment.Right,
+					Text = ""
+				}), "DarkText")
+			end
+			local HueValue = CreateSliderValueLabel(HueLabel)
+			local SaturationValue = CreateSliderValueLabel(SaturationLabel)
+			local BrightnessValue = CreateSliderValueLabel(BrightnessLabel)
+
 			local Expanded = false
 			local CurrentColorValue = CurrentColor
 			local Hue, Saturation, Brightness = CurrentColor:ToHSV()
 
+			local function RefreshColorDisplay(Color)
+				ColorPreview.BackgroundColor3 = Color
+				PreviewValue.Text = PreviewFormat(Color)
+				SummaryPreview.BackgroundColor3 = Color
+				SummaryValue.Text = ColorToHex(Color)
+				SummaryRGB.Text = ColorToRGB(Color)
+				HueValue.Text = string.format("%d°", math.floor(Hue * 360 + 0.5))
+				SaturationValue.Text = string.format("%d%%", math.floor(Saturation * 100 + 0.5))
+				BrightnessValue.Text = string.format("%d%%", math.floor(Brightness * 100 + 0.5))
+			end
+
 			local function CreateRecentButton(Parent, Color)
 				local Button = Create("TextButton", Parent, {
-					Size = UDim2.new(0, 22, 0, 22),
+					Size = UDim2.fromOffset(22, 22),
 					BackgroundColor3 = Color,
 					AutoButtonColor = false,
 					Text = ""
 				})
-
-				Make("Corner", Button, UDim.new(0, 5))
-
+				Make("Corner", Button, UDim.new(0, 6))
+				Make("Stroke", Button, {
+					Thickness = ColorToHex(Color) == ColorToHex(CurrentColorValue) and 1.35 or 0.7,
+					Transparency = ColorToHex(Color) == ColorToHex(CurrentColorValue) and 0 or 0.6
+				})
 				return Button
 			end
 
@@ -9369,7 +9507,7 @@ function Library:MakeWindow(Configs)
 
 				Hue, Saturation, Brightness = Color:ToHSV()
 
-				ColorPreview.BackgroundColor3 = Color
+				RefreshColorDisplay(Color)
 
 				if HexInput and not HexInput:IsFocused() then
 					HexInput.Text = ColorToHex(Color)
@@ -9409,7 +9547,7 @@ function Library:MakeWindow(Configs)
 				)
 
 				CurrentColorValue = Color
-				ColorPreview.BackgroundColor3 = Color
+				RefreshColorDisplay(Color)
 
 				if HexInput and not HexInput:IsFocused() then
 					HexInput.Text = ColorToHex(Color)
@@ -9467,7 +9605,7 @@ function Library:MakeWindow(Configs)
 				PickerFrame.Visible = true
 
 				local SizeTween = TweenService:Create(PickerFrame, PickerTweenInfo, {
-					Size = UDim2.new(1, 0, 0, Expanded and 225 or 0)
+					Size = UDim2.new(1, 0, 0, Expanded and 260 or 0)
 				})
 				PickerSizeTween = SizeTween
 				PickerArrowTween = TweenService:Create(Arrow, PickerTweenInfo, {
@@ -9539,7 +9677,7 @@ function Library:MakeWindow(Configs)
 				if EndConnection then EndConnection:Disconnect() EndConnection = nil end
 				if FocusConnection then FocusConnection:Disconnect() FocusConnection = nil end
 				Container.ScrollingEnabled = PreviousScrolling
-				ActiveIndicator.Size = UDim2.fromOffset(7, 22)
+				ActiveIndicator.Size = UDim2.fromOffset(10, 19)
 				if Commit then ApplyHSV(true, true, "Brightness") end
 			end
 
@@ -9548,7 +9686,7 @@ function Library:MakeWindow(Configs)
 				DragInput = Input.UserInputType == Enum.UserInputType.Touch and Input or nil
 				PreviousScrolling = Container.ScrollingEnabled
 				Container.ScrollingEnabled = false
-				Indicator.Size = UDim2.fromOffset(9, 24)
+				Indicator.Size = UDim2.fromOffset(12, 21)
 				CallbackFunction(Input)
 				MoveConnection = UserInputService.InputChanged:Connect(function(Changed)
 					if DragInput then
