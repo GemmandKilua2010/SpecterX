@@ -1474,7 +1474,7 @@ local TranslateText
 local function ButtonFrame(Instance, Title, Description, HolderSize, Clickable)
 	local TitleL = InsertTheme(Create("TextLabel", {
 		Font = Enum.Font.GothamMedium,
-		TextColor3 = Theme["Color Text"],
+		TextColor3 = Color3.new(1, 1, 1),
 		Size = UDim2.new(1, -20),
 		AutomaticSize = "Y",
 		Position = UDim2.new(0, 0, 0.5),
@@ -1485,11 +1485,11 @@ local function ButtonFrame(Instance, Title, Description, HolderSize, Clickable)
 		TextXAlignment = "Left",
 		Text = "",
 		RichText = true
-	}), "Text")
+	}), "TitleText")
 	
 	local DescL = InsertTheme(Create("TextLabel", {
 		Font = Enum.Font.Gotham,
-		TextColor3 = Theme["Color Dark Text"],
+		TextColor3 = Color3.fromRGB(180, 180, 188),
 		Size = UDim2.new(1, -20),
 		AutomaticSize = "Y",
 		Position = UDim2.new(0, ElementHorizontalPadding + 2, 0, ElementVerticalPadding * 3),
@@ -1499,22 +1499,20 @@ local function ButtonFrame(Instance, Title, Description, HolderSize, Clickable)
 		TextXAlignment = "Left",
 		Text = "",
 		RichText = true
-	}), "DarkText")
+	}), "DescriptionText")
 
-	local Frame
-	if Clickable == false then
-		Frame = InsertTheme(Create("Frame", Instance, {
-			Size = UDim2.new(1, 0, 0, ElementHeight),
-			AutomaticSize = "Y",
-			BackgroundColor3 = Theme["Color Hub 2"]
-		}), "Frame")
-		BindHover(Frame, "BackgroundTransparency", ButtonHoverTransparency, 0)
-	else
-		Frame = Make("Button", Instance, {
-			Size = UDim2.new(1, 0, 0, ElementHeight),
-			AutomaticSize = "Y",
-		})
+	-- A translucent neutral surface separates controls while preserving the window gradient.
+	local Frame = Create(Clickable == false and "Frame" or "TextButton", Instance, {
+		Size = UDim2.new(1, 0, 0, ElementHeight),
+		AutomaticSize = "Y",
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 0.94
+	})
+	if Clickable ~= false then
+		Frame.Text = ""
+		Frame.AutoButtonColor = false
 	end
+	BindHover(Frame, "BackgroundTransparency", 0.94 - 0.1 * (1 - ButtonHoverTransparency), 0.94)
 	Make("Corner", Frame, UDim.new(0, ElementCornerRadius))
 	
 	TitleL.LayoutOrder = 1
@@ -2085,6 +2083,10 @@ function Library:SetTheme(NewTheme)
 	for _, Val in ipairs(Library.Instances) do
 		if Val.Type == "Gradient" or Val.Type == "MainGradient" then
 			Val.Instance.Color = Theme["Color Hub 1"]
+		elseif Val.Type == "TitleText" then
+			Val.Instance.TextColor3 = Color3.new(1, 1, 1)
+		elseif Val.Type == "DescriptionText" then
+			Val.Instance.TextColor3 = Color3.fromRGB(180, 180, 188)
 		elseif Val.Type == "Frame" then
 			Val.Instance.BackgroundColor3 = Theme["Color Hub 2"]
 		elseif Val.Type == "Stroke" then
@@ -9115,17 +9117,10 @@ function Library:MakeWindow(Configs)
 				ZIndex = 1
 			}), "Frame")
 			MainCorner:Clone().Parent = PopupBackdrop
-			local function GetPickerBackground()
-				return Theme["Color Hub 2"]:Lerp(Theme["Color Theme"], 0.09):Lerp(Color3.new(0, 0, 0), 0.08)
-			end
-			local function GetPickerGradient()
-				local Base = GetPickerBackground()
-				return ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Base:Lerp(Theme["Color Theme"], 0.06)),
-					ColorSequenceKeypoint.new(0.5, Base),
-					ColorSequenceKeypoint.new(1, Base:Lerp(Color3.new(0, 0, 0), 0.05))
-				})
-			end
+			-- Neutral charcoal keeps the picker readable without tinting its content.
+			local PickerBackground = ColorSequence.new(
+				Color3.fromRGB(35, 35, 39), Color3.fromRGB(27, 27, 30)
+			)
 			local PickerFrame = Create("Frame", PopupOverlay, {
 				Size = UDim2.new(0.82, 0, 0, 314),
 				Position = UDim2.fromScale(0.5, 0.5),
@@ -9137,8 +9132,8 @@ function Library:MakeWindow(Configs)
 				ZIndex = 2
 			})
 			Make("Corner", PickerFrame, UDim.new(0, 10))
-			local PickerGradient = Create("UIGradient", PickerFrame, {
-				Color = GetPickerGradient(),
+			Create("UIGradient", PickerFrame, {
+				Color = PickerBackground,
 				Rotation = 90
 			})
 			Create("UISizeConstraint", PickerFrame, {
@@ -9151,23 +9146,23 @@ function Library:MakeWindow(Configs)
 				Size = UDim2.new(1, -79, 0, 21),
 				BackgroundTransparency = 1,
 				Font = Enum.Font.GothamBold,
-				TextColor3 = Theme["Color Text"],
+				TextColor3 = Color3.new(1, 1, 1),
 				TextSize = 14,
 				TextTruncate = Enum.TextTruncate.AtEnd,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Text = TranslateText(Name)
-			}), "Text")
+			}), "TitleText")
 			local PanelSubtitle = InsertTheme(Create("TextLabel", PickerFrame, {
 				Position = UDim2.fromOffset(16, 29),
 				Size = UDim2.new(1, -79, 0, 15),
 				BackgroundTransparency = 1,
 				Font = Enum.Font.Gotham,
-				TextColor3 = Theme["Color Dark Text"],
+				TextColor3 = Color3.fromRGB(180, 180, 188),
 				TextSize = 10,
 				TextTruncate = Enum.TextTruncate.AtEnd,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Text = Description ~= "" and TranslateText(Description) or "HSV · HEX · RGB"
-			}), "DarkText")
+			}), "DescriptionText")
 			local CloseButton = InsertTheme(Create("TextButton", PickerFrame, {
 				Position = UDim2.new(1, -10, 0, 8),
 				AnchorPoint = Vector2.new(1, 0),
@@ -9415,18 +9410,6 @@ function Library:MakeWindow(Configs)
 			})
 
 			InsertTheme(BrightnessLabel, "DarkText")
-
-			local function RefreshPickerTheme()
-				if not PopupOverlay.Parent then return end
-				PopupBackdrop.BackgroundColor3 = Theme["Color Hub 2"]
-				PickerGradient.Color = GetPickerGradient()
-				SummaryRow.BackgroundColor3 = Theme["Color Hub 2"]
-				PreviewButton.BackgroundColor3 = Theme["Color Hub 2"]
-				if HexFrame then HexFrame.BackgroundColor3 = Theme["Color Hub 2"] end
-				if RGBFrame then RGBFrame.BackgroundColor3 = Theme["Color Hub 2"] end
-				CloseButton.TextColor3 = Theme["Color Text"]
-			end
-			TrackConnection(TrackColorConnection(Connection.ThemeChanged:Connect(RefreshPickerTheme)))
 
 			TrackConnection(TrackColorConnection(Connection.LanguageChanged:Connect(function()
 				if RecentLabel.Parent then
@@ -9721,7 +9704,6 @@ function Library:MakeWindow(Configs)
 				local Token = PopupAnimationToken
 
 				if Expanded and not PopupOverlay.Visible then
-					RefreshPickerTheme()
 					PopupOverlay.Visible = true
 					PickerScale.Scale = 0.96
 					PopupBackdrop.BackgroundTransparency = 1
