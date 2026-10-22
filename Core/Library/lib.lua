@@ -9442,51 +9442,50 @@ function Library:MakeWindow(Configs)
 			end
 
 			local FinishColorDrag
+			local PickerSizeTween
+			local PickerArrowTween
+			local PickerTweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+
+			local function StopPickerTweens()
+				if PickerSizeTween then
+					PickerSizeTween:Cancel()
+					PickerSizeTween = nil
+				end
+				if PickerArrowTween then
+					PickerArrowTween:Cancel()
+					PickerArrowTween = nil
+				end
+			end
+
 			local function SetExpanded(Value)
-				Expanded = Value == nil and not Expanded or Value
+				local ShouldExpand = Value == nil and not Expanded or Value == true
+				if Expanded == ShouldExpand then return end
+				Expanded = ShouldExpand
 				if not Expanded and FinishColorDrag then FinishColorDrag(false) end
 
-				if Expanded then
-					PickerFrame.Visible = true
-					PickerFrame.Size = UDim2.new(1, 0, 0, 0)
+				StopPickerTweens()
+				PickerFrame.Visible = true
 
-					CreateTween({
-						Arrow,
-						"Rotation",
-						180,
-						0.25
-					})
+				local SizeTween = TweenService:Create(PickerFrame, PickerTweenInfo, {
+					Size = UDim2.new(1, 0, 0, Expanded and 225 or 0)
+				})
+				PickerSizeTween = SizeTween
+				PickerArrowTween = TweenService:Create(Arrow, PickerTweenInfo, {
+					Rotation = Expanded and 180 or 0
+				})
 
-					CreateTween({
-						PickerFrame,
-						"Size",
-						UDim2.new(1, 0, 0, 225),
-						0.25
-					})
-				else
-					CreateTween({
-						Arrow,
-						"Rotation",
-						0,
-						0.25
-					})
+				SizeTween.Completed:Once(function(State)
+					if PickerSizeTween ~= SizeTween then return end
+					PickerSizeTween = nil
+					if State == Enum.PlaybackState.Completed and not Expanded and PickerFrame.Parent then
+						PickerFrame.Visible = false
+					end
+				end)
 
-					local Tween = CreateTween({
-						PickerFrame,
-						"Size",
-						UDim2.new(1, 0, 0, 0),
-						0.35
-					})
+				SizeTween:Play()
+				PickerArrowTween:Play()
 
-					Tween.Completed:Once(function()
-						if not Expanded and PickerFrame.Parent then
-							PickerFrame.Size = UDim2.new(1, 0, 0, 0)
-							PickerFrame.Visible = false
-						end
-					end)
-				end
-
-				task.defer(UpdateIndicators)
+				if Expanded then task.defer(UpdateIndicators) end
 			end
 
 			PreviewButton.Activated:Connect(function()
@@ -9750,6 +9749,8 @@ function Library:MakeWindow(Configs)
 				if Value == false then
 					FinishColorDrag(false)
 					Expanded = false
+					StopPickerTweens()
+					Arrow.Rotation = 0
 					PickerFrame.Visible = false
 					PickerFrame.Size = UDim2.new(1, 0, 0, 0)
 				end
@@ -9765,6 +9766,7 @@ function Library:MakeWindow(Configs)
 
 			function ColorPicker:Destroy()
 				FinishColorDrag(false)
+				StopPickerTweens()
 				if ColorOption then
 					local Index = table.find(Library.Options, ColorOption)
 					if Index then
