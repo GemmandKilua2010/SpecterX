@@ -8728,7 +8728,7 @@ function Library:MakeWindow(Configs)
 			local Name = Configs[1] or Configs.Name or Configs.Title or TranslateText(ControlsConfig.Titles.ColorPicker)
 			local Description = Configs.Desc or Configs.Description or ""
 			local Callback = Funcs:GetCallback(Configs, 3)
-			local LiveUpdate = FirstDefined(Configs.LiveUpdate, Configs.UpdateOnDrag, true) ~= false
+			local LiveUpdate = FirstDefined(Configs.LiveUpdate, Configs.UpdateOnDrag, Configs.UpdateWhileDragging, true) ~= false
 			local Flag = Configs[4] or Configs.Flag or false
 			local MaxRecent = math.clamp(math.floor(tonumber(Configs.MaxRecent) or ControlsConfig.ColorPicker.MaxRecent), 0, 32)
 			local SmoothTime = math.clamp(tonumber(Configs.SmoothTime) or ColorPickerSmoothTime, 0, 0.2)
@@ -9036,14 +9036,14 @@ function Library:MakeWindow(Configs)
 				return ShowHex and ColorToHex(Color) or ColorToRGB(Color)
 			end
 
-			local PreviewButton = InsertTheme(Create("TextButton", Controls, {
+			local PreviewButton = Create("TextButton", Controls, {
 				Size = UDim2.fromOffset(130, 28),
 				BackgroundColor3 = Theme["Color Stroke"],
 				BackgroundTransparency = 0.75,
 				AutoButtonColor = false,
 				Text = "",
 				LayoutOrder = 3
-			}), "Stroke")
+			})
 			Make("Corner", PreviewButton, UDim.new(0, 7))
 			BindHover(PreviewButton, "BackgroundTransparency", 0.55, 0.75)
 
@@ -9101,6 +9101,7 @@ function Library:MakeWindow(Configs)
 				BackgroundColor3 = Theme["Color Hub 2"],
 				ClipsDescendants = true,
 				BorderSizePixel = 0,
+				Active = true,
 				ZIndex = 2
 			}), "Hub 2")
 			Make("Corner", PickerFrame, UDim.new(0, 10))
@@ -9135,16 +9136,15 @@ function Library:MakeWindow(Configs)
 				Position = UDim2.new(1, -12, 0, 11),
 				AnchorPoint = Vector2.new(1, 0),
 				Size = UDim2.fromOffset(26, 26),
-				BackgroundColor3 = Theme["Color Stroke"],
-				BackgroundTransparency = 0.82,
+				BackgroundTransparency = 1,
 				AutoButtonColor = false,
 				Font = Enum.Font.GothamMedium,
 				TextColor3 = Theme["Color Text"],
-				TextSize = 17,
+				TextTransparency = 0.2,
+				TextSize = 19,
 				Text = "×"
-			}), "Stroke")
-			Make("Corner", CloseButton, UDim.new(0, 6))
-			BindHover(CloseButton, "BackgroundTransparency", 0.65, 0.82)
+			}), "Text")
+			BindHover(CloseButton, "TextTransparency", 0, 0.2)
 
 			local PickerContent = Create("Frame", PickerFrame, {
 				Size = UDim2.fromScale(1, 1),
@@ -9375,6 +9375,12 @@ function Library:MakeWindow(Configs)
 			})
 
 			InsertTheme(BrightnessLabel, "DarkText")
+
+			TrackConnection(TrackColorConnection(Connection.ThemeChanged:Connect(function()
+				if PreviewButton.Parent then
+					PreviewButton.BackgroundColor3 = Theme["Color Stroke"]
+				end
+			end)))
 
 			TrackConnection(TrackColorConnection(Connection.LanguageChanged:Connect(function()
 				if RecentLabel.Parent then
@@ -9725,21 +9731,21 @@ function Library:MakeWindow(Configs)
 
 			local function UpdateHue(Input)
 				local NewHue = GetSliderValue(Input, HueBackground)
-				if NewHue == nil then return end
+				if NewHue == nil or NewHue == Hue then return end
 				Hue = NewHue
 				ApplyHSV(LiveUpdate, false, "Hue")
 			end
 
 			local function UpdateSaturation(Input)
 				local NewSaturation = GetSliderValue(Input, SaturationBackground)
-				if NewSaturation == nil then return end
+				if NewSaturation == nil or NewSaturation == Saturation then return end
 				Saturation = NewSaturation
 				ApplyHSV(LiveUpdate, false, "Saturation")
 			end
 
 			local function UpdateBrightness(Input)
 				local NewBrightness = GetSliderValue(Input, BrightnessBackground)
-				if NewBrightness == nil then return end
+				if NewBrightness == nil or NewBrightness == Brightness then return end
 				Brightness = NewBrightness
 				ApplyHSV(LiveUpdate, false, "Brightness")
 			end
@@ -9907,8 +9913,11 @@ function Library:MakeWindow(Configs)
 
 			function ColorPicker:Set(Value, DescriptionValue)
 				if type(Value) == "string" and type(DescriptionValue) == "string" then
-					Label:SetTitle(Value)
-					Label:SetDesc(DescriptionValue)
+					Name, Description = Value, DescriptionValue
+					Label:SetTitle(Name)
+					Label:SetDesc(Description)
+					PanelTitle.Text = TranslateText(Name)
+					PanelSubtitle.Text = Description ~= "" and TranslateText(Description) or "HSV · HEX · RGB"
 					return
 				end
 
@@ -9927,7 +9936,9 @@ function Library:MakeWindow(Configs)
 						return
 					end
 
-					Label:SetTitle(Value)
+					Name = Value
+					Label:SetTitle(Name)
+					PanelTitle.Text = TranslateText(Name)
 					return
 				end
 
@@ -9998,7 +10009,7 @@ function Library:MakeWindow(Configs)
 				StopIndicatorAnimation()
 
 				Option:Destroy()
-				PopupOverlay:Destroy()
+				if PopupOverlay.Parent then PopupOverlay:Destroy() end
 			end
 
 			SetColor(CurrentColorValue, false, false)
