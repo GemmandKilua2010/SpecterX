@@ -291,6 +291,7 @@ local ElementSpacing = math.max(0, ConfigNumber(ElementsConfig, "Spacing"))
 local ScrollConfig = ConfigSection("Scroll")
 local ScrollThickness = math.clamp(ConfigNumber(ScrollConfig, "Thickness"), 0, 12)
 local ScrollTransparency = math.clamp(ConfigNumber(ScrollConfig, "Transparency"), 0, 1)
+local AdaptiveScrollRefresh = setmetatable({}, {__mode = "k"})
 
 local BackgroundConfig = ConfigSection("Background")
 local DefaultBackgroundImage = NormalizeAssetId(BackgroundConfig.Image) or ""
@@ -2487,7 +2488,12 @@ function Library:SetScrollThickness(Value)
 
     for _, Val in ipairs(Library.Instances) do
         if Val.Type == "ScrollBar" and Val.Instance:IsA("ScrollingFrame") then
-            Val.Instance.ScrollBarThickness = ScrollThickness
+            local Refresh = AdaptiveScrollRefresh[Val.Instance]
+            if Refresh then
+                Refresh()
+            else
+                Val.Instance.ScrollBarThickness = ScrollThickness
+            end
         end
     end
     return true
@@ -2844,6 +2850,26 @@ function Library:MakeWindow(Configs)
 		SubTitleLabel
 	}), "Text")
 	
+	local function BindAdaptiveScroll(Frame, PaddingY)
+		local Layout = Frame:FindFirstChildOfClass("UIListLayout")
+		if not Layout then return end
+
+		local function Refresh()
+			if not Frame.Parent then return end
+			local NeedsScrolling = Layout.AbsoluteContentSize.Y + PaddingY > Frame.AbsoluteSize.Y + 1
+			Frame.ScrollingEnabled = NeedsScrolling
+			Frame.ScrollBarThickness = NeedsScrolling and ScrollThickness or 0
+		end
+
+		AdaptiveScrollRefresh[Frame] = Refresh
+		Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(Refresh)
+		Frame:GetPropertyChangedSignal("AbsoluteSize"):Connect(Refresh)
+		Frame.Destroying:Connect(function()
+			AdaptiveScrollRefresh[Frame] = nil
+		end)
+		task.defer(Refresh)
+	end
+
 	local MainScroll = InsertTheme(Create("ScrollingFrame", Components, {
 		Size = UDim2.new(0, WindowTabSize, 1, -TopBar.Size.Y.Offset),
 		ScrollBarImageColor3 = Theme["Color Theme"],
@@ -2866,7 +2892,8 @@ function Library:MakeWindow(Configs)
 			Padding = UDim.new(0, TabsSpacing)
 		})
 	}), "ScrollBar")
-	
+	BindAdaptiveScroll(MainScroll, TabsPadding * 2)
+
 	local Containers = Create("Frame", Components, {
 		Size = UDim2.new(1, -MainScroll.Size.X.Offset, 1, -TopBar.Size.Y.Offset),
 		AnchorPoint = Vector2.new(1, 1),
@@ -4861,6 +4888,14 @@ function Library:MakeWindow(Configs)
 	end)
 	local SidebarOrder = 0
 
+	local function ResolveSidebarIcon(Value)
+		local Id = NormalizeAssetId(Value)
+		if not Id and type(Value) == "string" then
+			Id = NormalizeAssetId(Library:GetIcon(Value))
+		end
+		return Id and Id ~= "" and ("rbxassetid://" .. Id) or nil
+	end
+
 	function Window:AddSection(Configs)
 		Configs = type(Configs) == "table" and Configs or {Title = Configs}
 		local TitleSource = tostring(Configs[1] or Configs.Title or Configs.Name or "Section")
@@ -4897,9 +4932,8 @@ function Library:MakeWindow(Configs)
 		local SectionIconSize = math.max(14, TabIconSize)
 		local SectionIconGap = 7
 		local SectionIconOffset = 0
-		if Configs.Icon then
-			local Source = Library:GetIcon(Configs.Icon)
-			if type(Source) == "string" and Source:match("^rbxassetid://%d+$") then
+		local Source = ResolveSidebarIcon(Configs.Icon)
+		if Source then
 				SectionIconOffset = SectionIconSize + SectionIconGap
 				local Image = Create("ImageLabel", Header, {
 					Size = UDim2.fromOffset(SectionIconSize, SectionIconSize),
@@ -4910,12 +4944,12 @@ function Library:MakeWindow(Configs)
 					ImageColor3 = Configs.IconThemed == true and Theme["Color Text"] or Color3.new(1, 1, 1),
 					ImageTransparency = 0.22
 				})
-				if Configs.IconThemed == true then InsertTheme(Image, "Icon") end
-			end
+			if Configs.IconThemed == true then InsertTheme(Image, "Icon") end
 		end
+		local SectionTextOffset = SectionLeftPadding + (Source and SectionIconOffset or 4)
 		local Label = InsertTheme(Create("TextLabel", Header, {
-			Position = UDim2.fromOffset(SectionLeftPadding + SectionIconOffset, 0),
-			Size = UDim2.new(1, -(SectionLeftPadding + SectionIconOffset + 24), 1, 0),
+			Position = UDim2.fromOffset(SectionTextOffset, 0),
+			Size = UDim2.new(1, -(SectionTextOffset + 24), 1, 0),
 			BackgroundTransparency = 1,
 			AutoLocalize = false,
 			Text = TranslateText(TitleSource),
@@ -5034,14 +5068,10 @@ function Library:MakeWindow(Configs)
 		FavoriteTabCounts[BaseTabKey] = (FavoriteTabCounts[BaseTabKey] or 0) + 1
 		local TabIndex = FavoriteTabCounts[BaseTabKey]
 		local FavoriteTabKey = BaseTabKey .. (TabIndex == 1 and "" or "#" .. TabIndex)
-		local TIcon = Configs[2] or Configs.Icon or ""
+		local TIcon = not Hidden and ResolveSidebarIcon(Configs[2] or Configs.Icon) or nil
 		local TabSelect, LabelTitle, LabelIcon, Selected
 
 		if not Hidden then
-			TIcon = Library:GetIcon(TIcon)
-			if not TIcon:find("rbxassetid://") or TIcon:gsub("rbxassetid://", ""):len() < 6 then
-				TIcon = false
-			end
 
 			if Section then Section._Order += 1 else SidebarOrder += 1 end
 			TabSelect = Make("Button", Section and Section._Container or MainScroll, {
@@ -5050,9 +5080,11 @@ function Library:MakeWindow(Configs)
 			})
 			Make("Corner", TabSelect, UDim.new(0, 5))
 
+			local TextOffset = TIcon and math.max(TabTextIconOffset, TabIconOffset + TabIconSize + 7)
+				or (TabIconOffset + 4)
 			LabelTitle = InsertTheme(Create("TextLabel", TabSelect, {
-				Size = UDim2.new(1, TIcon and -TabTextIconOffset or -TabTextOffset, 1),
-				Position = UDim2.fromOffset(TIcon and TabTextIconOffset or TabTextOffset),
+				Size = UDim2.new(1, -TextOffset - 5, 1, 0),
+				Position = UDim2.fromOffset(TextOffset, 0),
 				BackgroundTransparency = 1,
 				Font = Enum.Font.GothamMedium,
 				Text = TName,
@@ -5063,21 +5095,24 @@ function Library:MakeWindow(Configs)
 				TextTruncate = "AtEnd"
 			}), "Text")
 
-			LabelIcon = InsertTheme(Create("ImageLabel", TabSelect, {
-				Position = UDim2.new(0, TabIconOffset, 0.5),
-				Size = UDim2.new(0, TabIconSize, 0, TabIconSize),
-				AnchorPoint = Vector2.new(0, 0.5),
-				Image = TIcon or "",
-				BackgroundTransparency = 1,
-				ImageTransparency = (FirstTab and TabInactiveTransparency) or 0
-			}), "Text")
+			if TIcon then
+				LabelIcon = InsertTheme(Create("ImageLabel", TabSelect, {
+					Position = UDim2.new(0, TabIconOffset, 0.5, 0),
+					Size = UDim2.fromOffset(TabIconSize, TabIconSize),
+					AnchorPoint = Vector2.new(0, 0.5),
+					Image = TIcon,
+					BackgroundTransparency = 1,
+					ImageTransparency = (FirstTab and TabInactiveTransparency) or 0
+				}), "Text")
+			end
 
 			Selected = InsertTheme(Create("Frame", TabSelect, {
-				Size = FirstTab and UDim2.new(0, TabIndicatorWidth, 0, TabIndicatorIdleSize) or UDim2.new(0, TabIndicatorWidth, 0, TabIndicatorHeight),
-				Position = UDim2.new(0, 1, 0.5),
+				Size = UDim2.fromOffset(math.min(3, TabIndicatorWidth), FirstTab and TabIndicatorIdleSize or TabIndicatorHeight),
+				Position = UDim2.new(0, 4, 0.5, 0),
 				AnchorPoint = Vector2.new(0, 0.5),
 				BackgroundColor3 = Theme["Color Theme"],
-				BackgroundTransparency = FirstTab and 1 or 0
+				BackgroundTransparency = FirstTab and 1 or 0,
+				BorderSizePixel = 0
 			}), "Theme")
 			Make("Corner", Selected, UDim.new(0.5, 0))
 		else
@@ -5108,6 +5143,7 @@ function Library:MakeWindow(Configs)
 			})
 		}), "ScrollBar")
 		
+		BindAdaptiveScroll(Container, TabsPadding * 2)
 		OrderedParents[Container] = 0
 		table.insert(ContainerList, Container)
 		
@@ -5172,8 +5208,8 @@ function Library:MakeWindow(Configs)
 			if ConfigButton then ConfigButton:SetActive(Tab == ConfigTab) end
 			if TabSelect then
 				CreateTween({LabelTitle, "TextTransparency", 0, AnimationTab})
-				CreateTween({LabelIcon, "ImageTransparency", 0, AnimationTab})
-				CreateTween({Selected, "Size", UDim2.new(0, TabIndicatorWidth, 0, TabIndicatorHeight), AnimationTab})
+				if LabelIcon then CreateTween({LabelIcon, "ImageTransparency", 0, AnimationTab}) end
+				CreateTween({Selected, "Size", UDim2.fromOffset(math.min(3, TabIndicatorWidth), TabIndicatorHeight), AnimationTab})
 				CreateTween({Selected, "BackgroundTransparency", 0, AnimationTab})
 			end
 			return true
@@ -5193,8 +5229,8 @@ function Library:MakeWindow(Configs)
 			Container.Visible = false
 			if TabSelect then
 				CreateTween({LabelTitle, "TextTransparency", TabInactiveTransparency, AnimationTab})
-				CreateTween({LabelIcon, "ImageTransparency", TabInactiveTransparency, AnimationTab})
-				CreateTween({Selected, "Size", UDim2.new(0, TabIndicatorWidth, 0, TabIndicatorIdleSize), AnimationTab})
+				if LabelIcon then CreateTween({LabelIcon, "ImageTransparency", TabInactiveTransparency, AnimationTab}) end
+				CreateTween({Selected, "Size", UDim2.fromOffset(math.min(3, TabIndicatorWidth), TabIndicatorIdleSize), AnimationTab})
 				CreateTween({Selected, "BackgroundTransparency", 1, AnimationTab})
 			end
 		end
