@@ -7,7 +7,6 @@ local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 local TextService = game:GetService("TextService")
 local HttpService = game:GetService("HttpService")
-local CoreGui = game:GetService("CoreGui")
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 
@@ -54,11 +53,11 @@ local DropdownPrefixListeners = setmetatable({}, {__mode = "k"})
 local DropdownSizeListeners = setmetatable({}, {__mode = "k"})
 Library._KeybindSettings = {Listeners = setmetatable({}, {__mode = "k"})}
 Library._PositionSettings = {Bindings = setmetatable({}, {__mode = "k"})}
-function Library._PositionSettings.Normalize(Value)
+function Library._PositionSettings.Normalize(Value, AllowOverflow)
     if type(Value) ~= "table" then return nil end
     local X, Y = tonumber(Value.X), tonumber(Value.Y)
     if not X or not Y or X ~= X or Y ~= Y or math.abs(X) == math.huge or math.abs(Y) == math.huge then return nil end
-    return {X = math.clamp(X, 0, 1), Y = math.clamp(Y, 0, 1)}
+    return {X = AllowOverflow and X or math.clamp(X, 0, 1), Y = math.clamp(Y, 0, 1)}
 end
 
 --// Config
@@ -652,7 +651,7 @@ local SetProps, SetChildren, InsertTheme, Create do
             local Positions = {}
             for Key, Value in pairs(Decode.Positions) do
                 if type(Key) == "string" and (Key == "Window" or Key:match("^Minimize%d+$")) then
-                    Positions[Key] = Library._PositionSettings.Normalize(Value)
+                    Positions[Key] = Library._PositionSettings.Normalize(Value, Key == "Window")
                 end
             end
             Accept("Positions", Positions)
@@ -1106,6 +1105,7 @@ local function MakeDrag(Instance, Options)
     local Threshold = math.max(0, tonumber(Options.Threshold) or DragThreshold)
     local GlobalInput = Options.GlobalInput == true
     local ShouldCancel = type(Options.ShouldCancel) == "function" and Options.ShouldCancel or nil
+    local Move = type(Options.Move) == "function" and Options.Move or nil
 
     Handle.Active = true
     if Handle:IsA("GuiButton") then
@@ -1117,8 +1117,41 @@ local function MakeDrag(Instance, Options)
     local DragStart
     local LastPointer
     local PassedThreshold = false
+    local MovementThreshold = Threshold
+    local RenderConnection
+    local StateConnection
+
+    local function IsAvailable()
+        if not ScreenGui.Enabled or not Instance.Parent or not Handle.Parent then return false end
+        local Current = Handle
+        while Current and Current ~= ScreenGui do
+            if Current:IsA("GuiObject") and not Current.Visible then return false end
+            Current = Current.Parent
+        end
+        return Current == ScreenGui and Instance.Visible
+    end
+
+    local function GetPointer()
+        if DragInput.UserInputType == Enum.UserInputType.Touch then
+            local Position = DragInput.Position
+            return Vector2.new(Position.X, Position.Y)
+        end
+        -- InputObject.Position and AbsolutePosition use CoreUISafeInsets coordinates.
+        local Inset = GuiService:GetGuiInset()
+        return UserInputService:GetMouseLocation() - Inset
+    end
 
     local function StopDrag()
+        if RenderConnection then
+            RenderConnection:Disconnect()
+            UntrackConnection(RenderConnection)
+            RenderConnection = nil
+        end
+        if StateConnection then
+            StateConnection:Disconnect()
+            UntrackConnection(StateConnection)
+            StateConnection = nil
+        end
         Dragging = false
         DragInput = nil
         DragStart = nil
@@ -1126,18 +1159,18 @@ local function MakeDrag(Instance, Options)
         PassedThreshold = false
     end
 
-    local function Update(Input)
+    local function Update()
         if not Dragging or not DragStart or not LastPointer then
             return
         end
-        if ShouldCancel and ShouldCancel() then
+        if not IsAvailable() or (ShouldCancel and ShouldCancel()) then
             StopDrag()
             return
         end
 
-        local Pointer = Input.Position
+        local Pointer = GetPointer()
         if not PassedThreshold then
-            if (Pointer - DragStart).Magnitude < Threshold then return end
+            if (Pointer - DragStart).Magnitude < MovementThreshold then return end
             PassedThreshold = true
         end
 
@@ -1145,6 +1178,11 @@ local function MakeDrag(Instance, Options)
         -- pointer travelling through an invisible overshoot before moving back.
         local Delta = Pointer - LastPointer
         LastPointer = Pointer
+        if Delta.Magnitude == 0 then return end
+        if Move then
+            Move(Delta)
+            return
+        end
         local Position = Instance.Position
         local Scale = math.max(ScreenScale.Scale, 0.001)
         Instance.Position = UDim2.new(
@@ -1154,10 +1192,11 @@ local function MakeDrag(Instance, Options)
     end
 
     local function Begin(Input)
-        if Dragging or not Instance.Parent or not Instance.Visible then return end
+        if Dragging or not IsAvailable() then return end
         if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then
             return
         end
+        if Input.UserInputState == Enum.UserInputState.End or Input.UserInputState == Enum.UserInputState.Cancel then return end
 
         if ShouldCancel and ShouldCancel() then
             return
@@ -1168,15 +1207,33 @@ local function MakeDrag(Instance, Options)
         end
 
         Dragging = true
-        local Pointer = Input.Position
-        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-            local Mouse = UserInputService:GetMouseLocation()
-            Pointer = Vector3.new(Mouse.X, Mouse.Y, 0)
-        end
+        DragInput = Input
+        local Pointer = GetPointer()
         DragStart = Pointer
         LastPointer = Pointer
         PassedThreshold = false
-        DragInput = Input.UserInputType == Enum.UserInputType.Touch and Input or nil
+        MovementThreshold = Input.UserInputType == Enum.UserInputType.Touch and math.max(Threshold, 6) or Threshold
+        local function CheckInputState()
+            if not Dragging then return end
+            if Input.UserInputState == Enum.UserInputState.Cancel then
+                StopDrag()
+            elseif Input.UserInputState == Enum.UserInputState.End then
+                Update()
+                StopDrag()
+            end
+        end
+        StateConnection = TrackConnection(Input:GetPropertyChangedSignal("UserInputState"):Connect(CheckInputState))
+        RenderConnection = TrackConnection(game:GetService("RunService").RenderStepped:Connect(function()
+            if not Dragging then return end
+            CheckInputState()
+            if not Dragging then return end
+            if Input.UserInputType == Enum.UserInputType.MouseButton1
+                and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                StopDrag()
+                return
+            end
+            Update()
+        end))
     end
 
     TrackConnection(Handle.InputBegan:Connect(Begin))
@@ -1184,39 +1241,24 @@ local function MakeDrag(Instance, Options)
         TrackConnection(UserInputService.InputBegan:Connect(Begin))
     end
 
-    TrackConnection(UserInputService.InputChanged:Connect(function(Input)
-        if not Dragging then
-            return
-        end
-
-        if DragInput then
-            if Input == DragInput then
-                Update(Input)
-            end
-        end
-    end))
-
     TrackConnection(UserInputService.InputEnded:Connect(function(Input)
         if not Dragging then
             return
         end
 
-        if (DragInput and Input == DragInput)
-            or (not DragInput and Input.UserInputType == Enum.UserInputType.MouseButton1) then
+        if Input == DragInput then
+            if Input.UserInputState ~= Enum.UserInputState.Cancel then Update() end
             StopDrag()
         end
     end))
 
-    TrackConnection(game:GetService("RunService").RenderStepped:Connect(function()
-        if not Dragging or DragInput then return end
-        if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-            StopDrag()
-            return
-        end
-        local Pointer = UserInputService:GetMouseLocation()
-        Update({Position = Vector3.new(Pointer.X, Pointer.Y, 0)})
-    end))
     TrackConnection(UserInputService.WindowFocusReleased:Connect(StopDrag))
+    TrackConnection(ScreenGui:GetPropertyChangedSignal("Enabled"):Connect(function()
+        if not ScreenGui.Enabled then StopDrag() end
+    end))
+    TrackConnection(Instance:GetPropertyChangedSignal("Visible"):Connect(function()
+        if not Instance.Visible then StopDrag() end
+    end))
     TrackConnection(Instance.Destroying:Connect(StopDrag))
 
     return Instance
@@ -1273,10 +1315,17 @@ ScreenGui.Destroying:Connect(function()
 end)
 
 -- Positions are stored as viewport fractions, independently of the interface scale.
-function Library._PositionSettings.GetBounds(Object, Padding, TopPadding)
+function Library._PositionSettings.GetBounds(Object, Padding, TopPadding, Oversized)
     local Origin, Available, Size = ScreenGui.AbsolutePosition, ScreenGui.AbsoluteSize, Object.AbsoluteSize
-    local function Bounds(Start, Length, Extent, LeadingPadding)
+    local function Bounds(Start, Length, Extent, LeadingPadding, Vertical)
         if Extent >= Length then
+            if Oversized then
+                if Vertical then
+                    local Header = math.min(Length, TopBarHeight * math.max(ScreenScale.Scale, 0.001))
+                    return Start + math.min(LeadingPadding, Length - Header), Start + Length - Header
+                end
+                return Start + Length - Extent, Start
+            end
             local Center = Start + (Length - Extent) / 2
             return Center, Center
         end
@@ -1285,7 +1334,7 @@ function Library._PositionSettings.GetBounds(Object, Padding, TopPadding)
         return Start + LeadingMargin, Start + Length - Extent - Margin
     end
     local MinX, MaxX = Bounds(Origin.X, Available.X, Size.X, Padding)
-    local MinY, MaxY = Bounds(Origin.Y, Available.Y, Size.Y, math.max(0, tonumber(TopPadding) or Padding))
+    local MinY, MaxY = Bounds(Origin.Y, Available.Y, Size.Y, math.max(0, tonumber(TopPadding) or Padding), true)
     return MinX, MinY, MaxX, MaxY
 end
 
@@ -1310,9 +1359,20 @@ function Library._PositionSettings.Bind(Object, Key, Options)
     end
 
     function State:Clamp()
-        local MinX, MinY, MaxX, MaxY = Library._PositionSettings.GetBounds(Object, Padding, Options.TopPadding)
+        local MinX, MinY, MaxX, MaxY = Library._PositionSettings.GetBounds(Object, Padding, Options.TopPadding, Options.Oversized)
         local Position = Object.AbsolutePosition
         self:Move(Vector2.new(math.clamp(Position.X, MinX, MaxX), math.clamp(Position.Y, MinY, MaxY)))
+    end
+
+    function State:MoveBy(Delta)
+        if self.Destroyed or not Object.Parent then return end
+        self:Initialize()
+        local MinX, MinY, MaxX, MaxY = Library._PositionSettings.GetBounds(Object, Padding, Options.TopPadding, Options.Oversized)
+        local Target = Object.AbsolutePosition + Delta
+        -- Clamp before writing Position, so drag and the position observer never
+        -- compete over an out-of-bounds intermediate value.
+        self:Move(Vector2.new(math.clamp(Target.X, MinX, MaxX), math.clamp(Target.Y, MinY, MaxY)))
+        self:ScheduleRemember()
     end
 
     function State:Remember()
@@ -1320,7 +1380,8 @@ function Library._PositionSettings.Bind(Object, Key, Options)
         local Available, Origin, Position = ScreenGui.AbsoluteSize, ScreenGui.AbsolutePosition, Object.AbsolutePosition
         if Available.X <= 0 or Available.Y <= 0 then return end
         local Value = {
-            X = math.clamp((Position.X - Origin.X) / Available.X, 0, 1),
+            X = Options.Oversized and (Position.X - Origin.X) / Available.X
+                or math.clamp((Position.X - Origin.X) / Available.X, 0, 1),
             Y = math.clamp((Position.Y - Origin.Y) / Available.Y, 0, 1)
         }
         local Previous = Library.Save.Positions[Key]
@@ -1398,6 +1459,7 @@ function Library._PositionSettings.Bind(Object, Key, Options)
         State:ScheduleRemember()
     end)
     Connect(ScreenGui:GetPropertyChangedSignal("AbsoluteSize"), Refresh)
+    Connect(ScreenGui:GetPropertyChangedSignal("AbsolutePosition"), Refresh)
     Connect(ScreenScale:GetPropertyChangedSignal("Scale"), Refresh)
     Connect(Object:GetPropertyChangedSignal("AbsoluteSize"), Refresh)
     Connect(Object.Destroying, function() State:Destroy() end)
@@ -2828,7 +2890,9 @@ function Library:MakeWindow(Configs)
     }), "Main")
     Library.MainFrame = MainFrame
     Library._MouseControl:Bind(MainFrame)
-    Library._PositionSettings.Bind(MainFrame, "Window", {Center = true, Padding = GetResponsivePadding(), TopPadding = 0})
+    local WindowPosition = Library._PositionSettings.Bind(MainFrame, "Window", {
+        Center = true, Padding = GetResponsivePadding(), TopPadding = 0, Oversized = true
+    })
 	local MainGradient = InsertTheme(Create("UIGradient", MainFrame, {
 		Color = ThemeBackgroundColors(),
 		Rotation = GradientRotation,
@@ -2974,9 +3038,15 @@ function Library:MakeWindow(Configs)
 	end
 
 	local function IsPointInside(Object, Position)
+		if not ScreenGui.Enabled then return false end
 		local Ancestor = Object
 		while Ancestor and Ancestor ~= ScreenGui do
 			if Ancestor:IsA("GuiObject") and not Ancestor.Visible then return false end
+			if Ancestor ~= Object and Ancestor:IsA("GuiObject") and Ancestor.ClipsDescendants then
+				local Origin, Size = Ancestor.AbsolutePosition, Ancestor.AbsoluteSize
+				if Position.X < Origin.X or Position.X > Origin.X + Size.X
+					or Position.Y < Origin.Y or Position.Y > Origin.Y + Size.Y then return false end
+			end
 			Ancestor = Ancestor.Parent
 		end
 		if not Ancestor then return false end
@@ -3019,8 +3089,39 @@ function Library:MakeWindow(Configs)
 		SyncSettingsSlider(SettingsTabWidth, Width)
 	end
 
+	local function FinishResize()
+		local State = ResizeState
+		if not State then return end
+		ResizeState = nil
+		if State.Monitor then
+			State.Monitor:Disconnect()
+			UntrackConnection(State.Monitor)
+		end
+		if State.Mode == "Window" then
+			Library.Save.UISize = {MainFrame.Size.X.Offset, MainFrame.Size.Y.Offset}
+		else
+			Library.Save.TabSize = MainScroll.Size.X.Offset + SidebarScrollInset
+		end
+		QueueSettingsSave()
+	end
+
+	local function CanResize(State)
+		return MainFrame.Parent and MainFrame.Visible and ScreenGui.Enabled and not Minimized and not WaitClick
+			and FloatingMinimizeHeld == 0 and not (Runtime.DialogOverlay and Runtime.DialogOverlay.Parent)
+			and ((State.Mode == "Window" and Resizable) or (State.Mode == "Tab" and TabResizable))
+	end
+
+	local function UpdateResize(State, Position)
+		local Delta = (Position - State.Start) / math.max(ScreenScale.Scale, 0.001)
+		if State.Mode == "Window" then
+			ApplyWindowSize(State.Width + Delta.X, State.Height + Delta.Y)
+		else
+			ApplyTabSize(State.TabWidth + Delta.X)
+		end
+	end
+
 	local function BeginResize(Mode, Input)
-		if Minimized or FloatingMinimizeHeld > 0 or IsOverMinimizeButton(Input.Position) then
+		if ResizeState or not CanResize({Mode = Mode}) or IsOverMinimizeButton(Input.Position) then
 			return
 		end
 
@@ -3028,15 +3129,29 @@ function Library:MakeWindow(Configs)
 		if InputType ~= Enum.UserInputType.MouseButton1 and InputType ~= Enum.UserInputType.Touch then
 			return
 		end
+		if Input.UserInputState == Enum.UserInputState.End or Input.UserInputState == Enum.UserInputState.Cancel then return end
 
 		ResizeState = {
 			Mode = Mode,
-			Input = InputType == Enum.UserInputType.Touch and Input or nil,
+			Input = Input,
 			Start = Input.Position,
 			Width = MainFrame.Size.X.Offset,
 			Height = MainFrame.Size.Y.Offset,
 			TabWidth = MainScroll.Size.X.Offset + SidebarScrollInset
 		}
+		local State = ResizeState
+		State.Monitor = TrackConnection(game:GetService("RunService").RenderStepped:Connect(function()
+			if ResizeState ~= State then return end
+			if not CanResize(State) or Input.UserInputState == Enum.UserInputState.Cancel then
+				FinishResize()
+			elseif Input.UserInputState == Enum.UserInputState.End then
+				UpdateResize(State, Input.Position)
+				FinishResize()
+			elseif InputType == Enum.UserInputType.MouseButton1
+				and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+				FinishResize()
+			end
+		end))
 	end
 
 	TrackConnection(ControlSize1.InputBegan:Connect(function(Input)
@@ -3056,12 +3171,12 @@ function Library:MakeWindow(Configs)
 		if not State then
 			return
 		end
-		if FloatingMinimizeHeld > 0 then
-			ResizeState = nil
+		if not CanResize(State) then
+			FinishResize()
 			return
 		end
 
-		if State.Input then
+		if State.Input.UserInputType == Enum.UserInputType.Touch then
 			if Input ~= State.Input then
 				return
 			end
@@ -3069,12 +3184,7 @@ function Library:MakeWindow(Configs)
 			return
 		end
 
-		local Delta = (Input.Position - State.Start) / UIScale
-		if State.Mode == "Window" then
-			ApplyWindowSize(State.Width + Delta.X, State.Height + Delta.Y)
-		else
-			ApplyTabSize(State.TabWidth + Delta.X)
-		end
+		UpdateResize(State, Input.Position)
 	end))
 
 	TrackConnection(UserInputService.InputEnded:Connect(function(Input)
@@ -3083,28 +3193,30 @@ function Library:MakeWindow(Configs)
 			return
 		end
 
-		if not ((State.Input and Input == State.Input)
-			or (not State.Input and Input.UserInputType == Enum.UserInputType.MouseButton1)) then
+		if Input ~= State.Input then
 			return
 		end
 
-		ResizeState = nil
-		if State.Mode == "Window" then
-			Library.Save.UISize = {MainFrame.Size.X.Offset, MainFrame.Size.Y.Offset}
-		else
-			Library.Save.TabSize = MainScroll.Size.X.Offset + SidebarScrollInset
-		end
-		QueueSettingsSave()
+		if CanResize(State) and Input.UserInputState ~= Enum.UserInputState.Cancel then UpdateResize(State, Input.Position) end
+		FinishResize()
 	end))
+	TrackConnection(UserInputService.WindowFocusReleased:Connect(FinishResize))
+	TrackConnection(MainFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+		if not MainFrame.Visible then FinishResize() end
+	end))
+	TrackConnection(ScreenGui:GetPropertyChangedSignal("Enabled"):Connect(function()
+		if not ScreenGui.Enabled then FinishResize() end
+	end))
+	TrackConnection(MainFrame.Destroying:Connect(FinishResize))
 
 	local function CanDragWindow(Input)
-		if not Draggable or ResizeState or not MainFrame.Visible
+		if not Draggable or ResizeState or WaitClick or not ScreenGui.Enabled or not MainFrame.Visible
 			or (Runtime.DialogOverlay and Runtime.DialogOverlay.Parent) then
 			return false
 		end
 
 		local Position = Input.Position
-		if IsOverMinimizeButton(Position) or not IsPointInside(MainFrame, Position) then
+		if IsOverMinimizeButton(Position) or not IsPointInside(TopBar, Position) then
 			return false
 		end
 
@@ -3112,29 +3224,26 @@ function Library:MakeWindow(Configs)
 			return false
 		end
 
-		-- Titles and empty header space are reliable grab targets. Only live
-		-- interactive controls in the header should prevent dragging here.
-		if IsPointInside(TopBar, Position) then
-			for _, Object in ipairs(TopBar:GetDescendants()) do
-				if (Object:IsA("GuiButton") or Object:IsA("TextBox"))
-					and IsPointInside(Object, Position) then return false end
-			end
-			return true
+		-- The header owns window movement; content owns clicks, sliders and scrolling.
+		for _, Object in ipairs(TopBar:GetDescendants()) do
+			if (Object:IsA("GuiButton") or Object:IsA("TextBox"))
+				and IsPointInside(Object, Position) then return false end
 		end
 
-		local TouchInput = Input.UserInputType == Enum.UserInputType.Touch
-		local Success, Objects = pcall(CoreGui.GetGuiObjectsAtPosition, CoreGui, Position.X, Position.Y)
+		local Container = ScreenGui:FindFirstAncestorWhichIsA("BasePlayerGui")
+		local Success, Objects = false, nil
+		if Container then
+			Success, Objects = pcall(Container.GetGuiObjectsAtPosition, Container, Position.X, Position.Y)
+		end
 		if Success then
 			for _, Object in ipairs(Objects) do
-				if Object ~= MainFrame and Object:IsDescendantOf(MainFrame) then
-					if Object:IsA("GuiButton") or Object:IsA("TextBox") or (TouchInput and Object:IsA("ScrollingFrame")) then
-						return false
-					end
-				end
+				if Object == MainFrame or Object:IsDescendantOf(MainFrame) then break end
+				if Object.Active or Object:IsA("GuiButton") or Object:IsA("TextBox") then return false end
 			end
 		else
-			for _, Object in ipairs(MainFrame:GetDescendants()) do
-				if (Object:IsA("GuiButton") or Object:IsA("TextBox") or (TouchInput and Object:IsA("ScrollingFrame")))
+			for _, Object in ipairs(ScreenGui:GetDescendants()) do
+				if Object:IsA("GuiObject") and not Object:IsDescendantOf(MainFrame)
+					and (Object.Active or Object:IsA("GuiButton") or Object:IsA("TextBox"))
 					and IsPointInside(Object, Position) then
 					return false
 				end
@@ -3152,11 +3261,12 @@ function Library:MakeWindow(Configs)
 		DragInitialized = true
 		MakeDrag(MainFrame, {
 			Handle = TopBar,
-			Threshold = math.min(DragThreshold, 2),
+			Threshold = DragThreshold,
+			Move = function(Delta) WindowPosition:MoveBy(Delta) end,
 			CanStart = CanDragWindow,
 			GlobalInput = true,
 			ShouldCancel = function()
-				return not Draggable or not MainFrame.Visible or ResizeState ~= nil
+				return not Draggable or not ScreenGui.Enabled or not MainFrame.Visible or WaitClick or ResizeState ~= nil
 					or FloatingMinimizeHeld > 0 or (Runtime.DialogOverlay and Runtime.DialogOverlay.Parent ~= nil)
 			end
 		})
@@ -3722,6 +3832,7 @@ function Library:MakeWindow(Configs)
 	function Window:MinimizeBtn()
 		if Runtime.DialogOverlay and Runtime.DialogOverlay.Parent then return end
 		if WaitClick then return end
+		FinishResize()
 		WaitClick = true
 
 		if Minimized then
@@ -3884,7 +3995,7 @@ function Library:MakeWindow(Configs)
 
 		Resizable = Value
 		if not Value and ResizeState and ResizeState.Mode == "Window" then
-			ResizeState = nil
+			FinishResize()
 		end
 		ControlSize1.Active = Value
 		ControlSize1.Interactable = Value
@@ -3906,7 +4017,7 @@ function Library:MakeWindow(Configs)
 
 		TabResizable = Value
 		if not Value and ResizeState and ResizeState.Mode == "Tab" then
-			ResizeState = nil
+			FinishResize()
 		end
 		ControlSize2.Active = Value
 		ControlSize2.Interactable = Value
