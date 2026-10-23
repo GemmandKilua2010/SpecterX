@@ -4984,12 +4984,12 @@ function Library:MakeWindow(Configs)
 			BackgroundTransparency = 1,
 			AutoLocalize = false,
 			Text = TranslateText(TitleSource),
-			TextColor3 = Theme["Color Text"],
-			Font = Enum.Font.GothamBold,
+			TextColor3 = Color3.new(1, 1, 1),
+			Font = Enum.Font.GothamMedium,
 			TextSize = Library.Save.SectionTextSize,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd
-		}), "Text")
+		}), "TitleText")
 		local Icon = Library:GetIcon("chevron-down")
 		local Arrow
 		if type(Icon) == "string" and Icon:find("^rbxassetid://") then
