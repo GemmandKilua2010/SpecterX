@@ -8315,7 +8315,7 @@ function Library:MakeWindow(Configs)
 				LabelVal.TextEditable = true
 			end
 			local ValueBackground = Editable and InsertTheme(Create("Frame", SliderHolder, {
-				Size = UDim2.fromOffset(44, 24),
+				Size = UDim2.fromOffset(44, 18),
 				Position = UDim2.new(1, 4, 0.5, 0),
 				AnchorPoint = Vector2.new(1, 0.5),
 				BackgroundColor3 = Theme["Color Stroke"],
@@ -8330,6 +8330,7 @@ function Library:MakeWindow(Configs)
 			local Editing = false
 			local WritingValue = false
 			local ValueHovering = false
+			local EditInputConnection
 			local Value
 			local Dragging = false
 			local ActiveInput
@@ -8377,7 +8378,7 @@ function Library:MakeWindow(Configs)
 				local ValueWidth = math.max(ValueColumnWidth, math.ceil(TextService:GetTextSize(LabelVal.Text, 11, Enum.Font.GothamBold, Vector2.new(1000, 16)).X))
 				ValueColumnWidth = ValueWidth
 				LabelVal.Size = UDim2.fromOffset(ValueWidth, 16)
-				if ValueBackground then ValueBackground.Size = UDim2.fromOffset(ValueWidth + 12, 24) end
+				if ValueBackground then ValueBackground.Size = UDim2.fromOffset(ValueWidth + 12, 18) end
 				local BarSize = UDim2.new(1, -(ValueWidth + 18), 0, 5)
 				if SliderBar.Size ~= BarSize then SliderBar.Size = BarSize end
 				if Initial then
@@ -8459,6 +8460,18 @@ function Library:MakeWindow(Configs)
 						LabelVal.Text = Clean
 						if Cursor > 0 then LabelVal.CursorPosition = #BeforeCursor + 1 end
 						WritingValue = false
+					end
+				end)
+				EditInputConnection = UserInputService.InputBegan:Connect(function(Input)
+					if Destroyed or not Editing then return end
+					if Input.KeyCode == Enum.KeyCode.Return or Input.KeyCode == Enum.KeyCode.KeypadEnter then
+						LabelVal:ReleaseFocus(true)
+					elseif Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+						local Point = Input.Position
+						local Position, Size = LabelVal.AbsolutePosition, LabelVal.AbsoluteSize
+						if Point.X < Position.X or Point.X > Position.X + Size.X or Point.Y < Position.Y or Point.Y > Position.Y + Size.Y then
+							LabelVal:ReleaseFocus()
+						end
 					end
 				end)
 				LabelVal.FocusLost:Connect(function()
@@ -8563,6 +8576,7 @@ function Library:MakeWindow(Configs)
 				FinishDrag(false)
 				Destroyed = true
 				StopAnimations()
+				if EditInputConnection then EditInputConnection:Disconnect() end
 				TabVisibilityConnection:Disconnect()
 				Button:Destroy()
 			end
@@ -8570,6 +8584,7 @@ function Library:MakeWindow(Configs)
 				FinishDrag(false)
 				Destroyed = true
 				StopAnimations()
+				if EditInputConnection then EditInputConnection:Disconnect() end
 				if TabVisibilityConnection.Connected then TabVisibilityConnection:Disconnect() end
 			end)
 
