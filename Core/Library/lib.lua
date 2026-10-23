@@ -4463,10 +4463,6 @@ function Library:MakeWindow(Configs)
 			local HoverColor = ResolveColor(HoverSource,
 				Base:Lerp(Color3.new(1, 1, 1), Entry.Style == "secondary" and 0.07 or 0.1))
 			Entry.Button.BackgroundColor3 = Entry.Hovered and HoverColor or Base
-			local BorderSource = Palette.Stroke or Palette.Border
-			Entry.Stroke.Enabled = Entry.Style ~= "tertiary"
-			Entry.Stroke.Color = ResolveColor(BorderSource, Theme["Color Text"])
-			Entry.Stroke.Transparency = BorderSource and 0.52 or (Entry.Style == "secondary" and 0.89 or 0.80)
 			Entry.Button.Active = Entry.Enabled
 			Entry.Button.Interactable = Entry.Enabled
 			Entry.Button.Selectable = Entry.Enabled
@@ -4617,14 +4613,9 @@ function Library:MakeWindow(Configs)
 					}), "Icon")
 				end
 			end
-			local Stroke = Create("UIStroke", Button, {
-				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-				Thickness = 1,
-				Enabled = false
-			})
 			local ButtonScale = Create("UIScale", Button, {Scale = 1})
 			local Entry = {
-				Button = Button, Stroke = Stroke, Name = LabelSource, Color = Option.Color,
+				Button = Button, Name = LabelSource, Color = Option.Color,
 				HasIcon = HasButtonIcon, Primary = Option.Primary == true,
 				Style = NormalizeButtonStyle(Option.Style, Option.Primary == true),
 				Enabled = Option.Enabled ~= false and Option.Disabled ~= true,
