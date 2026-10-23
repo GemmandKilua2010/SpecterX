@@ -2146,7 +2146,8 @@ function Library:SetTheme(NewTheme)
 		elseif Val.Type == "DarkText" then
 			Val.Instance[GetColor(Val.Instance)] = Theme["Color Dark Text"]
 		elseif Val.Type == "ScrollBar" then
-			Val.Instance[GetColor(Val.Instance)] = Theme["Color Theme"]
+			Val.Instance[GetColor(Val.Instance)] = AdaptiveScrollRefresh[Val.Instance]
+				and Theme["Color Stroke"] or Theme["Color Theme"]
 		end
 	end
 end
@@ -2862,6 +2863,7 @@ function Library:MakeWindow(Configs)
 		end
 
 		AdaptiveScrollRefresh[Frame] = Refresh
+		Frame.ScrollBarImageColor3 = Theme["Color Stroke"]
 		Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(Refresh)
 		Frame:GetPropertyChangedSignal("AbsoluteSize"):Connect(Refresh)
 		Frame.Destroying:Connect(function()
