@@ -5115,8 +5115,8 @@ function Library:MakeWindow(Configs)
 		
 		local Container = InsertTheme(Create("ScrollingFrame", Containers, {
 			Visible = false,
-			Size = UDim2.new(1, -6, 1, -8),
-			Position = UDim2.new(0, 0, 1, -4),
+			Size = UDim2.new(1, -14, 1, -24),
+			Position = UDim2.new(0, 0, 1, -16),
 			AnchorPoint = Vector2.new(0, 1),
 			ScrollBarThickness = ScrollThickness,
 			BackgroundTransparency = 1,
