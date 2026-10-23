@@ -5405,12 +5405,25 @@ function Library:MakeWindow(Configs)
 			Library.SectionIndicators[Indicator] = {Label = SectionLabel, Override = Override, Collapsible = Collapsible}
 			Library:ApplySectionStyle(Indicator)
 
-			local Arrow = InsertTheme(Create("TextLabel", SectionFrame, {
-				Position = UDim2.new(1, -12, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5),
-				Size = UDim2.fromOffset(18, 18), BackgroundTransparency = 1,
-				Text = "⌄", TextSize = 18, TextColor3 = Theme["Color Text"],
-				Rotation = Expanded and 0 or -90, Visible = Collapsible
-			}), "Text")
+			local ArrowIcon = ResolveSidebarIcon("chevron-down")
+			local Arrow
+			if ArrowIcon then
+				Arrow = InsertTheme(Create("ImageLabel", SectionFrame, {
+					Position = UDim2.new(1, -12, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5),
+					Size = UDim2.fromOffset(12, 12), BackgroundTransparency = 1,
+					Image = ArrowIcon, ImageColor3 = Theme["Color Text"],
+					Rotation = Expanded and 0 or -90, Visible = Collapsible
+				}), "Text")
+			else
+				-- ASCII fallback remains readable even when the icon pack is unavailable.
+				Arrow = InsertTheme(Create("TextLabel", SectionFrame, {
+					Position = UDim2.new(1, -12, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5),
+					Size = UDim2.fromOffset(12, 12), BackgroundTransparency = 1,
+					Text = "v", Font = Enum.Font.GothamMedium, TextSize = 14,
+					TextColor3 = Theme["Color Text"],
+					Rotation = Expanded and 0 or -90, Visible = Collapsible
+				}), "Text")
+			end
 			local Section = {_Elements = {}, _Container = Content, _Destroyed = false}
 			local SectionOption = {type = "Section", Name = SectionName, func = Section}
 			table.insert(Library.Options, SectionOption)
