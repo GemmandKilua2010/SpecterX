@@ -2872,10 +2872,11 @@ function Library:MakeWindow(Configs)
 		task.defer(Refresh)
 	end
 
+	local SidebarScrollInset = 7
 	local MainScroll = InsertTheme(Create("ScrollingFrame", Components, {
-		Size = UDim2.new(0, WindowTabSize, 1, -TopBar.Size.Y.Offset),
+		Size = UDim2.new(0, WindowTabSize - SidebarScrollInset, 1, -TopBar.Size.Y.Offset - SidebarScrollInset * 2),
 		ScrollBarImageColor3 = Theme["Color Theme"],
-		Position = UDim2.new(0, 0, 1, 0),
+		Position = UDim2.new(0, 0, 1, -SidebarScrollInset),
 		AnchorPoint = Vector2.new(0, 1),
 		ScrollBarThickness = ScrollThickness,
 		BackgroundTransparency = 1,
@@ -2897,7 +2898,7 @@ function Library:MakeWindow(Configs)
 	BindAdaptiveScroll(MainScroll, TabsPadding * 2)
 
 	local Containers = Create("Frame", Components, {
-		Size = UDim2.new(1, -MainScroll.Size.X.Offset, 1, -TopBar.Size.Y.Offset),
+		Size = UDim2.new(1, -WindowTabSize, 1, -TopBar.Size.Y.Offset),
 		AnchorPoint = Vector2.new(1, 1),
 		Position = UDim2.new(1, 0, 1, 0),
 		BackgroundTransparency = 1,
@@ -2978,7 +2979,7 @@ function Library:MakeWindow(Configs)
 	local function ApplyTabSize(Width)
 		Width = math.clamp(Width, MinTabSize, MaxTabSize)
 		ControlSize2.Position = UDim2.new(0, Width, 1, 0)
-		MainScroll.Size = UDim2.new(0, Width, 1, -TopBar.Size.Y.Offset)
+		MainScroll.Size = UDim2.new(0, Width - SidebarScrollInset, 1, -TopBar.Size.Y.Offset - SidebarScrollInset * 2)
 		Containers.Size = UDim2.new(1, -Width, 1, -TopBar.Size.Y.Offset)
 		SyncSettingsSlider(SettingsTabWidth, Width)
 	end
@@ -2999,7 +3000,7 @@ function Library:MakeWindow(Configs)
 			Start = Input.Position,
 			Width = MainFrame.Size.X.Offset,
 			Height = MainFrame.Size.Y.Offset,
-			TabWidth = MainScroll.Size.X.Offset
+			TabWidth = MainScroll.Size.X.Offset + SidebarScrollInset
 		}
 	end
 
@@ -3056,7 +3057,7 @@ function Library:MakeWindow(Configs)
 		if State.Mode == "Window" then
 			Library.Save.UISize = {MainFrame.Size.X.Offset, MainFrame.Size.Y.Offset}
 		else
-			Library.Save.TabSize = MainScroll.Size.X.Offset
+			Library.Save.TabSize = MainScroll.Size.X.Offset + SidebarScrollInset
 		end
 		QueueSettingsSave()
 	end))
@@ -3787,7 +3788,7 @@ function Library:MakeWindow(Configs)
 	end
 
 	function Window:GetTabSize()
-		return MainScroll.Size.X.Offset
+		return MainScroll.Size.X.Offset + SidebarScrollInset
 	end
 
 	function Window:SetTabSize(Width)
@@ -3797,9 +3798,9 @@ function Library:MakeWindow(Configs)
 		end
 
 		Width = math.clamp(Width, MinTabSize, MaxTabSize)
-		if MainScroll.Size.X.Offset == Width then return true end
+		if MainScroll.Size.X.Offset + SidebarScrollInset == Width then return true end
 		ApplyTabSize(Width)
-		Library.Save.TabSize = MainScroll.Size.X.Offset
+		Library.Save.TabSize = MainScroll.Size.X.Offset + SidebarScrollInset
 		QueueSettingsSave()
 		return true
 	end
@@ -5100,8 +5101,8 @@ function Library:MakeWindow(Configs)
 			end
 
 			Selected = InsertTheme(Create("Frame", TabSelect, {
-				Size = UDim2.fromOffset(math.min(3, TabIndicatorWidth), FirstTab and TabIndicatorIdleSize or TabIndicatorHeight),
-				Position = UDim2.new(0, 4, 0.5, 0),
+				Size = UDim2.fromOffset(TabIndicatorWidth, FirstTab and TabIndicatorIdleSize or TabIndicatorHeight),
+				Position = UDim2.new(0, 1, 0.5, 0),
 				AnchorPoint = Vector2.new(0, 0.5),
 				BackgroundColor3 = Theme["Color Theme"],
 				BackgroundTransparency = FirstTab and 1 or 0,
@@ -5202,7 +5203,7 @@ function Library:MakeWindow(Configs)
 			if TabSelect then
 				CreateTween({LabelTitle, "TextTransparency", 0, AnimationTab})
 				if LabelIcon then CreateTween({LabelIcon, "ImageTransparency", 0, AnimationTab}) end
-				CreateTween({Selected, "Size", UDim2.fromOffset(math.min(3, TabIndicatorWidth), TabIndicatorHeight), AnimationTab})
+				CreateTween({Selected, "Size", UDim2.fromOffset(TabIndicatorWidth, TabIndicatorHeight), AnimationTab})
 				CreateTween({Selected, "BackgroundTransparency", 0, AnimationTab})
 			end
 			return true
@@ -5223,7 +5224,7 @@ function Library:MakeWindow(Configs)
 			if TabSelect then
 				CreateTween({LabelTitle, "TextTransparency", TabInactiveTransparency, AnimationTab})
 				if LabelIcon then CreateTween({LabelIcon, "ImageTransparency", TabInactiveTransparency, AnimationTab}) end
-				CreateTween({Selected, "Size", UDim2.fromOffset(math.min(3, TabIndicatorWidth), TabIndicatorIdleSize), AnimationTab})
+				CreateTween({Selected, "Size", UDim2.fromOffset(TabIndicatorWidth, TabIndicatorIdleSize), AnimationTab})
 				CreateTween({Selected, "BackgroundTransparency", 1, AnimationTab})
 			end
 		end
