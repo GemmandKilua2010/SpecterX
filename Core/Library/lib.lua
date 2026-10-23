@@ -8278,7 +8278,7 @@ function Library:MakeWindow(Configs)
 			})
 			local SliderBar = InsertTheme(Create("Frame", SliderHolder, {
 				BackgroundColor3 = Theme["Color Stroke"],
-				Size = UDim2.new(1, -42, 0, 5),
+				Size = UDim2.new(1, -(Editable and 58 or 42), 0, 5),
 				Position = UDim2.new(0, 8, 0.5, 0),
 				AnchorPoint = Vector2.new(0, 0.5),
 				BorderSizePixel = 0,
@@ -8380,7 +8380,8 @@ function Library:MakeWindow(Configs)
 				ValueColumnWidth = ValueWidth
 				LabelVal.Size = UDim2.fromOffset(ValueWidth, 16)
 				if ValueBackground then ValueBackground.Size = UDim2.fromOffset(ValueWidth + 12, 18) end
-				local BarSize = UDim2.new(1, -(ValueWidth + 18), 0, 5)
+				-- Leave room for the editor background and the expanded thumb at Max.
+				local BarSize = UDim2.new(1, -(ValueWidth + (Editable and 34 or 18)), 0, 5)
 				if SliderBar.Size ~= BarSize then SliderBar.Size = BarSize end
 				if Initial then
 					SliderIcon.Position = UDim2.fromScale(Fraction, 0.5)
