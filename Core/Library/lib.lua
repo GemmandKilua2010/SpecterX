@@ -4950,7 +4950,7 @@ function Library:MakeWindow(Configs)
 				})
 			if Configs.IconThemed == true then InsertTheme(Image, "Icon") end
 		end
-		local SectionTextOffset = SectionLeftPadding + (Source and SectionIconOffset or 4)
+		local SectionTextOffset = math.max(0, SectionLeftPadding - 2) + (Source and SectionIconOffset or 0)
 		local Label = InsertTheme(Create("TextLabel", Header, {
 			Position = UDim2.fromOffset(SectionTextOffset, 0),
 			Size = UDim2.new(1, -(SectionTextOffset + 24), 1, 0),
@@ -4958,8 +4958,8 @@ function Library:MakeWindow(Configs)
 			AutoLocalize = false,
 			Text = TranslateText(TitleSource),
 			TextColor3 = Theme["Color Text"],
-			Font = Enum.Font.GothamMedium,
-			TextSize = TabTextSize,
+			Font = Enum.Font.GothamBold,
+			TextSize = Library.Save.SectionTextSize,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd
 		}), "Text")
