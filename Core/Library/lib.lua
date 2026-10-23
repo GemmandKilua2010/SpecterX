@@ -4902,6 +4902,7 @@ function Library:MakeWindow(Configs)
 			_Destroyed = false
 		}
 
+		local SectionHeaderHeight = math.max(17, TabButtonHeight - 6)
 		SidebarOrder += 1
 		local Holder = Create("Frame", MainScroll, {
 			LayoutOrder = SidebarOrder,
@@ -4912,19 +4913,19 @@ function Library:MakeWindow(Configs)
 		})
 		Create("UIListLayout", Holder, {
 			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 2)
+			Padding = UDim.new(0, 1)
 		})
 		local Header = Create("TextButton", Holder, {
 			LayoutOrder = 1,
-			Size = UDim2.new(1, 0, 0, TabButtonHeight),
+			Size = UDim2.new(1, 0, 0, SectionHeaderHeight),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			Text = "",
 			AutoButtonColor = false
 		})
-		local SectionLeftPadding = TabIconOffset
-		local SectionIconSize = math.max(14, TabIconSize)
-		local SectionIconGap = 7
+		local SectionLeftPadding = math.max(5, TabIconOffset - 2)
+		local SectionIconSize = math.max(13, TabIconSize)
+		local SectionIconGap = 6
 		local SectionIconOffset = 0
 		local Source = ResolveSidebarIcon(Configs.Icon)
 		if Source then
@@ -4940,7 +4941,7 @@ function Library:MakeWindow(Configs)
 				})
 			if Configs.IconThemed == true then InsertTheme(Image, "Icon") end
 		end
-		local SectionTextOffset = SectionLeftPadding + (Source and SectionIconOffset or 4)
+		local SectionTextOffset = SectionLeftPadding + (Source and SectionIconOffset or 0)
 		local Label = InsertTheme(Create("TextLabel", Header, {
 			Position = UDim2.fromOffset(SectionTextOffset, 0),
 			Size = UDim2.new(1, -(SectionTextOffset + 24), 1, 0),
@@ -4958,8 +4959,8 @@ function Library:MakeWindow(Configs)
 		if type(Icon) == "string" and Icon:find("^rbxassetid://") then
 			Arrow = InsertTheme(Create("ImageLabel", Header, {
 				Size = UDim2.fromOffset(12, 12),
-				Position = UDim2.new(1, -10, 0.5, 0),
-				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0, SectionTextOffset + 6, 0.5, 0),
+				AnchorPoint = Vector2.new(0, 0.5),
 				BackgroundTransparency = 1,
 				Image = Icon,
 				Visible = false,
@@ -4969,8 +4970,8 @@ function Library:MakeWindow(Configs)
 		else
 			Arrow = InsertTheme(Create("TextLabel", Header, {
 				Size = UDim2.fromOffset(18, 18),
-				Position = UDim2.new(1, -10, 0.5, 0),
-				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0, SectionTextOffset + 6, 0.5, 0),
+				AnchorPoint = Vector2.new(0, 0.5),
 				BackgroundTransparency = 1,
 				Text = "⌄",
 				Visible = false,
@@ -4979,6 +4980,18 @@ function Library:MakeWindow(Configs)
 				Rotation = Expanded and 0 or -90
 			}), "DarkText")
 		end
+		local function UpdateHeaderSpacing()
+			if not Header.Parent then return end
+			local HeaderWidth = Header.AbsoluteSize.X
+			local ArrowWidth = Arrow.Size.X.Offset
+			local ArrowSpace = Arrow.Visible and (ArrowWidth + 8) or 5
+			local Available = math.max(0, HeaderWidth - SectionTextOffset - ArrowSpace)
+			local TextWidth = TextService:GetTextSize(Label.Text, Label.TextSize, Label.Font, Vector2.new(1000, SectionHeaderHeight)).X
+			local Width = math.min(Available, math.ceil(TextWidth) + 2)
+			Label.Size = UDim2.new(0, Width, 1, 0)
+			Arrow.Position = UDim2.new(0, SectionTextOffset + Width + 5, 0.5, 0)
+		end
+
 		local Content = Create("Frame", Holder, {
 			LayoutOrder = 2,
 			Size = UDim2.new(1, 0, 0, 0),
@@ -4993,6 +5006,9 @@ function Library:MakeWindow(Configs)
 		})
 		Section._Container = Content
 		Section._Arrow = Arrow
+		Section._UpdateHeaderSpacing = UpdateHeaderSpacing
+		local SizeConnection = Header:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateHeaderSpacing)
+		UpdateHeaderSpacing()
 
 		function Section:SetExpanded(Value)
 			if self._Destroyed or #self._Tabs == 0 then return false end
@@ -5014,6 +5030,7 @@ function Library:MakeWindow(Configs)
 			if self._Destroyed or Value == nil then return false end
 			TitleSource = tostring(Value)
 			Label.Text = TranslateText(TitleSource)
+			UpdateHeaderSpacing()
 			return true
 		end
 		function Section:SetVisible(Value)
@@ -5028,6 +5045,7 @@ function Library:MakeWindow(Configs)
 			Options.Section = self
 			local Tab = Window:MakeTab(Options)
 			Arrow.Visible = #self._Tabs > 0
+			UpdateHeaderSpacing()
 			return Tab
 		end
 		function Section:Destroy()
@@ -5040,11 +5058,14 @@ function Library:MakeWindow(Configs)
 		end
 
 		local LanguageConnection = Connection.LanguageChanged:Connect(function()
-			if not Section._Destroyed then Label.Text = TranslateText(TitleSource) end
+			if Section._Destroyed then return end
+			Label.Text = TranslateText(TitleSource)
+			UpdateHeaderSpacing()
 		end)
 		Holder.Destroying:Connect(function()
 			Section._Destroyed = true
 			LanguageConnection:Disconnect()
+			SizeConnection:Disconnect()
 		end)
 		Header.Activated:Connect(function() Section:Toggle() end)
 		return Section
@@ -5148,6 +5169,7 @@ function Library:MakeWindow(Configs)
 		if Section then
 			table.insert(Section._Tabs, Tab)
 			if Section._Arrow and Section._Arrow.Parent then Section._Arrow.Visible = true end
+			if Section._UpdateHeaderSpacing then Section._UpdateHeaderSpacing() end
 		end
 		local FavoriteDropdownCounts = {}
 		if Hidden then
@@ -5282,6 +5304,7 @@ function Library:MakeWindow(Configs)
 				local SectionIndex = table.find(Section._Tabs, Tab)
 				if SectionIndex then table.remove(Section._Tabs, SectionIndex) end
 				if Section._Arrow and Section._Arrow.Parent then Section._Arrow.Visible = #Section._Tabs > 0 end
+				if Section._UpdateHeaderSpacing then Section._UpdateHeaderSpacing() end
 			end
 			if TabSelect then TabSelect:Destroy() end
 			Container:Destroy()
