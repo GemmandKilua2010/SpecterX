@@ -1115,17 +1115,19 @@ local function MakeDrag(Instance, Options)
     local Dragging = false
     local DragInput
     local DragStart
-    local StartPos
+    local LastPointer
+    local PassedThreshold = false
 
     local function StopDrag()
         Dragging = false
         DragInput = nil
         DragStart = nil
-        StartPos = nil
+        LastPointer = nil
+        PassedThreshold = false
     end
 
     local function Update(Input)
-        if not Dragging or not DragStart or not StartPos then
+        if not Dragging or not DragStart or not LastPointer then
             return
         end
         if ShouldCancel and ShouldCancel() then
@@ -1133,20 +1135,26 @@ local function MakeDrag(Instance, Options)
             return
         end
 
-        local Delta = Input.Position - DragStart
-        if math.abs(Delta.X) < Threshold and math.abs(Delta.Y) < Threshold then
-            return
+        local Pointer = Input.Position
+        if not PassedThreshold then
+            if (Pointer - DragStart).Magnitude < Threshold then return end
+            PassedThreshold = true
         end
 
+        -- Follow the current position so viewport clamping cannot leave the
+        -- pointer travelling through an invisible overshoot before moving back.
+        local Delta = Pointer - LastPointer
+        LastPointer = Pointer
+        local Position = Instance.Position
+        local Scale = math.max(ScreenScale.Scale, 0.001)
         Instance.Position = UDim2.new(
-            StartPos.X.Scale,
-            StartPos.X.Offset + Delta.X / UIScale,
-            StartPos.Y.Scale,
-            StartPos.Y.Offset + Delta.Y / UIScale
+            Position.X.Scale, Position.X.Offset + Delta.X / Scale,
+            Position.Y.Scale, Position.Y.Offset + Delta.Y / Scale
         )
     end
 
     local function Begin(Input)
+        if Dragging or not Instance.Parent or not Instance.Visible then return end
         if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then
             return
         end
@@ -1161,7 +1169,8 @@ local function MakeDrag(Instance, Options)
 
         Dragging = true
         DragStart = Input.Position
-        StartPos = Instance.Position
+        LastPointer = Input.Position
+        PassedThreshold = false
         DragInput = Input.UserInputType == Enum.UserInputType.Touch and Input or nil
     end
 
@@ -1195,6 +1204,9 @@ local function MakeDrag(Instance, Options)
             StopDrag()
         end
     end))
+
+    TrackConnection(UserInputService.WindowFocusReleased:Connect(StopDrag))
+    TrackConnection(Instance.Destroying:Connect(StopDrag))
 
     return Instance
 end
@@ -2951,9 +2963,12 @@ function Library:MakeWindow(Configs)
 	end
 
 	local function IsPointInside(Object, Position)
-		if not Object.Visible then
-			return false
+		local Ancestor = Object
+		while Ancestor and Ancestor ~= ScreenGui do
+			if Ancestor:IsA("GuiObject") and not Ancestor.Visible then return false end
+			Ancestor = Ancestor.Parent
 		end
+		if not Ancestor then return false end
 
 		local AbsolutePosition = Object.AbsolutePosition
 		local AbsoluteSize = Object.AbsoluteSize
@@ -3086,6 +3101,16 @@ function Library:MakeWindow(Configs)
 			return false
 		end
 
+		-- Titles and empty header space are reliable grab targets. Only live
+		-- interactive controls in the header should prevent dragging here.
+		if IsPointInside(TopBar, Position) then
+			for _, Object in ipairs(TopBar:GetDescendants()) do
+				if (Object:IsA("GuiButton") or Object:IsA("TextBox"))
+					and IsPointInside(Object, Position) then return false end
+			end
+			return true
+		end
+
 		local TouchInput = Input.UserInputType == Enum.UserInputType.Touch
 		local Success, Objects = pcall(CoreGui.GetGuiObjectsAtPosition, CoreGui, Position.X, Position.Y)
 		if Success then
@@ -3115,10 +3140,13 @@ function Library:MakeWindow(Configs)
 		end
 		DragInitialized = true
 		MakeDrag(MainFrame, {
+			Handle = TopBar,
+			Threshold = math.min(DragThreshold, 2),
 			CanStart = CanDragWindow,
 			GlobalInput = true,
 			ShouldCancel = function()
-				return FloatingMinimizeHeld > 0 or (Runtime.DialogOverlay and Runtime.DialogOverlay.Parent ~= nil)
+				return not Draggable or not MainFrame.Visible or ResizeState ~= nil
+					or FloatingMinimizeHeld > 0 or (Runtime.DialogOverlay and Runtime.DialogOverlay.Parent ~= nil)
 			end
 		})
 	end
@@ -4949,7 +4977,7 @@ function Library:MakeWindow(Configs)
 				})
 			if Configs.IconThemed == true then InsertTheme(Image, "Icon") end
 		end
-		local SectionTextOffset = math.max(0, SectionLeftPadding - 2) + (Source and SectionIconOffset or math.floor(SectionIconSize * 0.2))
+		local SectionTextOffset = Source and (SectionLeftPadding + SectionIconOffset) or 4
 		local Label = InsertTheme(Create("TextLabel", Header, {
 			Position = UDim2.fromOffset(SectionTextOffset, 0),
 			Size = UDim2.new(1, -(SectionTextOffset + 24), 1, 0),
