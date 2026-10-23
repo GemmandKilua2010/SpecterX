@@ -1168,16 +1168,20 @@ local function MakeDrag(Instance, Options)
         end
 
         Dragging = true
-        DragStart = Input.Position
-        LastPointer = Input.Position
+        local Pointer = Input.Position
+        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local Mouse = UserInputService:GetMouseLocation()
+            Pointer = Vector3.new(Mouse.X, Mouse.Y, 0)
+        end
+        DragStart = Pointer
+        LastPointer = Pointer
         PassedThreshold = false
         DragInput = Input.UserInputType == Enum.UserInputType.Touch and Input or nil
     end
 
+    TrackConnection(Handle.InputBegan:Connect(Begin))
     if GlobalInput then
         TrackConnection(UserInputService.InputBegan:Connect(Begin))
-    else
-        TrackConnection(Handle.InputBegan:Connect(Begin))
     end
 
     TrackConnection(UserInputService.InputChanged:Connect(function(Input)
@@ -1189,8 +1193,6 @@ local function MakeDrag(Instance, Options)
             if Input == DragInput then
                 Update(Input)
             end
-        elseif Input.UserInputType == Enum.UserInputType.MouseMovement then
-            Update(Input)
         end
     end))
 
@@ -1205,6 +1207,15 @@ local function MakeDrag(Instance, Options)
         end
     end))
 
+    TrackConnection(game:GetService("RunService").RenderStepped:Connect(function()
+        if not Dragging or DragInput then return end
+        if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+            StopDrag()
+            return
+        end
+        local Pointer = UserInputService:GetMouseLocation()
+        Update({Position = Vector3.new(Pointer.X, Pointer.Y, 0)})
+    end))
     TrackConnection(UserInputService.WindowFocusReleased:Connect(StopDrag))
     TrackConnection(Instance.Destroying:Connect(StopDrag))
 
@@ -2333,7 +2344,7 @@ function Library:ApplySectionStyle(Indicator)
     local Offset = Enabled and (8 + self.Save.SectionThickness + self.Save.SectionSpacing) or 8
     Frame.Size = UDim2.new(1, 0, 0, self.Save.SectionHeight)
     Label.Position = UDim2.fromOffset(Offset, 0)
-    Label.Size = UDim2.new(1, -Offset - 8, 1, 0)
+    Label.Size = UDim2.new(1, -Offset - (Info.Collapsible and 30 or 8), 1, 0)
     Label.TextSize = self.Save.SectionTextSize
     Indicator.Size = UDim2.fromOffset(self.Save.SectionThickness, math.min(self.Save.SectionIndicatorHeight, self.Save.SectionHeight - 4))
     Indicator.Visible = Enabled
@@ -5223,6 +5234,8 @@ function Library:MakeWindow(Configs)
 
 		local TabVisible = true
 		local TabElements = {}
+		local ElementParent = Container
+		local CurrentContentSection
 		local function Tabs()
 			if Tab._Destroyed or not TabVisible then return false end
 			if Tab:IsLocked() then
@@ -5349,11 +5362,26 @@ function Library:MakeWindow(Configs)
 				Override = Configs.Indicator
 			end
 
-			local SectionFrame = Create("Frame", Container, {
-				Size = UDim2.new(1, 0, 0, Library.Save.SectionHeight),
-				BackgroundTransparency = 1,
-				BorderSizePixel = 0
+			local Expanded = Configs.Opened == true or (Configs.Opened == nil and Configs.Expanded == true)
+			local Collapsible = Configs.Collapsible ~= false
+			if not Collapsible then Expanded = true end
+			local Holder = Create("Frame", Container, {
+				Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1, BorderSizePixel = 0
 			})
+			Create("UIListLayout", Holder, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, TabsSpacing)})
+			local SectionFrame = Create("TextButton", Holder, {
+				LayoutOrder = 1, Text = "", AutoButtonColor = false,
+				Size = UDim2.new(1, 0, 0, Library.Save.SectionHeight),
+				BackgroundTransparency = 1, BorderSizePixel = 0
+			})
+			local Content = Create("Frame", Holder, {
+				LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y, Visible = Expanded,
+				BackgroundTransparency = 1, BorderSizePixel = 0
+			})
+			Create("UIListLayout", Content, {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, TabsSpacing)})
+			OrderedParents[Content] = 0
 
 			local SectionLabel = InsertTheme(Create("TextLabel", SectionFrame, {
 				Font = Enum.Font.GothamBold,
@@ -5374,32 +5402,83 @@ function Library:MakeWindow(Configs)
 				BorderSizePixel = 0
 			}), "Theme")
 			Make("Corner", Indicator, UDim.new(1, 0))
-			Library.SectionIndicators[Indicator] = {Label = SectionLabel, Override = Override}
+			Library.SectionIndicators[Indicator] = {Label = SectionLabel, Override = Override, Collapsible = Collapsible}
 			Library:ApplySectionStyle(Indicator)
 
-			local Section = {}
+			local Arrow = InsertTheme(Create("TextLabel", SectionFrame, {
+				Position = UDim2.new(1, -12, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5),
+				Size = UDim2.fromOffset(18, 18), BackgroundTransparency = 1,
+				Text = "⌄", TextSize = 18, TextColor3 = Theme["Color Text"],
+				Rotation = Expanded and 0 or -90, Visible = Collapsible
+			}), "Text")
+			local Section = {_Elements = {}, _Container = Content, _Destroyed = false}
 			local SectionOption = {type = "Section", Name = SectionName, func = Section}
 			table.insert(Library.Options, SectionOption)
+			function Section:SetExpanded(Value)
+				if self._Destroyed or not Collapsible then return false end
+				Expanded = Value == true
+				Content.Visible = Expanded
+				if not Expanded then
+					for Element in pairs(self._Elements) do
+						if Element._OnSectionHidden then Element._OnSectionHidden() end
+					end
+				end
+				CreateTween({Arrow, "Rotation", Expanded and 0 or -90, AnimationTab})
+				return Expanded
+			end
+			function Section:Expand() return self:SetExpanded(true) end
+			function Section:Collapse() return self:SetExpanded(false) end
+			function Section:Toggle() return self:SetExpanded(not Expanded) end
+			function Section:IsExpanded() return Expanded end
+			Section.Open = Section.Expand
+			Section.Close = Section.Collapse
 			function Section:Visible(Bool)
-				if Bool == nil then SectionFrame.Visible = not SectionFrame.Visible return end
-				SectionFrame.Visible = Bool
+				if self._Destroyed then return end
+				Holder.Visible = Bool == nil and not Holder.Visible or Bool == true
+				if not Holder.Visible then
+					for Element in pairs(self._Elements) do
+						if Element._OnSectionHidden then Element._OnSectionHidden() end
+					end
+				end
 			end
 			function Section:Destroy()
+				if self._Destroyed then return end
+				self._Destroyed = true
+				if CurrentContentSection == self then
+					CurrentContentSection, ElementParent = nil, Container
+				end
+				while next(self._Elements) do
+					local Element = next(self._Elements)
+					self._Elements[Element] = nil
+					Element:Destroy()
+				end
 				local Index = table.find(Library.Options, SectionOption)
 				if Index then table.remove(Library.Options, Index) end
 				Library.SectionIndicators[Indicator] = nil
-				SectionFrame:Destroy()
+				Holder:Destroy()
 			end
 			function Section:Set(New)
-				if New ~= nil then
+				if not self._Destroyed and New ~= nil then
 					SectionLabel.Text = TranslateText(DisplayString(GetStr(New)))
 				end
 			end
 			Section.SetTitle = Section.Set
-			function Section:GetTitle()
-				return SectionLabel.Text
-			end
-			return RegisterFlagObject(SectionFlag, Section, SectionFrame)
+			function Section:GetTitle() return SectionLabel.Text end
+			setmetatable(Section, {__index = function(_, Key)
+				if type(Key) ~= "string" or not Key:match("^Add") or Key == "AddSection" or type(Tab[Key]) ~= "function" then return nil end
+				return function(Self, ...)
+					if Self._Destroyed or Tab._Destroyed then return nil end
+					local PreviousParent, PreviousSection = ElementParent, CurrentContentSection
+					ElementParent, CurrentContentSection = Content, Self
+					local Results = table.pack(pcall(Tab[Key], Tab, ...))
+					ElementParent, CurrentContentSection = PreviousParent, PreviousSection
+					if not Results[1] then error(Results[2], 0) end
+					return table.unpack(Results, 2, Results.n)
+				end
+			end})
+			SectionFrame.Activated:Connect(function() Section:Toggle() end)
+			CurrentContentSection, ElementParent = Section, Content
+			return RegisterFlagObject(SectionFlag, Section, Holder)
 		end
 
 		function Tab:AddDivider(Configs)
@@ -5410,7 +5489,7 @@ function Library:MakeWindow(Configs)
 			local Transparency = math.clamp(tonumber(Configs.Transparency) or 0.25, 0, 1)
 			Height = math.max(Height, Thickness + 4)
 
-			local Holder = Create("Frame", Container, {
+			local Holder = Create("Frame", ElementParent, {
 				Size = UDim2.new(1, 0, 0, Height),
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0
@@ -5490,7 +5569,7 @@ function Library:MakeWindow(Configs)
 			local PName = Configs[1] or Configs.Title or TranslateText(ControlsConfig.Titles.Paragraph)
 			local PDesc = FirstDefined(Configs[2], Configs.Text, Configs.Desc, Configs.Description, "")
 			
-			local Frame, LabelFunc = ButtonFrame(Container, PName, PDesc, UDim2.new(1, -20), false)
+			local Frame, LabelFunc = ButtonFrame(ElementParent, PName, PDesc, UDim2.new(1, -20), false)
 			
 			local Paragraph = {}
 			function Paragraph:Visible(...) Funcs:ToggleVisible(Frame, ...) end
@@ -5517,7 +5596,7 @@ function Library:MakeWindow(Configs)
 			local BDescription = Configs.Desc or Configs.Description or ""
 			local Callback = Funcs:GetCallback(Configs, 2)
 			
-			local FButton, LabelFunc = ButtonFrame(Container, BName, BDescription, UDim2.new(1, -20))
+			local FButton, LabelFunc = ButtonFrame(ElementParent, BName, BDescription, UDim2.new(1, -20))
 			
 			local ButtonIcon = Create("ImageLabel", FButton, {
 				Size = UDim2.new(0, 14, 0, 14),
@@ -5583,7 +5662,7 @@ function Library:MakeWindow(Configs)
 			local SuppressActivation, ActivationToken = false, 0
 			local PositionTween, TransparencyTween
 			local FinishDrag
-			local Button, LabelFunc = ButtonFrame(Container, TName, TDesc, UDim2.new(1, -38))
+			local Button, LabelFunc = ButtonFrame(ElementParent, TName, TDesc, UDim2.new(1, -38))
 			
 			local ToggleHolder = InsertTheme(Create("Frame", Button, {
 				Size = UDim2.new(0, 35, 0, 18),
@@ -5901,7 +5980,7 @@ function Library:MakeWindow(Configs)
 				PrefixOnly = DPrefixOnly == true
 			}
 
-			local Button, LabelFunc = ButtonFrame(Container, DName, DDesc, UDim2.new(1, -180))
+			local Button, LabelFunc = ButtonFrame(ElementParent, DName, DDesc, UDim2.new(1, -180))
 
 			local SelectedFrame = InsertTheme(Create("Frame", Button, {
 				Size = UDim2.new(0, 150, 0, 18),
@@ -6953,6 +7032,7 @@ function Library:MakeWindow(Configs)
 					end
 				end)
 
+				Dropdown._OnSectionHidden = HideInstantly
 				return RegisterFlagObject(Flag, Dropdown, Button)
 			end
 		end
@@ -7355,7 +7435,7 @@ function Library:MakeWindow(Configs)
 			
 			local HoverCorner = 3
 
-			local Button, LabelFunc = ButtonFrame(Container, SName, SDesc, UDim2.new(1, -180), false)
+			local Button, LabelFunc = ButtonFrame(ElementParent, SName, SDesc, UDim2.new(1, -180), false)
 
 			local SelectedFrame = InsertTheme(Create("Frame", Button, {
 				Size = UDim2.new(0, 150, 0, 22),
@@ -7753,7 +7833,7 @@ function Library:MakeWindow(Configs)
 			local Desc = Configs.Desc or Configs.Description or ""
 
 			local Frame, LabelFunc = ButtonFrame(
-				Container, Title, Desc,
+				ElementParent, Title, Desc,
 				UDim2.new(1, -(ControlWidth + ControlGap + ElementHorizontalPadding)), false
 			)
 			local Holder = Create("Frame", Frame, {
@@ -8108,7 +8188,7 @@ function Library:MakeWindow(Configs)
 			local Default = Configs[5] or Configs.Default or ControlsConfig.Slider.Default
 			if CheckFlag(Flag) then Default = GetFlag(Flag) end
 
-			local Button, LabelFunc = ButtonFrame(Container, SName, SDesc, UDim2.new(1, -180), false)
+			local Button, LabelFunc = ButtonFrame(ElementParent, SName, SDesc, UDim2.new(1, -180), false)
 			local SliderHolder = Create("TextButton", Button, {
 				Size = UDim2.new(0.45, 0, 1, 0),
 				Position = UDim2.new(1, -8, 0, 0),
@@ -8315,7 +8395,7 @@ function Library:MakeWindow(Configs)
 
 			if type(TDefault) ~= "string" then TDefault = DisplayString(TDefault) end
 
-			local Button, LabelFunc = ButtonFrame(Container, TName, TDesc, UDim2.new(1, -38), false)
+			local Button, LabelFunc = ButtonFrame(ElementParent, TName, TDesc, UDim2.new(1, -38), false)
 
 			local SelectedFrame = InsertTheme(Create("Frame", Button, {
 				Size = UDim2.new(0, 150, 0, 18),
@@ -8542,7 +8622,7 @@ function Library:MakeWindow(Configs)
 				return Connection
 			end
 
-			local Frame = ComponentSurface(Create("Frame", Container, {
+			local Frame = ComponentSurface(Create("Frame", ElementParent, {
 				Size = UDim2.new(1, 0, 0, 0),
 				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundColor3 = Theme["Color Hub 2"],
@@ -9040,7 +9120,7 @@ function Library:MakeWindow(Configs)
 			local Callback = Funcs:GetCallback(Configs, 3)
 			local Keybind = {}
 			local Binding
-			local Button, LabelFunc = ButtonFrame(Container, KName, KDesc, UDim2.new(1, -38), false)
+			local Button, LabelFunc = ButtonFrame(ElementParent, KName, KDesc, UDim2.new(1, -38), false)
 
 			local function SetState(State, Fire)
 				if not Binding or Binding.Destroyed or not Toggle or type(State) ~= "boolean" then return false end
@@ -9325,7 +9405,7 @@ function Library:MakeWindow(Configs)
 			local OptionWidth = UDim2.new(1, -130)
 
 			local Option, Label = ButtonFrame(
-				Container,
+				ElementParent,
 				Name,
 				Description,
 				OptionWidth,
@@ -10418,6 +10498,7 @@ function Library:MakeWindow(Configs)
 				if PopupOverlay.Parent then PopupOverlay:Destroy() end
 			end)
 
+			ColorPicker._OnSectionHidden = function() SetExpanded(false) end
 			return RegisterFlagObject(Flag, ColorPicker, Option)
 		end
 		function Tab:AddCode(Configs)
@@ -10549,7 +10630,7 @@ function Library:MakeWindow(Configs)
 				return Theme["Color Hub 2"]:Lerp(Color3.new(0, 0, 0), IsEditable and 0.37 or 0.28)
 			end
 
-			local Holder = ComponentSurface(Create("Frame", Container, {
+			local Holder = ComponentSurface(Create("Frame", ElementParent, {
 				Name = "CodeElement",
 				ZIndex = 10,
 				Size = UDim2.new(1, 0, 0, 60),
@@ -12624,7 +12705,7 @@ function Library:MakeWindow(Configs)
 			local Logo = ResolveGuiImage(Configs[2] or Configs.Logo or RootConfig.Image)
 			local Invite = Configs[3] or Configs.Invite or ""
 			
-			local InviteHolder = Create("Frame", Container, {
+			local InviteHolder = Create("Frame", ElementParent, {
 				Size = UDim2.new(1, 0, 0, 80),
 				BackgroundTransparency = 1
 			})
@@ -12731,21 +12812,24 @@ function Library:MakeWindow(Configs)
 		end
 		for _, MethodName in ipairs({
 			"AddSection", "AddDivider", "AddParagraph", "AddButton", "AddToggle", "AddDropdown",
-			"AddPlayers", "AddSelector", "AddSlider", "AddTextBox", "AddKeybind",
+			"AddPlayers", "AddSelector", "AddProgressBar", "AddSlider", "AddTextBox", "AddTextArea", "AddKeybind",
 			"AddColorPicker", "AddCode", "AddDiscordInvite"
 		}) do
 			local CreateElement = Tab[MethodName]
 			Tab[MethodName] = function(Self, ...)
 				if Self._Destroyed then return nil end
+				local Owner = MethodName ~= "AddSection" and CurrentContentSection or nil
 				local Element = CreateElement(Self, ...)
 				if type(Element) == "table" and type(Element.Destroy) == "function" then
 					local OriginalDestroy = Element.Destroy
 					local Destroyed = false
 					TabElements[Element] = true
+					if Owner then Owner._Elements[Element] = true end
 					Element.Destroy = function(Object, ...)
 						if Destroyed then return end
 						Destroyed = true
 						TabElements[Object] = nil
+						if Owner then Owner._Elements[Object] = nil end
 						return OriginalDestroy(Object, ...)
 					end
 				end
