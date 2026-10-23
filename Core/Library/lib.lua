@@ -8310,7 +8310,8 @@ function Library:MakeWindow(Configs)
 			}), "Text")
 
 			if Editable then
-				LabelVal.ClearTextOnFocus = false
+				LabelVal.ClearTextOnFocus = true
+				LabelVal.ClipsDescendants = true
 				LabelVal.MultiLine = false
 				LabelVal.TextEditable = true
 			end
@@ -8369,7 +8370,7 @@ function Library:MakeWindow(Configs)
 			end
 
 			local function RefreshValue()
-				if Value == nil then return end
+				if Value == nil or Editing then return end
 				local Fraction = Max == Min and 0 or math.clamp((Value - Min) / (Max - Min), 0, 1)
 				local Initial = LabelVal.Text == ""
 				WritingValue = true
@@ -8448,6 +8449,9 @@ function Library:MakeWindow(Configs)
 					if Destroyed or not Button.Interactable then LabelVal:ReleaseFocus() return end
 					FinishDrag(true)
 					Editing = true
+					WritingValue = true
+					LabelVal.Text = ""
+					WritingValue = false
 					RefreshValueBackground()
 				end)
 				LabelVal:GetPropertyChangedSignal("Text"):Connect(function()
