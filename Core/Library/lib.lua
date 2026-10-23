@@ -4185,6 +4185,10 @@ function Library:MakeWindow(Configs)
 			tonumber(Configs.SingleButtonMaxWidth) or math.floor((tonumber(Defaults.SingleButtonMaxWidth) or 196) * WidthRatio + 0.5),
 			130, 320
 		)
+		if PopupMode and #Options == 0 then
+			ButtonHeight = 0
+			ContentGap = 0
+		end
 		local DefaultButtonColor = Configs.ButtonColor or Defaults.ButtonColor or "Color Stroke"
 		local DefaultButtonTextColor = Configs.ButtonTextColor or Defaults.ButtonTextColor or "Color Text"
 		local Alignment = tostring(Configs.ButtonAlignment or Defaults.ButtonAlignment or "Center")
@@ -4362,7 +4366,22 @@ function Library:MakeWindow(Configs)
 			for Index, Entry in ipairs(ButtonEntries) do
 				Entry.Button.LayoutOrder = Index
 			end
-			-- Fill the button row, leaving ButtonInset on each side.
+			if PopupMode then
+				local Widths = {}
+				local TotalWidth = 0
+				for _, Entry in ipairs(VisibleEntries) do
+					local TextWidth = TextService:GetTextSize(Entry.Button.Text, 13, Enum.Font.GothamBold, Vector2.new(1000, ButtonHeight)).X
+					local ButtonWidth = math.clamp(math.ceil(TextWidth) + (Entry.HasIcon and 40 or 26), 68, 150)
+					Widths[#Widths + 1] = ButtonWidth
+					TotalWidth += ButtonWidth
+				end
+				local Ratio = math.min(1, AvailableWidth / math.max(1, TotalWidth))
+				for Index, Entry in ipairs(VisibleEntries) do
+					Entry.Button.Size = UDim2.fromOffset(math.max(1, math.floor(Widths[Index] * Ratio)), ButtonHeight)
+				end
+				return
+			end
+			-- The original dialog buttons continue filling the available width.
 			local FullWidth = AvailableWidth / Count
 			local Last = 0
 			for _, Entry in ipairs(VisibleEntries) do
@@ -4406,11 +4425,11 @@ function Library:MakeWindow(Configs)
 			local Brightness = Base.R * 0.299 + Base.G * 0.587 + Base.B * 0.114
 			local Contrast = Brightness > 0.62 and Color3.fromRGB(20, 20, 24) or Color3.new(1, 1, 1)
 			local TextSource = Palette.Text or Palette.TextColor or Palette.TextColor3
-			if TextSource == nil and Entry.Style == "secondary" and Entry.Color == nil then
+			if TextSource == nil and (Entry.Style == "secondary" or Entry.Style == "tertiary") and Entry.Color == nil then
 				TextSource = DefaultButtonTextColor
 			end
 			Entry.Button.TextColor3 = ResolveColor(TextSource,
-				(Entry.Style == "secondary" and Entry.Color == nil) and Theme["Color Text"] or Contrast)
+				((Entry.Style == "secondary" or Entry.Style == "tertiary") and Entry.Color == nil) and Theme["Color Text"] or Contrast)
 			local HoverSource = Palette.Hover or Palette.HoverColor or Palette.HoverBackground
 			local HoverColor = ResolveColor(HoverSource,
 				Base:Lerp(Color3.new(1, 1, 1), Entry.Style == "secondary" and 0.07 or 0.1))
@@ -4552,11 +4571,13 @@ function Library:MakeWindow(Configs)
 				LayoutOrder = #ButtonEntries + 1
 			})
 			Make("Corner", Button, UDim.new(0, ButtonCornerRadius))
+			local HasButtonIcon = false
 			if PopupMode and Option.Icon then
 				local Source = Library:GetIcon(Option.Icon)
 				if type(Source) == "string" and Source:match("^rbxassetid://%d+$") then
+					HasButtonIcon = true
 					Button.TextXAlignment = Enum.TextXAlignment.Right
-					Create("UIPadding", Button, {PaddingRight = UDim.new(0, 8)})
+					Create("UIPadding", Button, {PaddingRight = UDim.new(0, 10)})
 					InsertTheme(Create("ImageLabel", Button, {
 						Size = UDim2.fromOffset(14, 14),
 						Position = UDim2.new(0, 8, 0.5, 0),
@@ -4575,7 +4596,7 @@ function Library:MakeWindow(Configs)
 			local ButtonScale = Create("UIScale", Button, {Scale = 1})
 			local Entry = {
 				Button = Button, Stroke = Stroke, Name = LabelSource, Color = Option.Color,
-				Primary = Option.Primary == true,
+				HasIcon = HasButtonIcon, Primary = Option.Primary == true,
 				Style = NormalizeButtonStyle(Option.Style, Option.Primary == true),
 				Enabled = Option.Enabled ~= false and Option.Disabled ~= true,
 				Visible = Option.Visible ~= false, Hovered = false, Callback = Callback,
@@ -4786,10 +4807,15 @@ function Library:MakeWindow(Configs)
 		PopupConfigs._Popup = true
 		PopupConfigs.Title = tostring(Configs.Title or Configs[1] or "Popup")
 		PopupConfigs.Text = tostring(Configs.Content or Configs.Text or Configs.Description or Configs.Desc or Configs[2] or "")
-		PopupConfigs.Width = Configs.Width or 430
-		PopupConfigs.MinHeight = Configs.MinHeight or 172
-		PopupConfigs.TitleGap = Configs.TitleGap or 12
-		PopupConfigs.ContentGap = Configs.ContentGap or 24
+		PopupConfigs.Width = Configs.Width or 368
+		PopupConfigs.MinHeight = Configs.MinHeight or 132
+		PopupConfigs.HorizontalPadding = Configs.HorizontalPadding or 14
+		PopupConfigs.PaddingTop = Configs.PaddingTop or 12
+		PopupConfigs.PaddingBottom = Configs.PaddingBottom or 12
+		PopupConfigs.ButtonHeight = Configs.ButtonHeight or 32
+		PopupConfigs.ButtonSpacing = Configs.ButtonSpacing or 8
+		PopupConfigs.TitleGap = Configs.TitleGap or 6
+		PopupConfigs.ContentGap = Configs.ContentGap or 10
 		PopupConfigs.ButtonAlignment = Configs.ButtonAlignment or "Right"
 		PopupConfigs.Options = {}
 		local Buttons = Configs.Buttons or Configs.Options or {}
@@ -4867,14 +4893,17 @@ function Library:MakeWindow(Configs)
 			Text = "",
 			AutoButtonColor = false
 		})
+		local SectionLeftPadding = TabIconOffset
+		local SectionIconSize = math.max(14, TabIconSize)
+		local SectionIconGap = 7
 		local SectionIconOffset = 0
 		if Configs.Icon then
 			local Source = Library:GetIcon(Configs.Icon)
 			if type(Source) == "string" and Source:match("^rbxassetid://%d+$") then
-				SectionIconOffset = 24
+				SectionIconOffset = SectionIconSize + SectionIconGap
 				local Image = Create("ImageLabel", Header, {
-					Size = UDim2.fromOffset(16, 16),
-					Position = UDim2.new(0, TabTextOffset, 0.5, 0),
+					Size = UDim2.fromOffset(SectionIconSize, SectionIconSize),
+					Position = UDim2.new(0, SectionLeftPadding, 0.5, 0),
 					AnchorPoint = Vector2.new(0, 0.5),
 					BackgroundTransparency = 1,
 					Image = Source,
@@ -4885,14 +4914,14 @@ function Library:MakeWindow(Configs)
 			end
 		end
 		local Label = InsertTheme(Create("TextLabel", Header, {
-			Position = UDim2.fromOffset(TabTextOffset + SectionIconOffset, 0),
-			Size = UDim2.new(1, -(TabTextOffset + SectionIconOffset + 22), 1, 0),
+			Position = UDim2.fromOffset(SectionLeftPadding + SectionIconOffset, 0),
+			Size = UDim2.new(1, -(SectionLeftPadding + SectionIconOffset + 24), 1, 0),
 			BackgroundTransparency = 1,
 			AutoLocalize = false,
 			Text = TranslateText(TitleSource),
 			TextColor3 = Theme["Color Dark Text"],
 			Font = Enum.Font.GothamMedium,
-			TextSize = math.max(10, TabTextSize - 1),
+			TextSize = TabTextSize,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd
 		}), "DarkText")
@@ -4900,8 +4929,8 @@ function Library:MakeWindow(Configs)
 		local Arrow
 		if type(Icon) == "string" and Icon:find("^rbxassetid://") then
 			Arrow = InsertTheme(Create("ImageLabel", Header, {
-				Size = UDim2.fromOffset(14, 14),
-				Position = UDim2.new(1, -9, 0.5, 0),
+				Size = UDim2.fromOffset(12, 12),
+				Position = UDim2.new(1, -10, 0.5, 0),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				BackgroundTransparency = 1,
 				Image = Icon,
