@@ -8261,6 +8261,7 @@ function Library:MakeWindow(Configs)
 			if Step <= 0 or Step ~= Step or Step == math.huge then Step = 1 end
 			local Callback = Funcs:GetCallback(Configs, 6)
 			local LiveUpdate = FirstDefined(Configs.LiveUpdate, Configs.UpdateOnDrag, Configs.UpdateWhileDragging, true) ~= false
+			local Editable = Configs.Editable == true
 			local Flag = Configs[7] or Configs.Flag or false
 			local Default = Configs[5] or Configs.Default or ControlsConfig.Slider.Default
 			if CheckFlag(Flag) then Default = GetFlag(Flag) end
@@ -8296,7 +8297,7 @@ function Library:MakeWindow(Configs)
 				BackgroundTransparency = 0.15,
 				Active = true
 			})Make("Corner", SliderIcon)
-			local LabelVal = InsertTheme(Create("TextLabel", SliderHolder, {
+			local LabelVal = InsertTheme(Create(Editable and "TextBox" or "TextLabel", SliderHolder, {
 				Size = UDim2.fromOffset(32, 16),
 				Text = "",
 				AnchorPoint = Vector2.new(1, 0.5),
@@ -8308,6 +8309,27 @@ function Library:MakeWindow(Configs)
 				TextXAlignment = Enum.TextXAlignment.Right
 			}), "Text")
 
+			if Editable then
+				LabelVal.ClearTextOnFocus = false
+				LabelVal.MultiLine = false
+				LabelVal.TextEditable = true
+			end
+			local ValueBackground = Editable and InsertTheme(Create("Frame", SliderHolder, {
+				Size = UDim2.fromOffset(44, 24),
+				Position = UDim2.new(1, 4, 0.5, 0),
+				AnchorPoint = Vector2.new(1, 0.5),
+				BackgroundColor3 = Theme["Color Stroke"],
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				ZIndex = LabelVal.ZIndex
+			}), "Stroke") or nil
+			if ValueBackground then
+				Make("Corner", ValueBackground, UDim.new(0, 5))
+				LabelVal.ZIndex = ValueBackground.ZIndex + 1
+			end
+			local Editing = false
+			local WritingValue = false
+			local ValueHovering = false
 			local Value
 			local Dragging = false
 			local ActiveInput
@@ -8349,10 +8371,13 @@ function Library:MakeWindow(Configs)
 				if Value == nil then return end
 				local Fraction = Max == Min and 0 or math.clamp((Value - Min) / (Max - Min), 0, 1)
 				local Initial = LabelVal.Text == ""
+				WritingValue = true
 				LabelVal.Text = string.format("%.15g", Value)
+				WritingValue = false
 				local ValueWidth = math.max(ValueColumnWidth, math.ceil(TextService:GetTextSize(LabelVal.Text, 11, Enum.Font.GothamBold, Vector2.new(1000, 16)).X))
 				ValueColumnWidth = ValueWidth
 				LabelVal.Size = UDim2.fromOffset(ValueWidth, 16)
+				if ValueBackground then ValueBackground.Size = UDim2.fromOffset(ValueWidth + 12, 24) end
 				local BarSize = UDim2.new(1, -(ValueWidth + 18), 0, 5)
 				if SliderBar.Size ~= BarSize then SliderBar.Size = BarSize end
 				if Initial then
@@ -8403,8 +8428,59 @@ function Library:MakeWindow(Configs)
 				end
 			end
 
+			if Editable then
+				local function RefreshValueBackground()
+					if Destroyed then return end
+					Animate("ValueBackground", ValueBackground, InteractionInfo, {
+						BackgroundTransparency = Button.Interactable and (Editing and 0.15 or ValueHovering and 0.4 or 1) or 1
+					})
+				end
+				LabelVal.MouseEnter:Connect(function()
+					ValueHovering = true
+					RefreshValueBackground()
+				end)
+				LabelVal.MouseLeave:Connect(function()
+					ValueHovering = false
+					RefreshValueBackground()
+				end)
+				LabelVal.Focused:Connect(function()
+					if Destroyed or not Button.Interactable then LabelVal:ReleaseFocus() return end
+					FinishDrag(true)
+					Editing = true
+					RefreshValueBackground()
+				end)
+				LabelVal:GetPropertyChangedSignal("Text"):Connect(function()
+					if WritingValue or not Editing or Destroyed then return end
+					local Clean = LabelVal.Text:gsub("[^0-9]", "")
+					if Clean ~= LabelVal.Text then
+						local Cursor = LabelVal.CursorPosition
+						local BeforeCursor = LabelVal.Text:sub(1, math.max(0, Cursor - 1)):gsub("[^0-9]", "")
+						WritingValue = true
+						LabelVal.Text = Clean
+						if Cursor > 0 then LabelVal.CursorPosition = #BeforeCursor + 1 end
+						WritingValue = false
+					end
+				end)
+				LabelVal.FocusLost:Connect(function()
+					if not Editing or Destroyed then return end
+					Editing = false
+					local Number = tonumber(LabelVal.Text)
+					if Button.Interactable and Number then
+						SetValue(math.clamp(Number, Min, Max))
+					end
+					if Destroyed then return end
+					RefreshValue()
+					RefreshValueBackground()
+				end)
+			end
+
 			local function BeginDrag(Input)
 				if Destroyed or Dragging or not Button.Interactable or SliderBar.AbsoluteSize.X <= 0 then return end
+				if Editable then
+					local Position, Size = LabelVal.AbsolutePosition, LabelVal.AbsoluteSize
+					local Point = Input.Position
+					if Point.X >= Position.X and Point.X <= Position.X + Size.X and Point.Y >= Position.Y and Point.Y <= Position.Y + Size.Y then return end
+				end
 				local InputType = Input.UserInputType
 				if InputType ~= Enum.UserInputType.MouseButton1 and InputType ~= Enum.UserInputType.Touch then return end
 				Dragging = true
@@ -8501,7 +8577,11 @@ function Library:MakeWindow(Configs)
 				SetValue(Min, false, true)
 			end
 			ApplyLocked(Slider, Button, Configs, function(IsLocked)
-				if IsLocked then FinishDrag(false) end
+				if IsLocked then
+					FinishDrag(false)
+					if Editable then LabelVal:ReleaseFocus() end
+				end
+				if Editable then LabelVal.TextEditable = not IsLocked end
 			end)
 			return RegisterFlagObject(Flag, Slider, Button)
 		end
