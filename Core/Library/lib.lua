@@ -8268,7 +8268,7 @@ function Library:MakeWindow(Configs)
 			local Button, LabelFunc = ButtonFrame(ElementParent, SName, SDesc, UDim2.new(1, -180), false)
 			local SliderHolder = Create("TextButton", Button, {
 				Size = UDim2.new(0.45, 0, 1, 0),
-				Position = UDim2.new(1, -8, 0, 0),
+				Position = UDim2.new(1, -16, 0, 0),
 				AnchorPoint = Vector2.new(1, 0),
 				AutoButtonColor = false,
 				Text = "",
@@ -8277,7 +8277,7 @@ function Library:MakeWindow(Configs)
 			})
 			local SliderBar = InsertTheme(Create("Frame", SliderHolder, {
 				BackgroundColor3 = Theme["Color Stroke"],
-				Size = UDim2.new(1, -62, 0, 6),
+				Size = UDim2.new(1, -46, 0, 4),
 				Position = UDim2.new(0, 8, 0.5, 0),
 				AnchorPoint = Vector2.new(0, 0.5),
 				BorderSizePixel = 0,
@@ -8289,7 +8289,7 @@ function Library:MakeWindow(Configs)
 				BorderSizePixel = 0
 			}), "Theme")Make("Corner", Indicator)
 			local SliderIcon = Create("Frame", SliderBar, {
-				Size = UDim2.fromOffset(8, 14),
+				Size = UDim2.fromOffset(4, 12),
 				BackgroundColor3 = ControlColors.Light,
 				Position = UDim2.fromScale(0, 0.5),
 				AnchorPoint = Vector2.new(0.5, 0.5),
@@ -8297,14 +8297,14 @@ function Library:MakeWindow(Configs)
 				Active = true
 			})Make("Corner", SliderIcon)
 			local LabelVal = InsertTheme(Create("TextLabel", SliderHolder, {
-				Size = UDim2.fromOffset(48, 16),
+				Size = UDim2.fromOffset(32, 16),
 				AnchorPoint = Vector2.new(1, 0.5),
 				Position = UDim2.new(1, 0, 0.5, 0),
 				BackgroundTransparency = 1,
 				TextColor3 = Theme["Color Text"],
 				Font = Enum.Font.GothamBold,
 				TextSize = 11,
-				TextXAlignment = Enum.TextXAlignment.Right
+				TextXAlignment = Enum.TextXAlignment.Left
 			}), "Text")
 
 			local Value
@@ -8357,7 +8357,7 @@ function Library:MakeWindow(Configs)
 				if FocusConnection then FocusConnection:Disconnect() FocusConnection = nil end
 				Container.ScrollingEnabled = WasScrolling
 				SliderIcon.BackgroundTransparency = 0.15
-				SliderIcon.Size = UDim2.fromOffset(8, 14)
+				SliderIcon.Size = UDim2.fromOffset(4, 12)
 				local Changed = Value ~= DragStartValue
 				DragStartValue = nil
 				if Commit and Changed and not LiveUpdate then
@@ -8375,7 +8375,7 @@ function Library:MakeWindow(Configs)
 				WasScrolling = Container.ScrollingEnabled
 				Container.ScrollingEnabled = false
 				SliderIcon.BackgroundTransparency = 0
-				SliderIcon.Size = UDim2.fromOffset(10, 16)
+				SliderIcon.Size = UDim2.fromOffset(6, 14)
 				UpdateFromPosition(Input.Position.X)
 				MoveConnection = UserInputService.InputChanged:Connect(function(Changed)
 					if not Dragging then return end
