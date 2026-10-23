@@ -5353,6 +5353,71 @@ function Library:MakeWindow(Configs)
 		
 		function Tab:AddSection(Configs, UseIndicator)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
+			local Collapsible = Configs.Collapsible == true or (Configs.Collapsible ~= false
+				and (type(Configs.Opened) == "boolean" or type(Configs.Expanded) == "boolean"))
+			if not Collapsible then
+				CurrentContentSection, ElementParent = nil, Container
+				local SectionFlag = Configs.Flag
+				local SectionName = TranslateText(DisplayString(Configs[1] or Configs.Name or Configs.Title or Configs.Section or ControlsConfig.Titles.Section))
+				local Override
+				if type(UseIndicator) == "boolean" then
+					Override = UseIndicator
+				elseif type(Configs.Indicator) == "boolean" then
+					Override = Configs.Indicator
+				end
+
+				local SectionFrame = Create("Frame", Container, {
+					Size = UDim2.new(1, 0, 0, Library.Save.SectionHeight),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0
+				})
+
+				local SectionLabel = InsertTheme(Create("TextLabel", SectionFrame, {
+					Font = Enum.Font.GothamBold,
+					Text = SectionName,
+					TextColor3 = Theme["Color Text"],
+					BackgroundTransparency = 1,
+					TextTruncate = "AtEnd",
+					TextSize = Library.Save.SectionTextSize,
+					TextXAlignment = "Left",
+					TextYAlignment = "Center"
+				}), "Text")
+
+				local Indicator = InsertTheme(Create("Frame", SectionFrame, {
+					Size = UDim2.fromOffset(Library.Save.SectionThickness, Library.Save.SectionIndicatorHeight),
+					Position = UDim2.new(0, 8, 0.5, 0),
+					AnchorPoint = Vector2.new(0, 0.5),
+					BackgroundColor3 = Theme["Color Theme"],
+					BorderSizePixel = 0
+				}), "Theme")
+				Make("Corner", Indicator, UDim.new(1, 0))
+				Library.SectionIndicators[Indicator] = {Label = SectionLabel, Override = Override}
+				Library:ApplySectionStyle(Indicator)
+
+				local Section = {}
+				local SectionOption = {type = "Section", Name = SectionName, func = Section}
+				table.insert(Library.Options, SectionOption)
+				function Section:Visible(Bool)
+					if Bool == nil then SectionFrame.Visible = not SectionFrame.Visible return end
+					SectionFrame.Visible = Bool
+				end
+				function Section:Destroy()
+					local Index = table.find(Library.Options, SectionOption)
+					if Index then table.remove(Library.Options, Index) end
+					Library.SectionIndicators[Indicator] = nil
+					SectionFrame:Destroy()
+				end
+				function Section:Set(New)
+					if New ~= nil then
+						SectionLabel.Text = TranslateText(DisplayString(GetStr(New)))
+					end
+				end
+				Section.SetTitle = Section.Set
+				function Section:GetTitle()
+					return SectionLabel.Text
+				end
+				return RegisterFlagObject(SectionFlag, Section, SectionFrame)
+			end
 			local SectionFlag = Configs.Flag
 			local SectionName = TranslateText(DisplayString(Configs[1] or Configs.Name or Configs.Title or Configs.Section or ControlsConfig.Titles.Section))
 			local Override
@@ -5363,7 +5428,6 @@ function Library:MakeWindow(Configs)
 			end
 
 			local Expanded = Configs.Opened == true or (Configs.Opened == nil and Configs.Expanded == true)
-			local Collapsible = Configs.Collapsible ~= false
 			if not Collapsible then Expanded = true end
 			local Holder = Create("Frame", Container, {
 				Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
