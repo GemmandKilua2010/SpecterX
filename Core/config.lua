@@ -225,10 +225,13 @@ local Config = {
         },
 
         Background = {
+            Enabled = true,
             Default = "None",
             Image = false,
             ImageTransparency = 35,
+            ImageBrightness = 100,
             ScaleType = "Crop",
+            TileSize = 128,
             Presets = {
                 {Key = "None", Name = "None", Id = false},
                 {Key = "PurpleGradient", Name = "Purple gradient", Id = 13775967663},

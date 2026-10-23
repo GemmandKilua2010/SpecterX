@@ -109,6 +109,7 @@ local function NormalizeAssetId(Value)
     end
 
     if type(Value) == "number" then
+        if Value ~= Value or math.abs(Value) == math.huge or Value % 1 ~= 0 then return nil end
         if Value <= 0 then
             return ""
         end
@@ -128,6 +129,8 @@ local function NormalizeAssetId(Value)
         or Text:match("^%d+$")
         or Text:match("[?&]id=(%d+)")
         or Text:match("/asset/(%d+)")
+        or Text:match("/library/(%d+)")
+        or Text:match("/catalog/(%d+)")
 
     if not Id and Text:match("^%d+$") then
         Id = Text
@@ -378,6 +381,9 @@ Library.Save.BackgroundImage = DefaultBackgroundImage
 Library.Save.BackgroundPreset = DefaultBackgroundPreset
 Library.Save.BackgroundImageTransparency = DefaultBackgroundImageTransparency
 Library.Save.BackgroundScale = DefaultBackgroundScale
+Library.Save.BackgroundEnabled = BackgroundConfig.Enabled ~= false
+Library.Save.BackgroundImageBrightness = math.clamp(tonumber(BackgroundConfig.ImageBrightness) or 100, 0, 100)
+Library.Save.BackgroundTileSize = math.clamp(math.floor((tonumber(BackgroundConfig.TileSize) or 128) + 0.5), 32, 512)
 Library.Save.SoundEnabled = DefaultSoundEnabled
 Library.Save.SoundVolume = DefaultSoundVolume
 Library.Save.SoundId = DefaultSoundId
@@ -624,6 +630,8 @@ local SetProps, SetChildren, InsertTheme, Create do
             ScrollThickness = {0, 12},
             ScrollTransparency = {0, 1},
             BackgroundImageTransparency = {0, 100},
+            BackgroundImageBrightness = {0, 100},
+            BackgroundTileSize = {32, 512},
             SoundVolume = {0, 100},
             DropdownMaxVisibleOptions = {3, 12},
             KeybindWidth = {32, 96},
@@ -637,11 +645,11 @@ local SetProps, SetChildren, InsertTheme, Create do
             local Value = tonumber(Decode[Key])
             if Value and Value == Value and math.abs(Value) < math.huge then
                 if Key == "DropdownMaxVisibleOptions" then Value = math.floor(Value) end
-                if Key == "KeybindWidth" then Value = math.floor(Value + 0.5) end
+                if Key == "KeybindWidth" or Key == "BackgroundTileSize" then Value = math.floor(Value + 0.5) end
                 Accept(Key, math.clamp(Value, Range[1], Range[2]))
             end
         end
-        for _, Key in ipairs({"Draggable", "Resizable", "TabResizable", "SoundEnabled", "DropdownSearch", "DropdownPrefixOnly", "DropdownCloseOnSelect", "SectionIndicator", "ShowFloatingMinimizeButton", "KeybindIcon", "KeybindHighlight", "KeybindRightClick", "UnlockCursorOnOpen", "CameraWithRightMouseButton", "UnlockCursorWhenMinimized", "SavePosition", "StartupGreetingDismissed"}) do
+        for _, Key in ipairs({"Draggable", "Resizable", "TabResizable", "BackgroundEnabled", "SoundEnabled", "DropdownSearch", "DropdownPrefixOnly", "DropdownCloseOnSelect", "SectionIndicator", "ShowFloatingMinimizeButton", "KeybindIcon", "KeybindHighlight", "KeybindRightClick", "UnlockCursorOnOpen", "CameraWithRightMouseButton", "UnlockCursorWhenMinimized", "SavePosition", "StartupGreetingDismissed"}) do
             if type(Decode[Key]) == "boolean" then Accept(Key, Decode[Key]) end
         end
         if type(Decode.DropdownFavorites) == "table" then
@@ -1020,6 +1028,11 @@ BindCamera()
 
 ScreenGui.Destroying:Connect(function()
     UISound:Destroy()
+    if Library._BackgroundSettings then
+        Library._BackgroundSettings.Generation += 1
+        Library._BackgroundSettings.Sync = nil
+        Library._BackgroundSettings.Owner = nil
+    end
     if CameraConnection then
         CameraConnection:Disconnect()
         CameraConnection = nil
@@ -2246,6 +2259,7 @@ function Library:SetTheme(NewTheme)
 				and Theme["Color Stroke"] or Theme["Color Theme"]
 		end
 	end
+    if Library._BackgroundSettings then Library._BackgroundSettings.Apply(true) end
 end
 
 function Library:GetBackground()
@@ -2270,6 +2284,62 @@ function Library:GetBackgroundPresets()
     return Presets
 end
 
+Library._BackgroundSettings = {Generation = 0}
+
+function Library:GetBackgroundEnabled()
+    return Library.Save.BackgroundEnabled ~= false
+end
+
+function Library:GetBackgroundImageBrightness()
+    return Library.Save.BackgroundImageBrightness or 100
+end
+
+function Library:GetBackgroundTileSize()
+    return Library.Save.BackgroundTileSize or 128
+end
+
+function Library._BackgroundSettings.Apply(SkipSync)
+    local Id = Library:GetBackground()
+    local Enabled = Library:GetBackgroundEnabled() and Id ~= ""
+    local Brightness = Library:GetBackgroundImageBrightness() / 100
+    for _, Entry in ipairs(Library.Instances) do
+        if Entry.Type == "Main" then
+            local Frame = Entry.Instance
+            Frame.Image = Enabled and (GuiImageCache[Id] or ToAssetContentId(Id)) or ""
+            Frame.ImageTransparency = Library:GetBackgroundImageTransparency() / 100
+            Frame.ImageColor3 = Color3.new(Brightness, Brightness, Brightness)
+            Frame.ScaleType = BackgroundScaleTypes[Library:GetBackgroundScale()]
+            Frame.TileSize = UDim2.fromOffset(Library:GetBackgroundTileSize(), Library:GetBackgroundTileSize())
+            -- A disabled gradient must reveal the theme surface, never default white.
+            Frame.BackgroundColor3 = Enabled and Theme["Color Hub 2"] or Color3.new(1, 1, 1)
+        elseif Entry.Type == "MainGradient" then
+            Entry.Instance.Enabled = not Enabled
+        end
+    end
+    local Sync = Library._BackgroundSettings.Sync
+    if Sync and not SkipSync then Sync() end
+end
+
+function Library._BackgroundSettings.Resolve()
+    local State = Library._BackgroundSettings
+    State.Generation += 1
+    local Generation, Id = State.Generation, Library:GetBackground()
+    if Id == "" or GuiImageCache[Id] then return end
+    task.spawn(function()
+        ResolveGuiImage(Id)
+        if State.Generation == Generation and Library:GetBackground() == Id then State.Apply(true) end
+    end)
+end
+
+function Library:SetBackgroundEnabled(Value)
+    if type(Value) ~= "boolean" then return false end
+    if Library.Save.BackgroundEnabled == Value then return true end
+    Library.Save.BackgroundEnabled = Value
+    QueueSettingsSave()
+    Library._BackgroundSettings.Apply()
+    return true
+end
+
 function Library:SetBackground(NewBackground, Preset)
     local AssetId = NormalizeAssetId(NewBackground)
     if AssetId == nil then
@@ -2284,18 +2354,10 @@ function Library:SetBackground(NewBackground, Preset)
     else
         Library.Save.BackgroundPreset = "Custom"
     end
+    Library.Save.BackgroundEnabled = AssetId ~= ""
     QueueSettingsSave()
-
-    local Enabled = AssetId ~= ""
-    local Image = ToAssetContentId(AssetId)
-
-    for _, Val in ipairs(Library.Instances) do
-        if Val.Type == "Main" then
-            Val.Instance.Image = Image
-        elseif Val.Type == "MainGradient" then
-            Val.Instance.Enabled = not Enabled
-        end
-    end
+    Library._BackgroundSettings.Apply()
+    Library._BackgroundSettings.Resolve()
 
     return true
 end
@@ -2306,17 +2368,13 @@ end
 
 function Library:SetBackgroundImageTransparency(Value)
     Value = tonumber(Value)
-    if not Value then return false end
+    if not Value or Value ~= Value or math.abs(Value) == math.huge then return false end
 
     Value = math.clamp(Value, 0, 100)
     Library.Save.BackgroundImageTransparency = Value
     QueueSettingsSave()
 
-    for _, Val in ipairs(Library.Instances) do
-        if Val.Type == "Main" then
-            Val.Instance.ImageTransparency = Value / 100
-        end
-    end
+    Library._BackgroundSettings.Apply()
     return true
 end
 
@@ -2325,16 +2383,142 @@ function Library:GetBackgroundScale()
 end
 
 function Library:SetBackgroundScale(Value)
-    local Name = NormalizeBackgroundScale(Value)
+    if type(Value) ~= "string" then return false end
+    local Name
+    for Key in pairs(BackgroundScaleTypes) do
+        if Key:lower() == Value:lower() then Name = Key; break end
+    end
+    if not Name then return false end
     Library.Save.BackgroundScale = Name
     QueueSettingsSave()
-
-    for _, Val in ipairs(Library.Instances) do
-        if Val.Type == "Main" then
-            Val.Instance.ScaleType = BackgroundScaleTypes[Name]
-        end
-    end
+    Library._BackgroundSettings.Apply()
     return true
+end
+
+function Library:SetBackgroundImageBrightness(Value)
+    Value = tonumber(Value)
+    if not Value or Value ~= Value or math.abs(Value) == math.huge then return false end
+    Library.Save.BackgroundImageBrightness = math.clamp(Value, 0, 100)
+    QueueSettingsSave()
+    Library._BackgroundSettings.Apply()
+    return true
+end
+
+function Library:SetBackgroundTileSize(Value)
+    Value = tonumber(Value)
+    if not Value or Value ~= Value or math.abs(Value) == math.huge then return false end
+    Library.Save.BackgroundTileSize = math.clamp(math.floor(Value + 0.5), 32, 512)
+    QueueSettingsSave()
+    Library._BackgroundSettings.Apply()
+    return true
+end
+
+function Library:ResetBackground()
+    for _, Key in ipairs({"BackgroundImage", "BackgroundPreset", "BackgroundImageTransparency", "BackgroundScale", "BackgroundEnabled", "BackgroundImageBrightness", "BackgroundTileSize"}) do
+        Library.Save[Key] = Library.DefaultSettings[Key]
+    end
+    QueueSettingsSave()
+    Library._BackgroundSettings.Apply()
+    Library._BackgroundSettings.Resolve()
+end
+
+function Library._BackgroundSettings.CreateControls(ConfigTab, ExtraLabels)
+    local State, Controls = Library._BackgroundSettings, {}
+    local Presets, Names = Library:GetBackgroundPresets(), {}
+    local function AddMissing(Key)
+        for _, Preset in ipairs(Presets) do if Preset.Key == Key then return end end
+        Presets[#Presets + 1] = {Key = Key, Name = Key, Id = ""}
+    end
+    AddMissing("None")
+    AddMissing("Custom")
+    local function PresetName()
+        for _, Preset in ipairs(Presets) do
+            if Preset.Key == Library:GetBackgroundPreset() then return Preset.Name end
+        end
+        return Library:GetBackground() == "" and "None" or "Custom"
+    end
+    for _, Preset in ipairs(Presets) do Names[#Names + 1] = Preset.Name end
+    local function Label(Control, Key)
+        ExtraLabels[#ExtraLabels + 1] = {Control, Key}
+        return Control
+    end
+
+    Label(ConfigTab:AddSection(TranslateText("Background")), "Background")
+    Controls.Enabled = Label(ConfigTab:AddToggle({
+        Name = TranslateText("Show background image"),
+        Default = Library:GetBackgroundEnabled(),
+        Callback = function(Value) Library:SetBackgroundEnabled(Value) end
+    }), "Show background image")
+    Controls.Preset = Label(ConfigTab:AddSelector({
+        Name = TranslateText("Background preset"),
+        Options = Names, Default = PresetName(), Wrap = true,
+        Callback = function(Value)
+            for _, Preset in ipairs(Presets) do
+                if Preset.Name == Value then
+                    Library:SetBackground(Preset.Key == "Custom" and Library:GetBackground() or Preset.Id, Preset.Key)
+                    break
+                end
+            end
+        end
+    }), "Background preset")
+    Controls.Image = Label(ConfigTab:AddTextBox({
+        Name = TranslateText("Background image ID"),
+        Default = Library:GetBackground(), ClearText = false, FireOnInit = false,
+        PlaceholderText = TranslateText("Image ID or Roblox link"),
+        Callback = function(Value)
+            if not Library:SetBackground(Value) then
+                Controls.Image:Set(Library:GetBackground(), true)
+                Library:NotifyLibrary(TranslateText("Enter a valid image ID or Roblox image/decal link."))
+            end
+        end
+    }), "Background image ID")
+    Label(ConfigTab:AddParagraph({
+        Title = TranslateText("Paste an image ID or Roblox image/decal link."),
+        Desc = TranslateText("The image must be public and available to this experience.")
+    }), "Paste an image ID or Roblox image/decal link.")
+    Controls.Transparency = Label(ConfigTab:AddSlider({
+        Name = TranslateText("Background image transparency"),
+        Min = 0, Max = 100, Increase = 1, Default = Library:GetBackgroundImageTransparency(),
+        Callback = function(Value) Library:SetBackgroundImageTransparency(Value) end
+    }), "Background image transparency")
+    Controls.Brightness = Label(ConfigTab:AddSlider({
+        Name = TranslateText("Background image brightness"),
+        Desc = TranslateText("Brightness affects only the image."),
+        Min = 0, Max = 100, Increase = 1, Default = Library:GetBackgroundImageBrightness(),
+        Callback = function(Value) Library:SetBackgroundImageBrightness(Value) end
+    }), "Background image brightness")
+    Controls.Scale = Label(ConfigTab:AddSelector({
+        Name = TranslateText("Background scale"),
+        Options = {"Crop", "Fit", "Stretch", "Tile"}, Default = Library:GetBackgroundScale(), Wrap = true,
+        Callback = function(Value) Library:SetBackgroundScale(Value) end
+    }), "Background scale")
+    Controls.Tile = Label(ConfigTab:AddSlider({
+        Name = TranslateText("Background tile size"),
+        Desc = TranslateText("Tile size applies only to Tile mode."),
+        Min = 32, Max = 512, Increase = 1, Default = Library:GetBackgroundTileSize(),
+        Callback = function(Value) Library:SetBackgroundTileSize(Value) end
+    }), "Background tile size")
+    Label(ConfigTab:AddButton({
+        Name = TranslateText("Remove background image"),
+        Callback = function() Library:SetBackground("", "None") end
+    }), "Remove background image")
+    Label(ConfigTab:AddButton({
+        Name = TranslateText("Reset background settings"),
+        Callback = function() Library:ResetBackground() end
+    }), "Reset background settings")
+
+    State.Owner = ConfigTab
+    State.Sync = function()
+        Controls.Enabled:SetEnabled(Library:GetBackgroundEnabled(), true)
+        Controls.Preset:Set(PresetName(), true)
+        Controls.Image:Set(Library:GetBackground(), true)
+        Controls.Transparency:SetValue(Library:GetBackgroundImageTransparency(), true)
+        Controls.Brightness:SetValue(Library:GetBackgroundImageBrightness(), true)
+        Controls.Scale:Set(Library:GetBackgroundScale(), true)
+        Controls.Tile:SetValue(Library:GetBackgroundTileSize(), true)
+        Controls.Tile:Visible(Library:GetBackgroundScale() == "Tile")
+    end
+    State.Sync()
 end
 
 function Library:IsSoundEnabled()
@@ -2900,6 +3084,8 @@ function Library:MakeWindow(Configs)
 		Rotation = GradientRotation,
 		Enabled = (Library.Save.BackgroundImage or "") == ""
 	}), "MainGradient")
+    Library._BackgroundSettings.Apply()
+    Library._BackgroundSettings.Resolve()
 
 	Create("UISizeConstraint", MainFrame, {
 		MinSize = Vector2.new(0, 0),
@@ -5901,7 +6087,7 @@ function Library:MakeWindow(Configs)
 				end
 			end
 
-			local function SetToggle(Value, Force)
+			local function SetToggle(Value, Force, Silent)
 				if Destroyed or type(Value) ~= "boolean" then return false end
 				if Default == Value and not Force then return true end
 				if DragInput and FinishDrag then FinishDrag(false) end
@@ -5910,7 +6096,7 @@ function Library:MakeWindow(Configs)
 				SetFlag(Flag, Default)
 				SetToggleVisual(Default, Force)
 				if Binding then Binding:Refresh() end
-				Funcs:FireCallback(Callback, Default)
+				if not Silent then Funcs:FireCallback(Callback, Default) end
 				return true
 			end
 
@@ -6032,9 +6218,9 @@ function Library:MakeWindow(Configs)
 				local Added = Funcs:InsertCallback(Callback, ...)
 				if type(Added) == "function" then Added(Default) end
 			end
-			function ToggleControl:SetEnabled(Value)
+			function ToggleControl:SetEnabled(Value, Silent)
 				if Destroyed or type(Value) ~= "boolean" then return false end
-				SetToggle(Value)
+				SetToggle(Value, false, Silent == true)
 				return Default
 			end
 			function ToggleControl:SetKeybind(Key)
@@ -8783,7 +8969,7 @@ function Library:MakeWindow(Configs)
 			local Changing = false
 			local LastSubmitted = ""
 
-			local function Input()
+			local function Input(Silent)
 				if not Button.Interactable then return end
 				local Text = ApplyMod(TextBoxInput.Text)
 				if type(TextBox.OnChanging) == "function" then
@@ -8794,7 +8980,7 @@ function Library:MakeWindow(Configs)
 				if LastSubmitted == Text then return end
 				LastSubmitted = Text
 				SetFlag(Flag, Text)
-				Funcs:FireCallback(Callback, Text)
+				if not Silent then Funcs:FireCallback(Callback, Text) end
 			end
 
 			TextBoxInput:GetPropertyChangedSignal("Text"):Connect(function()
@@ -8816,9 +9002,9 @@ function Library:MakeWindow(Configs)
 				end
 			end)
 
-			TextBoxInput.FocusLost:Connect(Input)
+			TextBoxInput.FocusLost:Connect(function() Input() end)
 			TextBoxInput.Text = ApplyMod(TDefault)
-			Input()
+			Input(Configs.FireOnInit == false)
 
 			TextBoxInput.FocusLost:Connect(function()
 				CreateTween({
@@ -8846,13 +9032,13 @@ function Library:MakeWindow(Configs)
 				return TextBoxInput.PlaceholderText
 			end
 
-			function TextBox:Set(Text)
+			function TextBox:Set(Text, Silent)
 				if type(Text) ~= "string" then
 					return
 				end
 
 				TextBoxInput.Text = Text
-				Input()
+				Input(Silent == true)
 			end
 
 			function TextBox:SetPlaceholder(Text)
@@ -13293,6 +13479,8 @@ function Library:MakeWindow(Configs)
 			})
 			ExtraLabels[#ExtraLabels + 1] = {TabResizableControl, "Resizable tabs"}
 
+			Library._BackgroundSettings.CreateControls(ConfigTab, ExtraLabels)
+
 			local KeybindSection = ConfigTab:AddSection(TranslateText("Keybinds"))
 			ExtraLabels[#ExtraLabels + 1] = {KeybindSection, "Keybinds"}
 			local KeybindIconControl = ConfigTab:AddToggle({
@@ -13511,9 +13699,7 @@ function Library:MakeWindow(Configs)
                                     Library:SetTransparency(Defaults.Transparency)
                                     Library:SetScrollThickness(Defaults.ScrollThickness)
                                     Library:SetScrollTransparency(Defaults.ScrollTransparency)
-                                    Library:SetBackground(Defaults.BackgroundImage, Defaults.BackgroundPreset)
-                                    Library:SetBackgroundImageTransparency(Defaults.BackgroundImageTransparency)
-                                    Library:SetBackgroundScale(Defaults.BackgroundScale)
+                                    Library:ResetBackground()
                                     Library:SetSoundEnabled(Defaults.SoundEnabled)
                                     Library:SetSoundId(Defaults.SoundId)
                                     Library:SetSoundVolume(Defaults.SoundVolume)
@@ -13591,6 +13777,10 @@ function Library:MakeWindow(Configs)
 			local ConfigDestroy = ConfigTab.Destroy
 			function ConfigTab:Destroy(...)
 				ConfigLanguageConnection:Disconnect()
+				if Library._BackgroundSettings.Owner == self then
+					Library._BackgroundSettings.Sync = nil
+					Library._BackgroundSettings.Owner = nil
+				end
 				return ConfigDestroy(self, ...)
 			end
 		end
