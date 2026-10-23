@@ -4299,11 +4299,10 @@ function Library:MakeWindow(Configs)
 		Make("Corner", Panel, UDim.new(0, CornerRadius))
 		Make("Stroke", Panel, {Thickness = 1, Transparency = 0.64})
 		local Scale = Create("UIScale", Panel, {Scale = 0.92})
-		local TitleIconOffset = 0
+		local TitleIconOffset = PopupMode and 31 or 0
 		if PopupMode and Configs.Icon ~= nil then
 			local Source = Library:GetIcon(Configs.Icon)
 			if type(Source) == "string" and Source:match("^rbxassetid://%d+$") then
-				TitleIconOffset = 31
 				local IconFrame = Create("ImageLabel", Panel, {
 					Size = UDim2.fromOffset(21, 21),
 					Position = UDim2.fromOffset(HorizontalPadding, PaddingTop),
@@ -4410,7 +4409,7 @@ function Library:MakeWindow(Configs)
 				local TotalWidth = 0
 				for _, Entry in ipairs(VisibleEntries) do
 					local TextWidth = TextService:GetTextSize(Entry.Button.Text, 13, Enum.Font.GothamBold, Vector2.new(1000, ButtonHeight)).X
-					local ButtonWidth = math.clamp(math.ceil(TextWidth) + (Entry.HasIcon and 40 or 26), 68, 150)
+					local ButtonWidth = math.clamp(math.ceil(TextWidth) + ((PopupMode or Entry.HasIcon) and 40 or 26), 68, 150)
 					Widths[#Widths + 1] = ButtonWidth
 					TotalWidth += ButtonWidth
 				end
@@ -4606,13 +4605,15 @@ function Library:MakeWindow(Configs)
 				LayoutOrder = #ButtonEntries + 1
 			})
 			Make("Corner", Button, UDim.new(0, ButtonCornerRadius))
+			if PopupMode then
+				Button.TextXAlignment = Enum.TextXAlignment.Right
+				Create("UIPadding", Button, {PaddingRight = UDim.new(0, 10)})
+			end
 			local HasButtonIcon = false
 			if PopupMode and Option.Icon then
 				local Source = Library:GetIcon(Option.Icon)
 				if type(Source) == "string" and Source:match("^rbxassetid://%d+$") then
 					HasButtonIcon = true
-					Button.TextXAlignment = Enum.TextXAlignment.Right
-					Create("UIPadding", Button, {PaddingRight = UDim.new(0, 10)})
 					InsertTheme(Create("ImageLabel", Button, {
 						Size = UDim2.fromOffset(14, 14),
 						Position = UDim2.new(0, 8, 0.5, 0),
@@ -4935,10 +4936,9 @@ function Library:MakeWindow(Configs)
 		local SectionLeftPadding = TabIconOffset
 		local SectionIconSize = math.max(13, TabIconSize)
 		local SectionIconGap = 6
-		local SectionIconOffset = 0
+		local SectionIconOffset = SectionIconSize + SectionIconGap
 		local Source = ResolveSidebarIcon(Configs.Icon)
 		if Source then
-				SectionIconOffset = SectionIconSize + SectionIconGap
 				local Image = Create("ImageLabel", Header, {
 					Size = UDim2.fromOffset(SectionIconSize, SectionIconSize),
 					Position = UDim2.new(0, SectionLeftPadding, 0.5, 0),
@@ -4950,7 +4950,7 @@ function Library:MakeWindow(Configs)
 				})
 			if Configs.IconThemed == true then InsertTheme(Image, "Icon") end
 		end
-		local SectionTextOffset = math.max(0, SectionLeftPadding - 2) + (Source and SectionIconOffset or 0)
+		local SectionTextOffset = math.max(0, SectionLeftPadding - 2) + SectionIconOffset
 		local Label = InsertTheme(Create("TextLabel", Header, {
 			Position = UDim2.fromOffset(SectionTextOffset, 0),
 			Size = UDim2.new(1, -(SectionTextOffset + 24), 1, 0),
@@ -5085,8 +5085,7 @@ function Library:MakeWindow(Configs)
 			})
 			Make("Corner", TabSelect, UDim.new(0, 5))
 
-			local TextOffset = TIcon and math.max(TabTextIconOffset, TabIconOffset + TabIconSize + 7)
-				or (TabIconOffset + 4)
+			local TextOffset = math.max(TabTextIconOffset, TabIconOffset + TabIconSize + 7)
 			LabelTitle = InsertTheme(Create("TextLabel", TabSelect, {
 				Size = UDim2.new(1, -TextOffset - 5, 1, 0),
 				Position = UDim2.fromOffset(TextOffset, 0),
