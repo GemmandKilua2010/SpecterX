@@ -4784,7 +4784,7 @@ function Library:MakeWindow(Configs)
 			ZIndex = 111
 		}), "Frame")
 		Make("Corner", Panel, UDim.new(0, 9))
-		Make("Stroke", Panel, {Thickness = 1, Transparency = 0.68})
+		local Border = Make("Stroke", Panel, {Thickness = 1, Transparency = 0.68})
 		Create("UIPadding", Panel, {
 			PaddingLeft = UDim.new(0, 11),
 			PaddingRight = UDim.new(0, 11),
@@ -4907,6 +4907,11 @@ function Library:MakeWindow(Configs)
 			end
 		end
 		local LanguageConnection = Connection.LanguageChanged:Connect(RefreshText)
+		local ThemeConnection = Connection.ThemeChanged:Connect(function()
+			for _, Item in ipairs(ButtonLabels) do
+				if Item.Button.Parent then Item.Button.TextColor3 = Theme["Color Text"] end
+			end
+		end)
 		local HubLanguageConnection
 		if type(Hub) == "table" and type(Hub.OnLanguageChanged) == "function" then
 			HubLanguageConnection = Hub:OnLanguageChanged(RefreshText)
@@ -4921,6 +4926,7 @@ function Library:MakeWindow(Configs)
 		end
 		Panel.Destroying:Connect(function()
 			LanguageConnection:Disconnect()
+			ThemeConnection:Disconnect()
 			if HubLanguageConnection then HubLanguageConnection:Disconnect() end
 			NotifyClose("Destroyed")
 		end)
@@ -4945,6 +4951,7 @@ function Library:MakeWindow(Configs)
 			self.Closing = true
 			TweenService:Create(Scale, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Scale = 0.96}):Play()
 			TweenService:Create(Panel, TweenInfo.new(0.14), {BackgroundTransparency = 1}):Play()
+			TweenService:Create(Border, TweenInfo.new(0.14), {Transparency = 1}):Play()
 			task.delay(0.15, function()
 				NotifyClose(Reason or "Closed")
 				if Panel.Parent then Panel:Destroy() end
