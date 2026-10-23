@@ -4552,6 +4552,21 @@ function Library:MakeWindow(Configs)
 				LayoutOrder = #ButtonEntries + 1
 			})
 			Make("Corner", Button, UDim.new(0, ButtonCornerRadius))
+			if PopupMode and Option.Icon then
+				local Source = Library:GetIcon(Option.Icon)
+				if type(Source) == "string" and Source:match("^rbxassetid://%d+$") then
+					Button.TextXAlignment = Enum.TextXAlignment.Right
+					Create("UIPadding", Button, {PaddingRight = UDim.new(0, 8)})
+					InsertTheme(Create("ImageLabel", Button, {
+						Size = UDim2.fromOffset(14, 14),
+						Position = UDim2.new(0, 8, 0.5, 0),
+						AnchorPoint = Vector2.new(0, 0.5),
+						BackgroundTransparency = 1,
+						Image = Source,
+						ImageColor3 = Theme["Color Text"]
+					}), "Icon")
+				end
+			end
 			local Stroke = Create("UIStroke", Button, {
 				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 				Thickness = 1,
@@ -5071,7 +5086,10 @@ function Library:MakeWindow(Configs)
 		Container.Visible = InitiallySelected
 		
 		local Tab = {}
-		if Section then table.insert(Section._Tabs, Tab) end
+		if Section then
+			table.insert(Section._Tabs, Tab)
+			if Section._Arrow and Section._Arrow.Parent then Section._Arrow.Visible = true end
+		end
 		local FavoriteDropdownCounts = {}
 		if Hidden then
 			local Locked = Configs.Locked == true
