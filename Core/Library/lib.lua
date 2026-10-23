@@ -1563,10 +1563,7 @@ end)
 -- A single continuous ramp avoids repeated diagonal light/dark bands.
 -- Share the same theme colors across window and component backgrounds.
 local function ThemeBackgroundColors()
-	local Points = Theme["Color Hub 1"].Keypoints
-	local Base = Points[1].Value
-	local Highlight = Points[math.ceil(#Points / 2)].Value
-	return ColorSequence.new(Base, Base:Lerp(Highlight, 0.65))
+	return Theme["Color Hub 1"]
 end
 
 AddEle("Gradient", function(parent, props, ...)
@@ -1611,11 +1608,9 @@ local function ComponentSurface(Frame)
 	return Frame
 end
 
--- Keep UI fonts and text measurements on Builder Sans. Deprecated Gotham aliases
--- resolve to Montserrat, whose glyph contours overlap at several stem joins.
 local function ButtonFrame(Instance, Title, Description, HolderSize, Clickable)
 	local TitleL = InsertTheme(Create("TextLabel", {
-		Font = Enum.Font.BuilderSansMedium,
+		Font = Enum.Font.GothamMedium,
 		TextColor3 = Color3.new(1, 1, 1),
 		Size = UDim2.new(1, -20),
 		AutomaticSize = "Y",
@@ -1630,7 +1625,7 @@ local function ButtonFrame(Instance, Title, Description, HolderSize, Clickable)
 	}), "TitleText")
 	
 	local DescL = InsertTheme(Create("TextLabel", {
-		Font = Enum.Font.BuilderSans,
+		Font = Enum.Font.Gotham,
 		TextColor3 = Color3.fromRGB(180, 180, 188),
 		Size = UDim2.new(1, -20),
 		AutomaticSize = "Y",
@@ -1839,7 +1834,7 @@ function Library:NotifyLibrary(Message, Values, Anchor)
         State.Label = InsertTheme(Create("TextLabel", State.Frame, {
             Position = UDim2.fromOffset(Config.TextPaddingX, Config.TextPaddingY),
             Size = UDim2.new(1, -Config.TextPaddingX * 2, 1, -Config.TextPaddingY * 2),
-            BackgroundTransparency = 1, Font = Enum.Font.BuilderSansMedium,
+            BackgroundTransparency = 1, Font = Enum.Font.GothamMedium,
             TextSize = Config.TextSize, TextWrapped = true, RichText = false,
             TextColor3 = Theme["Color Text"], ZIndex = Config.ZIndex + 1
         }), "Text")
@@ -1929,7 +1924,7 @@ local function ApplyLocked(Element, Holder, Configs, OnChanged)
 		Text = TranslateText(Configs.LockedTitle or ControlsConfig.Titles.Locked),
 		TextColor3 = Color3.new(1, 1, 1),
 		TextSize = 11,
-		Font = Enum.Font.BuilderSansMedium,
+		Font = Enum.Font.GothamMedium,
 		LayoutOrder = 2,
 		ZIndex = 1002
 	})
@@ -2300,7 +2295,7 @@ end
 
 function Library._BackgroundSettings.Apply(SkipSync)
     local Id = Library:GetBackground()
-    local Enabled = Library:GetBackgroundEnabled() and Id ~= ""
+    local Enabled = Library:GetBackgroundEnabled() and Id ~= "" and Library:GetBackgroundImageTransparency() < 100
     local Brightness = Library:GetBackgroundImageBrightness() / 100
     for _, Entry in ipairs(Library.Instances) do
         if Entry.Type == "Main" then
@@ -2472,10 +2467,6 @@ function Library._BackgroundSettings.CreateControls(ConfigTab, ExtraLabels)
             end
         end
     }), "Background image ID")
-    Label(ConfigTab:AddParagraph({
-        Title = TranslateText("Paste an image ID or Roblox image/decal link."),
-        Desc = TranslateText("The image must be public and available to this experience.")
-    }), "Paste an image ID or Roblox image/decal link.")
     Controls.Transparency = Label(ConfigTab:AddSlider({
         Name = TranslateText("Background image transparency"),
         Min = 0, Max = 100, Increase = 1, Default = Library:GetBackgroundImageTransparency(),
@@ -2990,7 +2981,7 @@ function Library:MakeWindow(Configs)
 		or tonumber(Configs.MinimizedWidth)
 		or Library.Save.MinimizedWidth
 		or DefaultMinimizedWidth
-	local TitleWidth = TextService:GetTextSize(WTitle, TopBarTitleTextSize, Enum.Font.BuilderSansMedium, Vector2.new(1000, TopBarHeight)).X
+	local TitleWidth = TextService:GetTextSize(WTitle, TopBarTitleTextSize, Enum.Font.GothamMedium, Vector2.new(1000, TopBarHeight)).X
 	local MinimizedWidth = math.clamp(math.max(RequestedMinimizedWidth, TitleWidth + 115), 160, math.min(320, MaxWidth))
 
 	Settings.ScriptFile = LibraryConfig.SaveFolder
@@ -3118,7 +3109,7 @@ function Library:MakeWindow(Configs)
 		TextXAlignment = "Left",
 		TextYAlignment = "Bottom",
 		TextSize = TopBarSubTitleTextSize,
-		Font = Enum.Font.BuilderSans,
+		Font = Enum.Font.Gotham,
 	}), "DarkText")
 
 	local Title = InsertTheme(Create("TextLabel", TopBar, {
@@ -3130,7 +3121,7 @@ function Library:MakeWindow(Configs)
 		TextSize = TopBarTitleTextSize,
 		TextColor3 = Theme["Color Text"],
 		BackgroundTransparency = 1,
-		Font = Enum.Font.BuilderSansMedium,
+		Font = Enum.Font.GothamMedium,
 	}, {
 		SubTitleLabel
 	}), "Text")
@@ -3524,7 +3515,7 @@ function Library:MakeWindow(Configs)
 			Size = UDim2.new(1, -36, 1, 0),
 			Position = UDim2.fromOffset(18, 0),
 			BackgroundTransparency = 1,
-			Font = Enum.Font.BuilderSansBold,
+			Font = Enum.Font.GothamBold,
 			TextSize = 10,
 			TextColor3 = Theme["Color Text"],
 			TextTruncate = Enum.TextTruncate.AtEnd,
@@ -3568,7 +3559,7 @@ function Library:MakeWindow(Configs)
 			if KeyIcon then KeyIcon.Visible = ShowIcon end
 			local Text = self.Waiting and "..." or (self.CurrentKey and self.CurrentKey.Name or TranslateText("None"))
 			local MaxWidth = math.max(MinWidth, math.min(Options.MaxWidth or 150, Button.AbsoluteSize.X - RightOffset - 90))
-			local Width = math.clamp(TextService:GetTextSize(Text, 10, Enum.Font.BuilderSansBold, Vector2.new(1000, Height)).X + TextPadding, MinWidth, MaxWidth)
+			local Width = math.clamp(TextService:GetTextSize(Text, 10, Enum.Font.GothamBold, Vector2.new(1000, Height)).X + TextPadding, MinWidth, MaxWidth)
 			KeyLabel.Text = Text
 			KeyLabel.Size = UDim2.new(1, -TextPadding, 1, 0)
 			KeyLabel.Position = UDim2.fromOffset(ShowIcon and 32 or 18, 0)
@@ -4061,7 +4052,7 @@ function Library:MakeWindow(Configs)
 		end
 
 		Title.Text = NewTitle
-		local Width = TextService:GetTextSize(NewTitle, 12, Enum.Font.BuilderSansMedium, Vector2.new(1000, 28)).X
+		local Width = TextService:GetTextSize(NewTitle, 12, Enum.Font.GothamMedium, Vector2.new(1000, 28)).X
 		MinimizedWidth = math.clamp(math.max(RequestedMinimizedWidth, Width + 115), 160, math.min(320, MaxWidth))
 	end
 
@@ -4097,7 +4088,7 @@ function Library:MakeWindow(Configs)
 		Width = math.clamp(Width, 160, math.min(320, MaxWidth))
 		if RequestedMinimizedWidth == Width then return true end
 		RequestedMinimizedWidth = Width
-		local TextWidth = TextService:GetTextSize(Title.Text, TopBarTitleTextSize, Enum.Font.BuilderSansMedium, Vector2.new(1000, TopBarHeight)).X
+		local TextWidth = TextService:GetTextSize(Title.Text, TopBarTitleTextSize, Enum.Font.GothamMedium, Vector2.new(1000, TopBarHeight)).X
 		MinimizedWidth = math.clamp(math.max(RequestedMinimizedWidth, TextWidth + 115), 160, math.min(320, MaxWidth))
 		Library.Save.MinimizedWidth = RequestedMinimizedWidth
 		QueueSettingsSave()
@@ -4658,7 +4649,7 @@ function Library:MakeWindow(Configs)
 			Position = UDim2.fromOffset(HorizontalPadding + TitleIconOffset, PaddingTop),
 			BackgroundTransparency = 1,
 			Text = TranslateDialog(TitleSource),
-			Font = Enum.Font.BuilderSansBold,
+			Font = Enum.Font.GothamBold,
 			TextSize = TitleFontSize,
 			TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -4683,7 +4674,7 @@ function Library:MakeWindow(Configs)
 			Text = RenderMessage(),
 			TextWrapped = true,
 			TextSize = MessageFontSize,
-			Font = Enum.Font.BuilderSansMedium,
+			Font = Enum.Font.GothamMedium,
 			RichText = PopupMode,
 			TextTransparency = 1,
 			TextColor3 = Theme["Color Text"],
@@ -4710,8 +4701,8 @@ function Library:MakeWindow(Configs)
 
 		local function Reflow()
 			if not Overlay.Parent or Dialog.Closing then return end
-			local TitleHeight = math.max(PopupMode and 25 or 18, TextService:GetTextSize(TitleLabel.Text, TitleFontSize, Enum.Font.BuilderSansBold, Vector2.new(Width - HorizontalPadding * 2 - TitleIconOffset, 2000)).Y)
-			local MessageHeight = math.max(19, TextService:GetTextSize(MessageLabel.Text, MessageFontSize, Enum.Font.BuilderSansMedium, Vector2.new(Width - (HorizontalPadding * 2 + 8), 10000)).Y + 2)
+			local TitleHeight = math.max(PopupMode and 25 or 18, TextService:GetTextSize(TitleLabel.Text, TitleFontSize, Enum.Font.GothamBold, Vector2.new(Width - HorizontalPadding * 2 - TitleIconOffset, 2000)).Y)
+			local MessageHeight = math.max(19, TextService:GetTextSize(MessageLabel.Text, MessageFontSize, Enum.Font.GothamMedium, Vector2.new(Width - (HorizontalPadding * 2 + 8), 10000)).Y + 2)
 			local FixedHeight = PaddingTop + TitleHeight + TitleGap + ContentGap + ButtonHeight + PaddingBottom
 			local RequestedHeight = tonumber(Configs.Height)
 			local NaturalHeight = FixedHeight + MessageHeight
@@ -4747,7 +4738,7 @@ function Library:MakeWindow(Configs)
 				local Widths = {}
 				local TotalWidth = 0
 				for _, Entry in ipairs(VisibleEntries) do
-					local TextWidth = TextService:GetTextSize(Entry.Button.Text, 13, Enum.Font.BuilderSansBold, Vector2.new(1000, ButtonHeight)).X
+					local TextWidth = TextService:GetTextSize(Entry.Button.Text, 13, Enum.Font.GothamBold, Vector2.new(1000, ButtonHeight)).X
 					local ButtonWidth = math.clamp(math.ceil(TextWidth) + (Entry.HasIcon and 40 or (PopupMode and 30 or 26)), 68, 150)
 					Widths[#Widths + 1] = ButtonWidth
 					TotalWidth += ButtonWidth
@@ -4936,7 +4927,7 @@ function Library:MakeWindow(Configs)
 				BorderSizePixel = 0,
 				Text = TranslateDialog(LabelSource),
 				TextSize = 13,
-				Font = Enum.Font.BuilderSansBold,
+				Font = Enum.Font.GothamBold,
 				TextColor3 = Theme["Color Text"],
 				TextTruncate = Enum.TextTruncate.AtEnd,
 				TextWrapped = false,
@@ -5295,7 +5286,7 @@ function Library:MakeWindow(Configs)
 			AutoLocalize = false,
 			Text = TranslateText(TitleSource),
 			TextColor3 = Color3.new(1, 1, 1),
-			Font = Enum.Font.BuilderSansMedium,
+			Font = Enum.Font.GothamMedium,
 			TextSize = Library.Save.SectionTextSize,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd
@@ -5428,7 +5419,7 @@ function Library:MakeWindow(Configs)
 				Size = UDim2.new(1, -TextOffset - 5, 1, 0),
 				Position = UDim2.fromOffset(TextOffset, 0),
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSansMedium,
+				Font = Enum.Font.GothamMedium,
 				Text = TName,
 				TextColor3 = Theme["Color Text"],
 				TextSize = TabTextSize,
@@ -5672,7 +5663,7 @@ function Library:MakeWindow(Configs)
 				})
 
 				local SectionLabel = InsertTheme(Create("TextLabel", SectionFrame, {
-					Font = Enum.Font.BuilderSansBold,
+					Font = Enum.Font.GothamBold,
 					Text = SectionName,
 					TextColor3 = Theme["Color Text"],
 					BackgroundTransparency = 1,
@@ -5747,7 +5738,7 @@ function Library:MakeWindow(Configs)
 			OrderedParents[Content] = 0
 
 			local SectionLabel = InsertTheme(Create("TextLabel", SectionFrame, {
-				Font = Enum.Font.BuilderSansBold,
+				Font = Enum.Font.GothamBold,
 				Text = SectionName,
 				TextColor3 = Theme["Color Text"],
 				BackgroundTransparency = 1,
@@ -5782,7 +5773,7 @@ function Library:MakeWindow(Configs)
 				Arrow = InsertTheme(Create("TextLabel", SectionFrame, {
 					Position = UDim2.new(1, -12, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5),
 					Size = UDim2.fromOffset(12, 12), BackgroundTransparency = 1,
-					Text = "v", Font = Enum.Font.BuilderSansMedium, TextSize = 14,
+					Text = "v", Font = Enum.Font.GothamMedium, TextSize = 14,
 					TextColor3 = Theme["Color Text"],
 					Rotation = Expanded and 0 or -90, Visible = Collapsible
 				}), "Text")
@@ -6372,7 +6363,7 @@ function Library:MakeWindow(Configs)
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.new(0.5, 0, 0.5, 0),
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSansBold,
+				Font = Enum.Font.GothamBold,
 				TextScaled = true,
 				TextColor3 = Theme["Color Text"],
 				Text = "..."
@@ -6445,7 +6436,7 @@ function Library:MakeWindow(Configs)
 					Position = UDim2.new(0, 0, 0, 0),
 					BackgroundTransparency = 1,
 					ClearTextOnFocus = false,
-					Font = Enum.Font.BuilderSansBold,
+					Font = Enum.Font.GothamBold,
 					Text = "",
 					PlaceholderText = SearchConfig.Placeholder,
 					PlaceholderColor3 = Theme["Color Dark Text"],
@@ -6461,7 +6452,7 @@ function Library:MakeWindow(Configs)
 					Size = UDim2.new(1, -16, 0, 20),
 					Position = UDim2.new(0, 8, 0, 32),
 					BackgroundTransparency = 1,
-					Font = Enum.Font.BuilderSansBold,
+					Font = Enum.Font.GothamBold,
 					Text = SearchConfig.NoResultText,
 					TextColor3 = Theme["Color Dark Text"],
 					TextSize = SearchConfig.NoResultTextSize,
@@ -7077,7 +7068,7 @@ function Library:MakeWindow(Configs)
 						Position = UDim2.new(0, 10),
 						Text = TranslateText(Name),
 						TextColor3 = Theme["Color Text"],
-						Font = Enum.Font.BuilderSansBold,
+						Font = Enum.Font.GothamBold,
 						TextXAlignment = "Left",
 						BackgroundTransparency = 1,
 						TextTransparency = 0.4
@@ -7883,7 +7874,7 @@ function Library:MakeWindow(Configs)
 				Position = UDim2.fromScale(0.5, 0.5),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSansBold,
+				Font = Enum.Font.GothamBold,
 				TextSize = 10,
 				TextColor3 = Theme["Color Text"],
 				TextTruncate = Enum.TextTruncate.AtEnd,
@@ -8243,7 +8234,7 @@ function Library:MakeWindow(Configs)
 				BackgroundTransparency = 1,
 				TextColor3 = Theme["Color Text"],
 				TextTransparency = 0.15,
-				Font = Enum.Font.BuilderSansMedium,
+				Font = Enum.Font.GothamMedium,
 				TextSize = 12,
 				TextXAlignment = Enum.TextXAlignment.Right,
 				TextTruncate = Enum.TextTruncate.AtEnd,
@@ -8587,7 +8578,7 @@ function Library:MakeWindow(Configs)
 			local LabelVal = InsertTheme(Create(Editable and "TextBox" or "TextLabel", ValueBackground, {
 				Name = "SliderValue", Size = UDim2.new(1, -12, 1, 0), Position = UDim2.fromOffset(6, 0),
 				BackgroundTransparency = 1, Text = "", TextColor3 = Theme["Color Text"],
-				Font = Enum.Font.BuilderSansBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Center,
+				Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Center,
 				TextWrapped = false, ClipsDescendants = true, BorderSizePixel = 0
 			}), "Text")
 			if Editable then
@@ -8682,7 +8673,7 @@ function Library:MakeWindow(Configs)
 			-- Measure committed values only; typing must never resize the track.
 			local ValueWidth = 36
 			for _, Probe in ipairs({Min, Max, math.clamp(Min + Step, Min, Max), math.clamp(Max - Step, Min, Max)}) do
-				ValueWidth = math.max(ValueWidth, math.ceil(TextService:GetTextSize(string.format("%.15g", Probe), 11, Enum.Font.BuilderSansBold, Vector2.new(1000, 22)).X) + 12)
+				ValueWidth = math.max(ValueWidth, math.ceil(TextService:GetTextSize(string.format("%.15g", Probe), 11, Enum.Font.GothamBold, Vector2.new(1000, 22)).X) + 12)
 			end
 			ValueWidth = math.min(ValueWidth, 80)
 			ValueBackground.Size = UDim2.fromOffset(ValueWidth, 22)
@@ -8901,7 +8892,7 @@ function Library:MakeWindow(Configs)
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.new(0.5, 0, 0.5, 0),
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSansBold,
+				Font = Enum.Font.GothamBold,
 				TextScaled = true,
 				TextColor3 = Theme["Color Text"],
 				ClearTextOnFocus = TClearText,
@@ -9152,7 +9143,7 @@ function Library:MakeWindow(Configs)
 				Size = UDim2.new(1, 0, 0, 0),
 				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSansMedium,
+				Font = Enum.Font.GothamMedium,
 				TextSize = ElementTitleTextSize,
 				TextColor3 = Theme["Color Text"],
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -9166,7 +9157,7 @@ function Library:MakeWindow(Configs)
 				Size = UDim2.new(1, 0, 0, 0),
 				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSans,
+				Font = Enum.Font.Gotham,
 				TextSize = ElementDescriptionTextSize,
 				TextColor3 = Theme["Color Dark Text"],
 				TextWrapped = true,
@@ -9209,7 +9200,7 @@ function Library:MakeWindow(Configs)
 				TextScaled = false,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextYAlignment = Enum.TextYAlignment.Top,
-				Font = Enum.Font.BuilderSans,
+				Font = Enum.Font.Gotham,
 				TextSize = TextSize,
 				TextColor3 = Theme["Color Text"],
 				PlaceholderColor3 = Theme["Color Dark Text"],
@@ -9224,7 +9215,7 @@ function Library:MakeWindow(Configs)
 				Position = UDim2.new(1, -12, 1, -4),
 				Size = UDim2.new(1, -24, 0, 12),
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSans,
+				Font = Enum.Font.Gotham,
 				TextSize = 10,
 				TextXAlignment = Enum.TextXAlignment.Right,
 				TextYAlignment = Enum.TextYAlignment.Bottom,
@@ -9937,7 +9928,7 @@ function Library:MakeWindow(Configs)
 					Size = UDim2.new(1, -10, 1, 0),
 					Position = UDim2.new(0, 5, 0, 0),
 					BackgroundTransparency = 1,
-					Font = Enum.Font.BuilderSansBold,
+					Font = Enum.Font.GothamBold,
 					TextSize = 10,
 					TextColor3 = Theme["Color Text"],
 					TextXAlignment = Enum.TextXAlignment.Left,
@@ -9964,7 +9955,7 @@ function Library:MakeWindow(Configs)
 					Size = UDim2.new(1, -10, 1, 0),
 					Position = UDim2.new(0, 5, 0, 0),
 					BackgroundTransparency = 1,
-					Font = Enum.Font.BuilderSansBold,
+					Font = Enum.Font.GothamBold,
 					TextSize = 10,
 					TextColor3 = Theme["Color Text"],
 					TextXAlignment = Enum.TextXAlignment.Left,
@@ -10004,7 +9995,7 @@ function Library:MakeWindow(Configs)
 				Position = UDim2.fromOffset(26, 0),
 				Size = UDim2.new(1, -44, 1, 0),
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSansMedium,
+				Font = Enum.Font.GothamMedium,
 				TextColor3 = Theme["Color Text"],
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextTruncate = Enum.TextTruncate.AtEnd,
@@ -10063,7 +10054,7 @@ function Library:MakeWindow(Configs)
 				Position = UDim2.fromOffset(16, 9),
 				Size = UDim2.new(1, -79, 0, 21),
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSansBold,
+				Font = Enum.Font.GothamBold,
 				TextColor3 = Color3.new(1, 1, 1),
 				TextSize = 14,
 				TextTruncate = Enum.TextTruncate.AtEnd,
@@ -10074,7 +10065,7 @@ function Library:MakeWindow(Configs)
 				Position = UDim2.fromOffset(16, 29),
 				Size = UDim2.new(1, -79, 0, 15),
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSans,
+				Font = Enum.Font.Gotham,
 				TextColor3 = Color3.fromRGB(180, 180, 188),
 				TextSize = 10,
 				TextTruncate = Enum.TextTruncate.AtEnd,
@@ -10087,7 +10078,7 @@ function Library:MakeWindow(Configs)
 				Size = UDim2.fromOffset(36, 36),
 				BackgroundTransparency = 1,
 				AutoButtonColor = false,
-				Font = Enum.Font.BuilderSansMedium,
+				Font = Enum.Font.GothamMedium,
 				TextColor3 = Theme["Color Text"],
 				TextTransparency = 0.05,
 				TextSize = 26,
@@ -10131,7 +10122,7 @@ function Library:MakeWindow(Configs)
 				Size = UDim2.new(1, -55, 0, 18),
 				BackgroundTransparency = 1,
 				TextColor3 = Theme["Color Text"],
-				Font = Enum.Font.BuilderSansBold,
+				Font = Enum.Font.GothamBold,
 				TextSize = 13,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Text = ColorToHex(CurrentColor)
@@ -10141,7 +10132,7 @@ function Library:MakeWindow(Configs)
 				Size = UDim2.new(1, -55, 0, 13),
 				BackgroundTransparency = 1,
 				TextColor3 = Theme["Color Dark Text"],
-				Font = Enum.Font.BuilderSansMedium,
+				Font = Enum.Font.GothamMedium,
 				TextSize = 10,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Text = ColorToRGB(CurrentColor)
@@ -10180,7 +10171,7 @@ function Library:MakeWindow(Configs)
 						Size = UDim2.fromOffset(30, 15),
 						BackgroundTransparency = 1,
 						TextColor3 = Theme["Color Dark Text"],
-						Font = Enum.Font.BuilderSansMedium,
+						Font = Enum.Font.GothamMedium,
 						TextSize = 9,
 						TextXAlignment = Enum.TextXAlignment.Right,
 						Text = Entry.Title
@@ -10191,7 +10182,7 @@ function Library:MakeWindow(Configs)
 			local RecentLabel = Create("TextLabel", PickerContent, {
 				Size = UDim2.new(1, 0, 0, 12),
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSansMedium,
+				Font = Enum.Font.GothamMedium,
 				TextColor3 = Theme["Color Dark Text"],
 				TextSize = 10,
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -10223,7 +10214,7 @@ function Library:MakeWindow(Configs)
 			local HueLabel = Create("TextLabel", PickerContent, {
 				Size = UDim2.new(1, 0, 0, 12),
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSansMedium,
+				Font = Enum.Font.GothamMedium,
 				TextColor3 = Theme["Color Dark Text"],
 				TextSize = 10,
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -10276,7 +10267,7 @@ function Library:MakeWindow(Configs)
 			local SaturationLabel = Create("TextLabel", PickerContent, {
 				Size = UDim2.new(1, 0, 0, 12),
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSansMedium,
+				Font = Enum.Font.GothamMedium,
 				TextColor3 = Theme["Color Dark Text"],
 				TextSize = 10,
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -10319,7 +10310,7 @@ function Library:MakeWindow(Configs)
 			local BrightnessLabel = Create("TextLabel", PickerContent, {
 				Size = UDim2.new(1, 0, 0, 12),
 				BackgroundTransparency = 1,
-				Font = Enum.Font.BuilderSansMedium,
+				Font = Enum.Font.GothamMedium,
 				TextColor3 = Theme["Color Dark Text"],
 				TextSize = 10,
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -10377,7 +10368,7 @@ function Library:MakeWindow(Configs)
 					Size = UDim2.fromOffset(50, 12),
 					BackgroundTransparency = 1,
 					TextColor3 = Theme["Color Dark Text"],
-					Font = Enum.Font.BuilderSansMedium,
+					Font = Enum.Font.GothamMedium,
 					TextSize = 10,
 					TextXAlignment = Enum.TextXAlignment.Right,
 					Text = ""
@@ -11152,7 +11143,7 @@ function Library:MakeWindow(Configs)
 				Size = UDim2.new(1, -140, 1, 0),
 				BackgroundTransparency = 1,
 				Text = TitleText,
-				Font = Enum.Font.BuilderSansMedium,
+				Font = Enum.Font.GothamMedium,
 				TextSize = 11,
 				TextColor3 = Theme["Color Text"],
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -12265,7 +12256,7 @@ function Library:MakeWindow(Configs)
 						AutomaticSize = Enum.AutomaticSize.XY,
 						Size = UDim2.fromOffset(0, 0),
 						BackgroundTransparency = 1,
-						Font = Enum.Font.BuilderSansMedium,
+						Font = Enum.Font.GothamMedium,
 						TextSize = 10,
 						TextWrapped = true,
 						TextXAlignment = Enum.TextXAlignment.Left,
@@ -13204,7 +13195,7 @@ function Library:MakeWindow(Configs)
 				Size = UDim2.new(1, 0, 0, 15),
 				Position = UDim2.new(0, 5),
 				TextColor3 = ControlColors.Link,
-				Font = Enum.Font.BuilderSansBold,
+				Font = Enum.Font.GothamBold,
 				TextXAlignment = "Left",
 				BackgroundTransparency = 1,
 				TextSize = 10,
@@ -13228,7 +13219,7 @@ function Library:MakeWindow(Configs)
 			local LTitle = InsertTheme(Create("TextLabel", FrameHolder, {
 				Size = UDim2.new(1, -52, 0, 15),
 				Position = UDim2.new(0, 42, 0, 5),
-				Font = Enum.Font.BuilderSansBold,
+				Font = Enum.Font.GothamBold,
 				TextColor3 = Theme["Color Text"],
 				TextXAlignment = "Left",
 				BackgroundTransparency = 1,
@@ -13241,7 +13232,7 @@ function Library:MakeWindow(Configs)
 				Position = UDim2.new(0, 44, 0, 22),
 				TextWrapped = "Y",
 				AutomaticSize = "Y",
-				Font = Enum.Font.BuilderSans,
+				Font = Enum.Font.Gotham,
 				TextColor3 = Theme["Color Dark Text"],
 				TextXAlignment = "Left",
 				BackgroundTransparency = 1,
@@ -13254,7 +13245,7 @@ function Library:MakeWindow(Configs)
 				AnchorPoint = Vector2.new(0.5, 1),
 				Position = UDim2.new(0.5, 0, 1, -7),
 				Text = TranslateText("Join"),
-				Font = Enum.Font.BuilderSansBold,
+				Font = Enum.Font.GothamBold,
 				TextSize = 12,
 				TextColor3 = ControlColors.JoinText,
 				BackgroundColor3 = ControlColors.Join

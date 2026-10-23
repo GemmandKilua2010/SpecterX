@@ -12,7 +12,7 @@ local FADE_PROPS = {
     Frame = "BackgroundTransparency",
 }
 
-local FONT_FAMILY = "rbxasset://fonts/families/BuilderSans.json"
+local FONT_FAMILY = "rbxasset://fonts/families/GothamSSm.json"
 local FontCache = {}
 local RuntimeHub
 
