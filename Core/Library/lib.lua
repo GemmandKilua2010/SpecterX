@@ -4743,6 +4743,240 @@ function Library:MakeWindow(Configs)
 		end
 		return Dialog
 	end
+	local PopupLayer
+
+	local function GetPopupLayer()
+		if PopupLayer and PopupLayer.Parent then return PopupLayer end
+		PopupLayer = Create("Frame", MainFrame, {
+			Size = UDim2.new(0.55, 0, 1, -(TopBarHeight + 20)),
+			Position = UDim2.new(1, -12, 0, TopBarHeight + 8),
+			AnchorPoint = Vector2.new(1, 0),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			ClipsDescendants = false,
+			ZIndex = 110
+		})
+		Create("UISizeConstraint", PopupLayer, {
+			MinSize = Vector2.new(160, 0),
+			MaxSize = Vector2.new(300, 10000)
+		})
+		Create("UIListLayout", PopupLayer, {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Right,
+			Padding = UDim.new(0, 8)
+		})
+		return PopupLayer
+	end
+
+	function Window:AddPopup(Configs)
+		Configs = type(Configs) == "table" and Configs or {Text = Configs}
+		local TitleSource = tostring(Configs.Title or Configs[1] or "Information")
+		local TextSource = tostring(Configs.Text or Configs.Description or Configs.Desc or Configs[2] or "")
+		local Options = Configs.Buttons or Configs.Options or {}
+		if type(Options) ~= "table" then Options = {} end
+
+		local Panel = InsertTheme(Create("Frame", GetPopupLayer(), {
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundColor3 = Theme["Color Hub 2"],
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			ZIndex = 111
+		}), "Frame")
+		Make("Corner", Panel, UDim.new(0, 9))
+		Make("Stroke", Panel, {Thickness = 1, Transparency = 0.68})
+		Create("UIPadding", Panel, {
+			PaddingLeft = UDim.new(0, 11),
+			PaddingRight = UDim.new(0, 11),
+			PaddingTop = UDim.new(0, 10),
+			PaddingBottom = UDim.new(0, 10)
+		})
+		Create("UIListLayout", Panel, {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 7)
+		})
+		local Scale = Create("UIScale", Panel, {Scale = 0.96})
+		local Header = Create("Frame", Panel, {
+			LayoutOrder = 1,
+			Size = UDim2.new(1, 0, 0, 22),
+			BackgroundTransparency = 1,
+			ZIndex = 112
+		})
+		local Title = InsertTheme(Create("TextLabel", Header, {
+			Size = UDim2.new(1, -25, 1, 0),
+			BackgroundTransparency = 1,
+			Text = TranslateText(TitleSource),
+			TextColor3 = Color3.new(1, 1, 1),
+			Font = Enum.Font.GothamBold,
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			ZIndex = 113
+		}), "TitleText")
+		local Icon = Library:GetIcon("x")
+		local Close
+		if type(Icon) == "string" and Icon:find("^rbxassetid://") then
+			Close = InsertTheme(Create("ImageButton", Header, {
+				Size = UDim2.fromOffset(18, 18),
+				Position = UDim2.new(1, -1, 0.5, 0),
+				AnchorPoint = Vector2.new(1, 0.5),
+				BackgroundTransparency = 1,
+				AutoButtonColor = false,
+				Image = Icon,
+				ImageColor3 = Theme["Color Text"],
+				ZIndex = 113
+			}), "Icon")
+		else
+			Close = InsertTheme(Create("TextButton", Header, {
+				Size = UDim2.fromOffset(22, 22),
+				Position = UDim2.new(1, 0, 0, 0),
+				AnchorPoint = Vector2.new(1, 0),
+				BackgroundTransparency = 1,
+				Text = "×",
+				TextColor3 = Theme["Color Text"],
+				TextSize = 19,
+				Font = Enum.Font.Gotham,
+				AutoButtonColor = false,
+				ZIndex = 113
+			}), "Text")
+		end
+		local Message = InsertTheme(Create("TextLabel", Panel, {
+			LayoutOrder = 2,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			Text = TranslateText(TextSource),
+			TextColor3 = Color3.fromRGB(180, 180, 188),
+			Font = Enum.Font.Gotham,
+			TextSize = 12,
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			ZIndex = 112
+		}), "DescriptionText")
+		local Popup = {Closing = false, Closed = false}
+		local ButtonLabels = {}
+		local ButtonRow
+		if #Options > 0 then
+			ButtonRow = Create("Frame", Panel, {
+				LayoutOrder = 3,
+				Size = UDim2.new(1, 0, 0, 29),
+				BackgroundTransparency = 1,
+				ZIndex = 112
+			})
+			Create("UIListLayout", ButtonRow, {
+				FillDirection = Enum.FillDirection.Horizontal,
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, 6)
+			})
+			for Index, Option in ipairs(Options) do
+				local Item = type(Option) == "table" and Option or {Title = Option}
+				local Source = tostring(Item.Title or Item.Name or Item.Text or Index)
+				local Button = InsertTheme(Create("TextButton", ButtonRow, {
+					LayoutOrder = Index,
+					Size = UDim2.new(1 / #Options, -6 * (#Options - 1) / #Options, 1, 0),
+					BackgroundColor3 = ComponentColor(),
+					Text = TranslateText(Source),
+					TextColor3 = Theme["Color Text"],
+					TextSize = 12,
+					Font = Enum.Font.GothamMedium,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					AutoButtonColor = false,
+					ZIndex = 113
+				}), "ComponentSurface")
+				Make("Corner", Button, UDim.new(0, 6))
+				ButtonLabels[#ButtonLabels + 1] = {Button = Button, Source = Source}
+				Button.Activated:Connect(function()
+					if Popup.Closing or Popup.Closed then return end
+					local Callback = Item.Callback or Item.OnClick
+					if type(Callback) == "function" then
+						local Success, Error = pcall(Callback, Popup)
+						if not Success then warn("[SpecterX Popup] " .. tostring(Error)) end
+					end
+					if Item.Close ~= false then Popup:Close("Button") end
+				end)
+			end
+		end
+
+		local function RefreshText()
+			if not Panel.Parent then return end
+			Title.Text = TranslateText(TitleSource)
+			Message.Text = TranslateText(TextSource)
+			for _, Item in ipairs(ButtonLabels) do
+				if Item.Button.Parent then Item.Button.Text = TranslateText(Item.Source) end
+			end
+		end
+		local LanguageConnection = Connection.LanguageChanged:Connect(RefreshText)
+		local HubLanguageConnection
+		if type(Hub) == "table" and type(Hub.OnLanguageChanged) == "function" then
+			HubLanguageConnection = Hub:OnLanguageChanged(RefreshText)
+		end
+		local function NotifyClose(Reason)
+			if Popup.Closed then return end
+			Popup.Closed = true
+			if type(Configs.OnClose) == "function" then
+				local Success, Error = pcall(Configs.OnClose, Reason, Popup)
+				if not Success then warn("[SpecterX Popup] OnClose: " .. tostring(Error)) end
+			end
+		end
+		Panel.Destroying:Connect(function()
+			LanguageConnection:Disconnect()
+			if HubLanguageConnection then HubLanguageConnection:Disconnect() end
+			NotifyClose("Destroyed")
+		end)
+		function Popup:IsOpen()
+			return not self.Closing and not self.Closed and Panel.Parent ~= nil
+		end
+		function Popup:SetTitle(Value)
+			if not self:IsOpen() or Value == nil then return false end
+			TitleSource = tostring(Value)
+			RefreshText()
+			return true
+		end
+		function Popup:SetText(Value)
+			if not self:IsOpen() or Value == nil then return false end
+			TextSource = tostring(Value)
+			RefreshText()
+			return true
+		end
+		Popup.SetDesc = Popup.SetText
+		function Popup:Close(Reason)
+			if not self:IsOpen() then return false end
+			self.Closing = true
+			TweenService:Create(Scale, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Scale = 0.96}):Play()
+			TweenService:Create(Panel, TweenInfo.new(0.14), {BackgroundTransparency = 1}):Play()
+			task.delay(0.15, function()
+				NotifyClose(Reason or "Closed")
+				if Panel.Parent then Panel:Destroy() end
+			end)
+			return true
+		end
+		function Popup:Destroy()
+			if self.Closed then return false end
+			self.Closing = true
+			NotifyClose("Destroyed")
+			if Panel.Parent then Panel:Destroy() end
+			return true
+		end
+		Close.Activated:Connect(function() Popup:Close("Close") end)
+		TweenService:Create(Scale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1}):Play()
+		TweenService:Create(Panel, TweenInfo.new(0.18), {BackgroundTransparency = 0}):Play()
+		if type(Configs.Duration) == "number" and Configs.Duration > 0 then
+			task.delay(Configs.Duration, function()
+				if Popup:IsOpen() then Popup:Close("Timeout") end
+			end)
+		end
+		if type(Configs.OnOpen) == "function" then
+			task.defer(function()
+				if Popup:IsOpen() then
+					local Success, Error = pcall(Configs.OnOpen, Popup)
+					if not Success then warn("[SpecterX Popup] OnOpen: " .. tostring(Error)) end
+				end
+			end)
+		end
+		return Popup
+	end
+
 	function Window:SelectTab(TabSelect)
 		if type(TabSelect) == "number" then
 			TabSelect = Library.Tabs[TabSelect] and Library.Tabs[TabSelect].func
@@ -4766,9 +5000,146 @@ function Library:MakeWindow(Configs)
 		for _, Container in ipairs(ContainerList) do Container:Destroy() end
 		table.clear(ContainerList)
 	end)
+	local SidebarOrder = 0
+
+	function Window:AddTabSection(Configs)
+		Configs = type(Configs) == "table" and Configs or {Title = Configs}
+		local TitleSource = tostring(Configs[1] or Configs.Title or Configs.Name or "Section")
+		local Expanded = Configs.Expanded ~= false
+		local Section = {
+			_Window = Window,
+			_Tabs = {},
+			_Order = 0,
+			_Expanded = Expanded,
+			_Destroyed = false
+		}
+
+		SidebarOrder += 1
+		local Holder = Create("Frame", MainScroll, {
+			LayoutOrder = SidebarOrder,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0
+		})
+		Create("UIListLayout", Holder, {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 2)
+		})
+		local Header = Create("TextButton", Holder, {
+			LayoutOrder = 1,
+			Size = UDim2.new(1, 0, 0, TabButtonHeight),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Text = "",
+			AutoButtonColor = false
+		})
+		local Label = InsertTheme(Create("TextLabel", Header, {
+			Position = UDim2.fromOffset(TabTextOffset, 0),
+			Size = UDim2.new(1, -(TabTextOffset + 22), 1, 0),
+			BackgroundTransparency = 1,
+			Text = TranslateText(TitleSource),
+			TextColor3 = Theme["Color Dark Text"],
+			Font = Enum.Font.GothamMedium,
+			TextSize = math.max(10, TabTextSize - 1),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd
+		}), "DarkText")
+		local Icon = Library:GetIcon("chevron-down")
+		local Arrow
+		if type(Icon) == "string" and Icon:find("^rbxassetid://") then
+			Arrow = InsertTheme(Create("ImageLabel", Header, {
+				Size = UDim2.fromOffset(14, 14),
+				Position = UDim2.new(1, -9, 0.5, 0),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundTransparency = 1,
+				Image = Icon,
+				ImageColor3 = Theme["Color Dark Text"],
+				Rotation = Expanded and 0 or -90
+			}), "DarkText")
+		else
+			Arrow = InsertTheme(Create("TextLabel", Header, {
+				Size = UDim2.fromOffset(18, 18),
+				Position = UDim2.new(1, -10, 0.5, 0),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundTransparency = 1,
+				Text = "⌄",
+				TextColor3 = Theme["Color Dark Text"],
+				TextSize = 18,
+				Rotation = Expanded and 0 or -90
+			}), "DarkText")
+		end
+		local Content = Create("Frame", Holder, {
+			LayoutOrder = 2,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Visible = Expanded
+		})
+		Create("UIListLayout", Content, {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, TabsSpacing)
+		})
+		Section._Container = Content
+
+		function Section:SetExpanded(Value)
+			if self._Destroyed then return false end
+			Value = Value == true
+			if self._Expanded ~= Value then
+				self._Expanded = Value
+				Content.Visible = Value
+				CreateTween({Arrow, "Rotation", Value and 0 or -90, AnimationTab})
+			end
+			return self._Expanded
+		end
+		function Section:Expand() return self:SetExpanded(true) end
+		function Section:Collapse() return self:SetExpanded(false) end
+		function Section:Toggle() return self:SetExpanded(not self._Expanded) end
+		function Section:IsExpanded() return self._Expanded end
+		function Section:SetTitle(Value)
+			if self._Destroyed or Value == nil then return false end
+			TitleSource = tostring(Value)
+			Label.Text = TranslateText(TitleSource)
+			return true
+		end
+		function Section:SetVisible(Value)
+			if self._Destroyed then return false end
+			Holder.Visible = Value == true
+			return true
+		end
+		function Section:MakeTab(TabConfigs, IconName)
+			if self._Destroyed then return nil end
+			local Options = type(TabConfigs) == "table" and table.clone(TabConfigs)
+				or {Title = TabConfigs, Icon = IconName}
+			Options.Section = self
+			return Window:MakeTab(Options)
+		end
+		function Section:Destroy()
+			if self._Destroyed then return end
+			self._Destroyed = true
+			while #self._Tabs > 0 do
+				self._Tabs[1]:Destroy()
+			end
+			Holder:Destroy()
+		end
+
+		local LanguageConnection = Connection.LanguageChanged:Connect(function()
+			if not Section._Destroyed then Label.Text = TranslateText(TitleSource) end
+		end)
+		Holder.Destroying:Connect(function()
+			Section._Destroyed = true
+			LanguageConnection:Disconnect()
+		end)
+		Header.Activated:Connect(function() Section:Toggle() end)
+		return Section
+	end
+
 	function Window:MakeTab(paste, Configs)
 		if type(paste) == "table" then Configs = paste end
 		Configs = type(Configs) == "table" and Configs or {}
+		local Section = Configs.Section
+		if type(Section) ~= "table" or Section._Window ~= Window or Section._Destroyed then Section = nil end
 		local Hidden = Configs.Hidden == true
 		local TName = TranslateText(tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Tab))
 		local BaseTabKey = tostring(Configs[1] or Configs.Title or ControlsConfig.Titles.Tab)
@@ -4784,9 +5155,10 @@ function Library:MakeWindow(Configs)
 				TIcon = false
 			end
 
-			TabSelect = Make("Button", MainScroll, {
+			if Section then Section._Order += 1 else SidebarOrder += 1 end
+			TabSelect = Make("Button", Section and Section._Container or MainScroll, {
 				Size = UDim2.new(1, 0, 0, TabButtonHeight),
-				LayoutOrder = #Library.Tabs + 1
+				LayoutOrder = Section and Section._Order or SidebarOrder
 			})
 			Make("Corner", TabSelect, UDim.new(0, 5))
 
@@ -4855,6 +5227,7 @@ function Library:MakeWindow(Configs)
 		Container.Visible = InitiallySelected
 		
 		local Tab = {}
+		if Section then table.insert(Section._Tabs, Tab) end
 		local FavoriteDropdownCounts = {}
 		if Hidden then
 			local Locked = Configs.Locked == true
@@ -4897,6 +5270,7 @@ function Library:MakeWindow(Configs)
 				Tab:NotifyLocked()
 				return false
 			end
+			if Section then Section:Expand() end
 			if ActiveTab == Tab and Container.Visible then return true end
 
 			if ActiveTab and ActiveTab ~= Tab then
@@ -4983,6 +5357,10 @@ function Library:MakeWindow(Configs)
 			if ConfigTab == Tab then ConfigTab = nil end
 			if #Library.Tabs == 0 then FirstTab = false end
 
+			if Section then
+				local SectionIndex = table.find(Section._Tabs, Tab)
+				if SectionIndex then table.remove(Section._Tabs, SectionIndex) end
+			end
 			if TabSelect then TabSelect:Destroy() end
 			Container:Destroy()
 			if WasActive then
