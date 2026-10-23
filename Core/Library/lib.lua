@@ -1462,10 +1462,19 @@ AddEle("Button", function(parent, props, ...)
 	return New
 end)
 
+-- A single continuous ramp avoids repeated diagonal light/dark bands.
+-- Share the same theme colors across window and component backgrounds.
+local function ThemeBackgroundColors()
+	local Points = Theme["Color Hub 1"].Keypoints
+	local Base = Points[1].Value
+	local Highlight = Points[math.ceil(#Points / 2)].Value
+	return ColorSequence.new(Base, Base:Lerp(Highlight, 0.65))
+end
+
 AddEle("Gradient", function(parent, props, ...)
 	local args = {...}
 	local New = InsertTheme(SetProps(Create("UIGradient", parent, {
-		Color = Theme["Color Hub 1"]
+		Color = ThemeBackgroundColors()
 	}), props), "Gradient")
 	return New
 end)
@@ -1922,15 +1931,6 @@ local RobloxGlobals = {
 	["print"] = true, ["tonumber"] = true, ["tostring"] = true,
 }
 
--- A single continuous ramp avoids repeated diagonal light/dark bands.
--- Keep component gradients unchanged and derive both ends from the active theme.
-local function MainBackgroundColors()
-	local Points = Theme["Color Hub 1"].Keypoints
-	local Base = Points[1].Value
-	local Highlight = Points[math.ceil(#Points / 2)].Value
-	return ColorSequence.new(Base, Base:Lerp(Highlight, 0.65))
-end
-
 local function GetColor(Instance)
 	if Instance:IsA("Frame") or Instance:IsA("GuiButton") then
 		return "BackgroundColor3"
@@ -2119,10 +2119,8 @@ function Library:SetTheme(NewTheme)
 	
 	Connection:FireConnection("ThemeChanged", NewTheme)
 	for _, Val in ipairs(Library.Instances) do
-		if Val.Type == "MainGradient" then
-			Val.Instance.Color = MainBackgroundColors()
-		elseif Val.Type == "Gradient" then
-			Val.Instance.Color = Theme["Color Hub 1"]
+		if Val.Type == "MainGradient" or Val.Type == "Gradient" then
+			Val.Instance.Color = ThemeBackgroundColors()
 		elseif Val.Type == "PickerGradient" then
 			Val.Instance.Color = PickerColors()
 		elseif Val.Type == "InputSurface" then
@@ -2809,7 +2807,7 @@ function Library:MakeWindow(Configs)
     Library._MouseControl:Bind(MainFrame)
     Library._PositionSettings.Bind(MainFrame, "Window", {Center = true, Padding = GetResponsivePadding(), TopPadding = 0})
 	local MainGradient = InsertTheme(Create("UIGradient", MainFrame, {
-		Color = MainBackgroundColors(),
+		Color = ThemeBackgroundColors(),
 		Rotation = GradientRotation,
 		Enabled = (Library.Save.BackgroundImage or "") == ""
 	}), "MainGradient")
