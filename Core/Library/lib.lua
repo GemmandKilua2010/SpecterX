@@ -1922,22 +1922,13 @@ local RobloxGlobals = {
 	["print"] = true, ["tonumber"] = true, ["tostring"] = true,
 }
 
--- Smooth only the window background; component gradients keep their theme sequence.
+-- A single continuous ramp avoids repeated diagonal light/dark bands.
+-- Keep component gradients unchanged and derive both ends from the active theme.
 local function MainBackgroundColors()
 	local Points = Theme["Color Hub 1"].Keypoints
-	local First = Points[1].Value
-	local Middle = Points[math.ceil(#Points / 2)].Value
-	local Last = Points[#Points].Value
-	local Colors = {}
-	for Index = 0, 16 do
-		local Time = Index / 16
-		local Alpha = Time <= 0.5 and Time * 2 or (Time - 0.5) * 2
-		Alpha = Alpha * Alpha * (3 - 2 * Alpha)
-		local From = Time <= 0.5 and First or Middle
-		local To = Time <= 0.5 and Middle or Last
-		Colors[Index + 1] = ColorSequenceKeypoint.new(Time, From:Lerp(To, Alpha))
-	end
-	return ColorSequence.new(Colors)
+	local Base = Points[1].Value
+	local Highlight = Points[math.ceil(#Points / 2)].Value
+	return ColorSequence.new(Base, Base:Lerp(Highlight, 0.65))
 end
 
 local function GetColor(Instance)
