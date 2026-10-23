@@ -8267,8 +8267,8 @@ function Library:MakeWindow(Configs)
 
 			local Button, LabelFunc = ButtonFrame(ElementParent, SName, SDesc, UDim2.new(1, -180), false)
 			local SliderHolder = Create("TextButton", Button, {
-				Size = UDim2.new(0.45, 0, 1, 0),
-				Position = UDim2.new(1, -16, 0, 0),
+				Size = UDim2.new(0.40, 0, 1, 0),
+				Position = UDim2.new(1, -12, 0, 0),
 				AnchorPoint = Vector2.new(1, 0),
 				AutoButtonColor = false,
 				Text = "",
@@ -8277,7 +8277,7 @@ function Library:MakeWindow(Configs)
 			})
 			local SliderBar = InsertTheme(Create("Frame", SliderHolder, {
 				BackgroundColor3 = Theme["Color Stroke"],
-				Size = UDim2.new(1, -46, 0, 4),
+				Size = UDim2.new(1, -42, 0, 5),
 				Position = UDim2.new(0, 8, 0.5, 0),
 				AnchorPoint = Vector2.new(0, 0.5),
 				BorderSizePixel = 0,
@@ -8289,7 +8289,7 @@ function Library:MakeWindow(Configs)
 				BorderSizePixel = 0
 			}), "Theme")Make("Corner", Indicator)
 			local SliderIcon = Create("Frame", SliderBar, {
-				Size = UDim2.fromOffset(4, 12),
+				Size = UDim2.fromOffset(7, 14),
 				BackgroundColor3 = ControlColors.Light,
 				Position = UDim2.fromScale(0, 0.5),
 				AnchorPoint = Vector2.new(0.5, 0.5),
@@ -8298,13 +8298,14 @@ function Library:MakeWindow(Configs)
 			})Make("Corner", SliderIcon)
 			local LabelVal = InsertTheme(Create("TextLabel", SliderHolder, {
 				Size = UDim2.fromOffset(32, 16),
+				Text = "",
 				AnchorPoint = Vector2.new(1, 0.5),
 				Position = UDim2.new(1, 0, 0.5, 0),
 				BackgroundTransparency = 1,
 				TextColor3 = Theme["Color Text"],
 				Font = Enum.Font.GothamBold,
 				TextSize = 11,
-				TextXAlignment = Enum.TextXAlignment.Left
+				TextXAlignment = Enum.TextXAlignment.Right
 			}), "Text")
 
 			local Value
@@ -8317,12 +8318,50 @@ function Library:MakeWindow(Configs)
 			local DragStartValue
 			local Destroyed = false
 
+			local ValueColumnWidth = math.max(24, math.ceil(TextService:GetTextSize(string.rep("8", math.max(#string.format("%.15g", Min), #string.format("%.15g", Max))), 11, Enum.Font.GothamBold, Vector2.new(1000, 16)).X))
+			local Hovering = false
+			local Tweens = {}
+			local MotionInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			local InteractionInfo = TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+			local function Animate(Key, Object, Info, Properties)
+				if Tweens[Key] then Tweens[Key]:Cancel() end
+				local Tween = TweenService:Create(Object, Info, Properties)
+				Tweens[Key] = Tween
+				Tween:Play()
+			end
+			local function StopAnimations()
+				for Key, Tween in pairs(Tweens) do
+					Tween:Cancel()
+					Tweens[Key] = nil
+				end
+			end
+			local function RefreshInteraction()
+				if Destroyed then return end
+				local Active = Dragging or Hovering
+				Animate("ThumbStyle", SliderIcon, InteractionInfo, {
+					Size = Dragging and UDim2.fromOffset(9, 18) or Active and UDim2.fromOffset(8, 16) or UDim2.fromOffset(7, 14),
+					BackgroundTransparency = Active and 0 or 0.15
+				})
+				Animate("TrackStyle", SliderBar, InteractionInfo, {BackgroundTransparency = Active and 0 or 0.15})
+			end
+
 			local function RefreshValue()
 				if Value == nil then return end
 				local Fraction = Max == Min and 0 or math.clamp((Value - Min) / (Max - Min), 0, 1)
-				SliderIcon.Position = UDim2.fromScale(Fraction, 0.5)
-				Indicator.Size = UDim2.fromScale(Fraction, 1)
+				local Initial = LabelVal.Text == ""
 				LabelVal.Text = string.format("%.15g", Value)
+				local ValueWidth = math.max(ValueColumnWidth, math.ceil(TextService:GetTextSize(LabelVal.Text, 11, Enum.Font.GothamBold, Vector2.new(1000, 16)).X))
+				ValueColumnWidth = ValueWidth
+				LabelVal.Size = UDim2.fromOffset(ValueWidth, 16)
+				local BarSize = UDim2.new(1, -(ValueWidth + 18), 0, 5)
+				if SliderBar.Size ~= BarSize then SliderBar.Size = BarSize end
+				if Initial then
+					SliderIcon.Position = UDim2.fromScale(Fraction, 0.5)
+					Indicator.Size = UDim2.fromScale(Fraction, 1)
+				else
+					Animate("ThumbPosition", SliderIcon, MotionInfo, {Position = UDim2.fromScale(Fraction, 0.5)})
+					Animate("Fill", Indicator, MotionInfo, {Size = UDim2.fromScale(Fraction, 1)})
+				end
 			end
 
 			local function SetValue(ValueInput, Silent, Force)
@@ -8356,8 +8395,7 @@ function Library:MakeWindow(Configs)
 				if EndConnection then EndConnection:Disconnect() EndConnection = nil end
 				if FocusConnection then FocusConnection:Disconnect() FocusConnection = nil end
 				Container.ScrollingEnabled = WasScrolling
-				SliderIcon.BackgroundTransparency = 0.15
-				SliderIcon.Size = UDim2.fromOffset(4, 12)
+				RefreshInteraction()
 				local Changed = Value ~= DragStartValue
 				DragStartValue = nil
 				if Commit and Changed and not LiveUpdate then
@@ -8374,8 +8412,7 @@ function Library:MakeWindow(Configs)
 				DragStartValue = Value
 				WasScrolling = Container.ScrollingEnabled
 				Container.ScrollingEnabled = false
-				SliderIcon.BackgroundTransparency = 0
-				SliderIcon.Size = UDim2.fromOffset(6, 14)
+				RefreshInteraction()
 				UpdateFromPosition(Input.Position.X)
 				MoveConnection = UserInputService.InputChanged:Connect(function(Changed)
 					if not Dragging then return end
@@ -8404,6 +8441,14 @@ function Library:MakeWindow(Configs)
 
 			local TabVisibilityConnection = Container:GetPropertyChangedSignal("Visible"):Connect(function()
 				if not Container.Visible then FinishDrag(false) end
+			end)
+			SliderHolder.MouseEnter:Connect(function()
+				Hovering = true
+				if Button.Interactable then RefreshInteraction() end
+			end)
+			SliderHolder.MouseLeave:Connect(function()
+				Hovering = false
+				RefreshInteraction()
 			end)
 			SliderHolder.InputBegan:Connect(BeginDrag)
 			SliderBar.InputBegan:Connect(BeginDrag)
@@ -8441,12 +8486,14 @@ function Library:MakeWindow(Configs)
 				if Destroyed then return end
 				FinishDrag(false)
 				Destroyed = true
+				StopAnimations()
 				TabVisibilityConnection:Disconnect()
 				Button:Destroy()
 			end
 			Button.Destroying:Connect(function()
 				FinishDrag(false)
 				Destroyed = true
+				StopAnimations()
 				if TabVisibilityConnection.Connected then TabVisibilityConnection:Disconnect() end
 			end)
 
