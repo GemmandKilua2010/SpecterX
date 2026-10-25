@@ -1128,6 +1128,7 @@ local function MakeDrag(Instance, Options)
     local GlobalInput = Options.GlobalInput == true
     local ShouldCancel = type(Options.ShouldCancel) == "function" and Options.ShouldCancel or nil
     local Move = type(Options.Move) == "function" and Options.Move or nil
+    local MoveTo = type(Options.MoveTo) == "function" and Options.MoveTo or nil
 
     Handle.Active = true
     if Handle:IsA("GuiButton") then
@@ -1196,8 +1197,12 @@ local function MakeDrag(Instance, Options)
             PassedThreshold = true
         end
 
-        -- Follow the current position so viewport clamping cannot leave the
-        -- pointer travelling through an invisible overshoot before moving back.
+        if MoveTo and DragInput.UserInputType == Enum.UserInputType.MouseButton1 then
+            LastPointer = Pointer
+            MoveTo(Pointer)
+            return
+        end
+
         local Delta = Pointer - LastPointer
         LastPointer = Pointer
         if Delta.Magnitude == 0 then return end
@@ -1395,6 +1400,15 @@ function Library._PositionSettings.Bind(Object, Key, Options)
         local Target = Object.AbsolutePosition + Delta
         -- Clamp before writing Position, so drag and the position observer never
         -- compete over an out-of-bounds intermediate value.
+        self:Move(Vector2.new(math.clamp(Target.X, MinX, MaxX), math.clamp(Target.Y, MinY, MaxY)))
+        self:ScheduleRemember()
+    end
+
+    function State:MoveCenteredAt(Pointer)
+        if self.Destroyed or not Object.Parent then return end
+        self:Initialize()
+        local MinX, MinY, MaxX, MaxY = Library._PositionSettings.GetBounds(Object, Padding, Options.TopPadding, Options.Oversized)
+        local Target = Pointer - Object.AbsoluteSize / 2
         self:Move(Vector2.new(math.clamp(Target.X, MinX, MaxX), math.clamp(Target.Y, MinY, MaxY)))
         self:ScheduleRemember()
     end
@@ -3563,6 +3577,7 @@ function Library:MakeWindow(Configs)
 			Handle = MainFrame,
 			Threshold = DragThreshold,
 			Move = function(Delta) WindowPosition:MoveBy(Delta) end,
+			MoveTo = function(Pointer) WindowPosition:MoveCenteredAt(Pointer) end,
 			CanStart = CanDragWindow,
 			GlobalInput = true,
 			ShouldCancel = function()
