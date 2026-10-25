@@ -2880,15 +2880,17 @@ function Library._MouseControl.Initialize()
     local RunService = game:GetService("RunService")
     local Actions = game:GetService("ContextActionService")
     local BindingName = "SpecterXCursor_" .. Hub:GenerateName(12)
-    local IconBindingName = BindingName .. "_Icon"
+    -- A transparent native button provides Roblox's own button hover cursor
+    -- during window dragging, without drawing a cursor or polling hover targets.
     local CursorGui = Create("ScreenGui", ScreenGui.Parent, {
         Archivable = false, ResetOnSpawn = false, ScreenInsets = Enum.ScreenInsets.None,
         DisplayOrder = 2147483647, ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     })
-    local Cursor = Create("ImageLabel", CursorGui, {
-        Size = UDim2.fromOffset(64, 64), AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundTransparency = 1, Image = "rbxasset://textures/advClosed-hand.png",
-        Active = false, Selectable = false, Interactable = false, Visible = false
+    local DragCursorButton = Create("TextButton", CursorGui, {
+        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+        Text = "", TextTransparency = 1, BorderSizePixel = 0,
+        AutoButtonColor = false, Active = true, Selectable = false,
+        Visible = false
     })
     local Modal = Create("TextButton", {
         Size = UDim2.fromOffset(1, 1), BackgroundTransparency = 1,
@@ -2898,30 +2900,14 @@ function Library._MouseControl.Initialize()
     Modal.Parent = ScreenGui
 
     function Control:ReleaseCursor()
-        Cursor.Visible = false
-        if self.CursorOwned and not UserInputService.MouseIconEnabled then
-            UserInputService.MouseIconEnabled = self.CursorPreviousIconEnabled
-        end
-        self.CursorOwned = false
-        self.CursorPreviousIconEnabled = nil
+        DragCursorButton.Visible = false
     end
 
     function Control:UpdateCursor()
-        if not self.DraggingHub or self.Destroyed or self.Focused == false or not ScreenGui.Enabled
-            or not ScreenGui:IsDescendantOf(game) or not UserInputService.MouseEnabled
-            or GetInputMode() ~= "KeyboardAndMouse" then
-            self:ReleaseCursor()
-            return
-        end
-        local Position = UserInputService:GetMouseLocation()
-        if not self.CursorOwned then
-            self.CursorPreviousIconEnabled = UserInputService.MouseIconEnabled
-            self.CursorOwned = true
-        end
-        CursorGui.Parent = ScreenGui.Parent
-        Cursor.Position = UDim2.fromOffset(Position.X, Position.Y)
-        Cursor.Visible = true
-        UserInputService.MouseIconEnabled = false
+        DragCursorButton.Visible = self.DraggingHub == true and not self.Destroyed
+            and self.Focused ~= false and ScreenGui.Enabled
+            and ScreenGui:IsDescendantOf(game) and UserInputService.MouseEnabled
+            and GetInputMode() == "KeyboardAndMouse"
     end
 
     function Control:SetDraggingHub(Dragging)
@@ -2929,14 +2915,6 @@ function Library._MouseControl.Initialize()
         Dragging = Dragging == true
         if self.DraggingHub == Dragging then return end
         self.DraggingHub = Dragging
-        if Dragging then
-            -- Only render the custom pointer while the hub is being dragged.
-            RunService:BindToRenderStep(IconBindingName, Enum.RenderPriority.Last.Value + 2, function()
-                self:UpdateCursor()
-            end)
-        else
-            RunService:UnbindFromRenderStep(IconBindingName)
-        end
         self:UpdateCursor()
     end
 
@@ -2963,14 +2941,13 @@ function Library._MouseControl.Initialize()
         if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
             UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         end
-        if not self.CursorOwned and not UserInputService.MouseIconEnabled then UserInputService.MouseIconEnabled = true end
+        if not UserInputService.MouseIconEnabled then UserInputService.MouseIconEnabled = true end
     end
 
     function Control:Release()
         local WasActive = self.Active
         self.Active = false
         self.DraggingHub = false
-        RunService:UnbindFromRenderStep(IconBindingName)
         self.Generation += 1
         -- Also clean partial/stale registrations if release is called a second time.
         RunService:UnbindFromRenderStep(BindingName)
@@ -3036,7 +3013,6 @@ function Library._MouseControl.Initialize()
         if self.Destroyed then return end
         self.Destroyed = true
         self:Release()
-        RunService:UnbindFromRenderStep(IconBindingName)
         for _, Connections in pairs(self.Frames) do
             for _, Connection in ipairs(Connections) do Connection:Disconnect() end
         end
