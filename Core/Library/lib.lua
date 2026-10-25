@@ -2851,12 +2851,90 @@ function Library._MouseControl.Initialize()
     local RunService = game:GetService("RunService")
     local Actions = game:GetService("ContextActionService")
     local BindingName = "SpecterXCursor_" .. Hub:GenerateName(12)
+    local IconBindingName = BindingName .. "_Icon"
+    local CursorGui = Create("ScreenGui", ScreenGui.Parent, {
+        Archivable = false, ResetOnSpawn = false, ScreenInsets = Enum.ScreenInsets.None,
+        DisplayOrder = 2147483647, ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    })
+    local Cursor = Create("ImageLabel", CursorGui, {
+        Size = UDim2.fromOffset(64, 64), AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundTransparency = 1, Image = "rbxasset://textures/Cursors/KeyboardMouse/ArrowFarCursor.png",
+        Active = false, Selectable = false, Interactable = false, Visible = false
+    })
     local Modal = Create("TextButton", {
         Size = UDim2.fromOffset(1, 1), BackgroundTransparency = 1,
         Text = "", AutoButtonColor = false, Active = false,
         Selectable = false, Interactable = false, Modal = false, Visible = false
     })
     Modal.Parent = ScreenGui
+
+    function Control:IsOverHub(Position)
+        local Container = ScreenGui:FindFirstAncestorWhichIsA("BasePlayerGui")
+        local Success, Objects = false, nil
+        if Container then
+            Success, Objects = pcall(Container.GetGuiObjectsAtPosition, Container, Position.X, Position.Y)
+        end
+        if Success then
+            for _, Object in ipairs(Objects) do
+                if Object ~= Modal and Object:IsDescendantOf(ScreenGui) then return true end
+                if not Object:IsDescendantOf(CursorGui) and Object ~= Modal
+                    and (Object.Active or Object:IsA("GuiButton") or Object:IsA("TextBox")) then return false end
+            end
+            return false
+        end
+
+        -- Some executor containers cannot query hit targets. Check GUI roots and
+        -- folders only, rather than walking every control on each render frame.
+        local function Contains(Object)
+            if Object:IsA("GuiObject") then
+                if Object == Modal or not Object.Visible then return false end
+                local Origin, Size = Object.AbsolutePosition, Object.AbsoluteSize
+                return Position.X >= Origin.X and Position.Y >= Origin.Y
+                    and Position.X <= Origin.X + Size.X and Position.Y <= Origin.Y + Size.Y
+            end
+            if Object:IsA("Folder") then
+                for _, Child in ipairs(Object:GetChildren()) do
+                    if Contains(Child) then return true end
+                end
+            end
+            return false
+        end
+        for _, Object in ipairs(ScreenGui:GetChildren()) do
+            if Contains(Object) then return true end
+        end
+        return false
+    end
+
+    function Control:ReleaseCursor()
+        Cursor.Visible = false
+        if self.CursorOwned and not UserInputService.MouseIconEnabled then
+            UserInputService.MouseIconEnabled = self.CursorPreviousIconEnabled
+        end
+        self.CursorOwned = false
+        self.CursorPreviousIconEnabled = nil
+    end
+
+    function Control:UpdateCursor()
+        if self.Destroyed or self.Focused == false or not ScreenGui.Enabled
+            or not ScreenGui:IsDescendantOf(game) or not UserInputService.MouseEnabled
+            or GetInputMode() ~= "KeyboardAndMouse" then
+            self:ReleaseCursor()
+            return
+        end
+        local Position = UserInputService:GetMouseLocation()
+        local Inset = GuiService:GetGuiInset()
+        if not self:IsOverHub(Position - Inset) then self:ReleaseCursor(); return end
+        if not self.CursorOwned then
+            self.CursorPreviousIconEnabled = UserInputService.MouseIconEnabled
+            self.CursorOwned = true
+        end
+        -- Native GuiButton hover replaces MouseIcon, so draw the arrow without
+        -- changing the game's icon or capturing the underlying button input.
+        CursorGui.Parent = ScreenGui.Parent
+        Cursor.Position = UDim2.fromOffset(Position.X, Position.Y)
+        Cursor.Visible = true
+        UserInputService.MouseIconEnabled = false
+    end
 
     function Control:IsVisible()
         if Library.Save.UnlockCursorOnOpen == false
@@ -2881,7 +2959,7 @@ function Library._MouseControl.Initialize()
         if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
             UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         end
-        if not UserInputService.MouseIconEnabled then UserInputService.MouseIconEnabled = true end
+        if not self.CursorOwned and not UserInputService.MouseIconEnabled then UserInputService.MouseIconEnabled = true end
     end
 
     function Control:Release()
@@ -2893,6 +2971,7 @@ function Library._MouseControl.Initialize()
         Actions:UnbindAction(BindingName)
         Modal.Modal = false
         Modal.Visible = false
+        self:ReleaseCursor()
         if WasActive then
             -- A saved LockCurrentPosition/LockCenter may belong to a finished drag or an old
             -- camera mode. Reapplying it can strand the cursor. Let the camera resume its
@@ -2907,8 +2986,9 @@ function Library._MouseControl.Initialize()
 
     function Control:Refresh()
         if self.Destroyed then return end
-        if not self:IsVisible() then self:Release(); return end
-        if self.Active then return end
+        if not self:IsVisible() then self:Release(); self:UpdateCursor(); return end
+        if self.Active then self:UpdateCursor(); return end
+        self:ReleaseCursor()
         self.PreviousIconEnabled = UserInputService.MouseIconEnabled
         self.Active = true
         self.Generation += 1
@@ -2928,6 +3008,7 @@ function Library._MouseControl.Initialize()
             self:Unlock()
         end)
         self:Unlock()
+        self:UpdateCursor()
     end
 
     function Control:Bind(Frame)
@@ -2949,6 +3030,7 @@ function Library._MouseControl.Initialize()
         if self.Destroyed then return end
         self.Destroyed = true
         self:Release()
+        RunService:UnbindFromRenderStep(IconBindingName)
         for _, Connections in pairs(self.Frames) do
             for _, Connection in ipairs(Connections) do Connection:Disconnect() end
         end
@@ -2956,6 +3038,7 @@ function Library._MouseControl.Initialize()
         table.clear(self.Frames)
         table.clear(self.Connections)
         Modal:Destroy()
+        CursorGui:Destroy()
     end
 
     table.insert(Control.Connections, ScreenGui:GetPropertyChangedSignal("Enabled"):Connect(function() Control:Refresh() end))
@@ -2969,6 +3052,9 @@ function Library._MouseControl.Initialize()
         Control:Refresh()
     end))
     table.insert(Control.Connections, ScreenGui.Destroying:Connect(function() Control:Destroy() end))
+    RunService:BindToRenderStep(IconBindingName, Enum.RenderPriority.Last.Value + 2, function()
+        Control:UpdateCursor()
+    end)
 end
 
 Library._MouseControl.Initialize()
@@ -3405,7 +3491,7 @@ function Library:MakeWindow(Configs)
 		end
 
 		local Position = Input.Position
-		if IsOverMinimizeButton(Position) or not IsPointInside(TopBar, Position) then
+		if IsOverMinimizeButton(Position) or not IsPointInside(MainFrame, Position) then
 			return false
 		end
 
@@ -3413,10 +3499,30 @@ function Library:MakeWindow(Configs)
 			return false
 		end
 
-		-- The header owns window movement; content owns clicks, sliders and scrolling.
-		for _, Object in ipairs(TopBar:GetDescendants()) do
-			if (Object:IsA("GuiButton") or Object:IsA("TextBox"))
-				and IsPointInside(Object, Position) then return false end
+		-- Empty surfaces can move the window; controls keep ownership of their gestures.
+		for _, Object in ipairs(MainFrame:GetDescendants()) do
+			if Object:IsA("GuiObject") and IsPointInside(Object, Position) then
+				if Object:IsA("GuiButton") or Object:IsA("TextBox") then return false end
+				if Object:IsA("ScrollingFrame") then
+					if Object.ScrollingEnabled then
+						if Input.UserInputType == Enum.UserInputType.Touch then return false end
+						local Thickness = Object.ScrollBarThickness * ScreenScale.Scale
+						local Origin, Size = Object.AbsolutePosition, Object.AbsoluteSize
+						local Canvas, Window = Object.AbsoluteCanvasSize, Object.AbsoluteWindowSize
+						if Thickness > 0 then
+							if Object.ScrollingDirection ~= Enum.ScrollingDirection.X and Canvas.Y > Window.Y then
+								local Left = Object.VerticalScrollBarPosition == Enum.VerticalScrollBarPosition.Left
+								if (Left and Position.X <= Origin.X + Thickness)
+									or (not Left and Position.X >= Origin.X + Size.X - Thickness) then return false end
+							end
+							if Object.ScrollingDirection ~= Enum.ScrollingDirection.Y and Canvas.X > Window.X
+								and Position.Y >= Origin.Y + Size.Y - Thickness then return false end
+						end
+					end
+				elseif Object.Active then
+					return false
+				end
+			end
 		end
 
 		local Container = ScreenGui:FindFirstAncestorWhichIsA("BasePlayerGui")
@@ -3431,7 +3537,7 @@ function Library:MakeWindow(Configs)
 			end
 		else
 			for _, Object in ipairs(ScreenGui:GetDescendants()) do
-				if Object:IsA("GuiObject") and not Object:IsDescendantOf(MainFrame)
+				if Object:IsA("GuiObject") and Object ~= MainFrame and not Object:IsDescendantOf(MainFrame)
 					and (Object.Active or Object:IsA("GuiButton") or Object:IsA("TextBox"))
 					and IsPointInside(Object, Position) then
 					return false
@@ -3449,7 +3555,7 @@ function Library:MakeWindow(Configs)
 		end
 		DragInitialized = true
 		MakeDrag(MainFrame, {
-			Handle = TopBar,
+			Handle = MainFrame,
 			Threshold = DragThreshold,
 			Move = function(Delta) WindowPosition:MoveBy(Delta) end,
 			CanStart = CanDragWindow,
