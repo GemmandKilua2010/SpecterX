@@ -256,6 +256,7 @@ end
 local CornerRadius = math.max(0, ConfigNumber(AppearanceConfig, "CornerRadius"))
 local ElementCornerRadius = math.max(0, ConfigNumber(AppearanceConfig, "ElementCornerRadius"))
 local StrokeThickness = math.max(0, ConfigNumber(AppearanceConfig, "StrokeThickness"))
+local StrokeTransparency = math.clamp(tonumber(AppearanceConfig.StrokeTransparency) or 0.5, 0, 1)
 local ButtonHoverTransparency = math.clamp(ConfigNumber(AppearanceConfig, "ButtonHoverTransparency"), 0, 1)
 local GradientRotation = ConfigNumber(AppearanceConfig, "GradientRotation")
 
@@ -1549,7 +1550,9 @@ AddEle("Stroke", function(parent, props, ...)
 	local New = InsertTheme(SetProps(Create("UIStroke", parent, {
 		Color = args[1] or Theme["Color Stroke"],
 		Thickness = args[2] or StrokeThickness,
-		ApplyStrokeMode = "Border"
+		Transparency = StrokeTransparency,
+		LineJoinMode = Enum.LineJoinMode.Round,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	}), props), "Stroke")
 	return New
 end)
@@ -1573,7 +1576,14 @@ end)
 -- A single continuous ramp avoids repeated diagonal light/dark bands.
 -- Share the same theme colors across window and component backgrounds.
 local function ThemeBackgroundColors()
-	return Theme["Color Hub 1"]
+	local Stops = Theme["Color Hub 1"].Keypoints
+	local Surface = Theme["Color Hub 2"]
+	local Center = Stops[math.ceil(#Stops / 2)].Value
+	local Edge = Stops[#Stops].Value
+	return ColorSequence.new(
+		Surface:Lerp(Center, 0.3),
+		Surface:Lerp(Edge, 0.4)
+	)
 end
 
 AddEle("Gradient", function(parent, props, ...)
@@ -1839,7 +1849,8 @@ function Library:NotifyLibrary(Message, Values, Anchor)
         Make("Corner", State.Frame, UDim.new(0, Config.CornerRadius))
         State.Stroke = InsertTheme(Create("UIStroke", State.Frame, {
             Color = Theme["Color Theme"], Thickness = StrokeThickness,
-            Transparency = Config.StrokeTransparency, ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            Transparency = Config.StrokeTransparency, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            LineJoinMode = Enum.LineJoinMode.Round
         }), "Theme")
         State.Label = InsertTheme(Create("TextLabel", State.Frame, {
             Position = UDim2.fromOffset(Config.TextPaddingX, Config.TextPaddingY),
@@ -12362,7 +12373,8 @@ function Library:MakeWindow(Configs)
 						Color = Theme["Color Theme"],
 						Thickness = StrokeThickness,
 						Transparency = CodeConfig.ErrorTip.StrokeTransparency,
-						ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+						ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+						LineJoinMode = Enum.LineJoinMode.Round
 					}), "Theme")
 					Create("UIPadding", ErrorTip, {
 						PaddingTop = UDim.new(0, 5), PaddingBottom = UDim.new(0, 5),
