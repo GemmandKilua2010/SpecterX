@@ -2887,7 +2887,7 @@ function Library._MouseControl.Initialize()
     })
     local Cursor = Create("ImageLabel", CursorGui, {
         Size = UDim2.fromOffset(64, 64), AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundTransparency = 1, Image = "rbxasset://textures/Cursors/KeyboardMouse/ArrowFarCursor.png",
+        BackgroundTransparency = 1, Image = "rbxasset://textures/advClosed-hand.png",
         Active = false, Selectable = false, Interactable = false, Visible = false
     })
     local Modal = Create("TextButton", {
