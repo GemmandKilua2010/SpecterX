@@ -1129,6 +1129,7 @@ local function MakeDrag(Instance, Options)
     local ShouldCancel = type(Options.ShouldCancel) == "function" and Options.ShouldCancel or nil
     local Move = type(Options.Move) == "function" and Options.Move or nil
     local MoveTo = type(Options.MoveTo) == "function" and Options.MoveTo or nil
+    local OnDragChanged = type(Options.OnDragChanged) == "function" and Options.OnDragChanged or nil
 
     Handle.Active = true
     if Handle:IsA("GuiButton") then
@@ -1166,6 +1167,8 @@ local function MakeDrag(Instance, Options)
     end
 
     local function StopDrag()
+        local EndMouseDrag = PassedThreshold and DragInput
+            and DragInput.UserInputType == Enum.UserInputType.MouseButton1
         if RenderConnection then
             RenderConnection:Disconnect()
             UntrackConnection(RenderConnection)
@@ -1182,6 +1185,7 @@ local function MakeDrag(Instance, Options)
         LastPointer = nil
         GrabOffset = nil
         PassedThreshold = false
+        if EndMouseDrag and OnDragChanged then OnDragChanged(false) end
     end
 
     local function Update()
@@ -1197,6 +1201,9 @@ local function MakeDrag(Instance, Options)
         if not PassedThreshold then
             if (Pointer - DragStart).Magnitude < MovementThreshold then return end
             PassedThreshold = true
+            if OnDragChanged and DragInput.UserInputType == Enum.UserInputType.MouseButton1 then
+                OnDragChanged(true)
+            end
         end
 
         if MoveTo and GrabOffset then
@@ -2890,43 +2897,6 @@ function Library._MouseControl.Initialize()
     })
     Modal.Parent = ScreenGui
 
-    function Control:IsOverHub(Position)
-        local Container = ScreenGui:FindFirstAncestorWhichIsA("BasePlayerGui")
-        local Success, Objects = false, nil
-        if Container then
-            Success, Objects = pcall(Container.GetGuiObjectsAtPosition, Container, Position.X, Position.Y)
-        end
-        if Success then
-            for _, Object in ipairs(Objects) do
-                if Object ~= Modal and Object:IsDescendantOf(ScreenGui) then return true end
-                if not Object:IsDescendantOf(CursorGui) and Object ~= Modal
-                    and (Object.Active or Object:IsA("GuiButton") or Object:IsA("TextBox")) then return false end
-            end
-            return false
-        end
-
-        -- Some executor containers cannot query hit targets. Check GUI roots and
-        -- folders only, rather than walking every control on each render frame.
-        local function Contains(Object)
-            if Object:IsA("GuiObject") then
-                if Object == Modal or not Object.Visible then return false end
-                local Origin, Size = Object.AbsolutePosition, Object.AbsoluteSize
-                return Position.X >= Origin.X and Position.Y >= Origin.Y
-                    and Position.X <= Origin.X + Size.X and Position.Y <= Origin.Y + Size.Y
-            end
-            if Object:IsA("Folder") then
-                for _, Child in ipairs(Object:GetChildren()) do
-                    if Contains(Child) then return true end
-                end
-            end
-            return false
-        end
-        for _, Object in ipairs(ScreenGui:GetChildren()) do
-            if Contains(Object) then return true end
-        end
-        return false
-    end
-
     function Control:ReleaseCursor()
         Cursor.Visible = false
         if self.CursorOwned and not UserInputService.MouseIconEnabled then
@@ -2937,25 +2907,29 @@ function Library._MouseControl.Initialize()
     end
 
     function Control:UpdateCursor()
-        if self.Destroyed or self.Focused == false or not ScreenGui.Enabled
+        if not self.DraggingHub or self.Destroyed or self.Focused == false or not ScreenGui.Enabled
             or not ScreenGui:IsDescendantOf(game) or not UserInputService.MouseEnabled
             or GetInputMode() ~= "KeyboardAndMouse" then
             self:ReleaseCursor()
             return
         end
         local Position = UserInputService:GetMouseLocation()
-        local Inset = GuiService:GetGuiInset()
-        if not self:IsOverHub(Position - Inset) then self:ReleaseCursor(); return end
         if not self.CursorOwned then
             self.CursorPreviousIconEnabled = UserInputService.MouseIconEnabled
             self.CursorOwned = true
         end
-        -- Native GuiButton hover replaces MouseIcon, so draw the arrow without
-        -- changing the game's icon or capturing the underlying button input.
         CursorGui.Parent = ScreenGui.Parent
         Cursor.Position = UDim2.fromOffset(Position.X, Position.Y)
         Cursor.Visible = true
         UserInputService.MouseIconEnabled = false
+    end
+
+    function Control:SetDraggingHub(Dragging)
+        if self.Destroyed then return end
+        Dragging = Dragging == true
+        if self.DraggingHub == Dragging then return end
+        self.DraggingHub = Dragging
+        self:UpdateCursor()
     end
 
     function Control:IsVisible()
@@ -2987,6 +2961,7 @@ function Library._MouseControl.Initialize()
     function Control:Release()
         local WasActive = self.Active
         self.Active = false
+        self.DraggingHub = false
         self.Generation += 1
         -- Also clean partial/stale registrations if release is called a second time.
         RunService:UnbindFromRenderStep(BindingName)
@@ -3581,6 +3556,7 @@ function Library:MakeWindow(Configs)
 			Threshold = DragThreshold,
 			Move = function(Delta) WindowPosition:MoveBy(Delta) end,
 			MoveTo = function(Target) WindowPosition:MoveGrabbedTo(Target) end,
+			OnDragChanged = function(Dragging) Library._MouseControl:SetDraggingHub(Dragging) end,
 			CanStart = CanDragWindow,
 			GlobalInput = true,
 			ShouldCancel = function()
