@@ -2930,7 +2930,7 @@ function Library._MouseControl.Initialize()
     end
 
     function Control:UpdateCursor()
-        if not self.DraggingHub or self.Destroyed or self.Focused == false or not ScreenGui.Enabled
+        if self.Destroyed or self.Focused == false or not ScreenGui.Enabled
             or not ScreenGui:IsDescendantOf(game) or not UserInputService.MouseEnabled
             or GetInputMode() ~= "KeyboardAndMouse" then
             self:ReleaseCursor()
