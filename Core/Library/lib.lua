@@ -1129,7 +1129,6 @@ local function MakeDrag(Instance, Options)
     local ShouldCancel = type(Options.ShouldCancel) == "function" and Options.ShouldCancel or nil
     local Move = type(Options.Move) == "function" and Options.Move or nil
     local MoveTo = type(Options.MoveTo) == "function" and Options.MoveTo or nil
-    local OnDragChanged = type(Options.OnDragChanged) == "function" and Options.OnDragChanged or nil
 
     Handle.Active = true
     if Handle:IsA("GuiButton") then
@@ -1167,8 +1166,6 @@ local function MakeDrag(Instance, Options)
     end
 
     local function StopDrag()
-        local EndMouseDrag = PassedThreshold and DragInput
-            and DragInput.UserInputType == Enum.UserInputType.MouseButton1
         if RenderConnection then
             RenderConnection:Disconnect()
             UntrackConnection(RenderConnection)
@@ -1185,7 +1182,6 @@ local function MakeDrag(Instance, Options)
         LastPointer = nil
         GrabOffset = nil
         PassedThreshold = false
-        if EndMouseDrag and OnDragChanged then OnDragChanged(false) end
     end
 
     local function Update()
@@ -1201,9 +1197,6 @@ local function MakeDrag(Instance, Options)
         if not PassedThreshold then
             if (Pointer - DragStart).Magnitude < MovementThreshold then return end
             PassedThreshold = true
-            if OnDragChanged and DragInput.UserInputType == Enum.UserInputType.MouseButton1 then
-                OnDragChanged(true)
-            end
         end
 
         if MoveTo and GrabOffset then
@@ -2880,58 +2873,12 @@ function Library._MouseControl.Initialize()
     local RunService = game:GetService("RunService")
     local Actions = game:GetService("ContextActionService")
     local BindingName = "SpecterXCursor_" .. Hub:GenerateName(12)
-    -- The normal cursor stays native; render the drag icon only while moving the hub.
-    local CursorGui = Create("ScreenGui", ScreenGui.Parent, {
-        Archivable = false, ResetOnSpawn = false, ScreenInsets = Enum.ScreenInsets.None,
-        DisplayOrder = 2147483647, ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    })
-    local DragCursorImage = Create("ImageLabel", CursorGui, {
-        Size = UDim2.fromOffset(48, 48),
-        BackgroundTransparency = 1, BorderSizePixel = 0,
-        Image = "rbxasset://textures/ArrowCursorDecalDrag.png",
-        Active = false, Selectable = false, Interactable = false,
-        Visible = false
-    })
     local Modal = Create("TextButton", {
         Size = UDim2.fromOffset(1, 1), BackgroundTransparency = 1,
         Text = "", AutoButtonColor = false, Active = false,
         Selectable = false, Interactable = false, Modal = false, Visible = false
     })
     Modal.Parent = ScreenGui
-
-    function Control:ReleaseCursor()
-        DragCursorImage.Visible = false
-        if self.CursorOwned then
-            UserInputService.MouseIconEnabled = self.CursorPreviousIconEnabled
-            self.CursorOwned = false
-            self.CursorPreviousIconEnabled = nil
-        end
-    end
-
-    function Control:UpdateCursor()
-        if not self.DraggingHub or self.Destroyed or self.Focused == false or not ScreenGui.Enabled
-            or not ScreenGui:IsDescendantOf(game) or not UserInputService.MouseEnabled
-            or GetInputMode() ~= "KeyboardAndMouse" then
-            self:ReleaseCursor()
-            return
-        end
-        if not self.CursorOwned then
-            self.CursorPreviousIconEnabled = UserInputService.MouseIconEnabled
-            self.CursorOwned = true
-        end
-        local Position = UserInputService:GetMouseLocation()
-        DragCursorImage.Position = UDim2.fromOffset(Position.X, Position.Y)
-        DragCursorImage.Visible = true
-        UserInputService.MouseIconEnabled = false
-    end
-
-    function Control:SetDraggingHub(Dragging)
-        if self.Destroyed then return end
-        Dragging = Dragging == true
-        if self.DraggingHub == Dragging then return end
-        self.DraggingHub = Dragging
-        self:UpdateCursor()
-    end
 
     function Control:IsVisible()
         if Library.Save.UnlockCursorOnOpen == false
@@ -2956,20 +2903,18 @@ function Library._MouseControl.Initialize()
         if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
             UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         end
-        if not self.DraggingHub and not UserInputService.MouseIconEnabled then UserInputService.MouseIconEnabled = true end
+        if not UserInputService.MouseIconEnabled then UserInputService.MouseIconEnabled = true end
     end
 
     function Control:Release()
         local WasActive = self.Active
         self.Active = false
-        self.DraggingHub = false
         self.Generation += 1
         -- Also clean partial/stale registrations if release is called a second time.
         RunService:UnbindFromRenderStep(BindingName)
         Actions:UnbindAction(BindingName)
         Modal.Modal = false
         Modal.Visible = false
-        self:ReleaseCursor()
         if WasActive then
             -- A saved LockCurrentPosition/LockCenter may belong to a finished drag or an old
             -- camera mode. Reapplying it can strand the cursor. Let the camera resume its
@@ -2984,9 +2929,8 @@ function Library._MouseControl.Initialize()
 
     function Control:Refresh()
         if self.Destroyed then return end
-        if not self:IsVisible() then self:Release(); self:UpdateCursor(); return end
-        if self.Active then self:UpdateCursor(); return end
-        self:ReleaseCursor()
+        if not self:IsVisible() then self:Release(); return end
+        if self.Active then return end
         self.PreviousIconEnabled = UserInputService.MouseIconEnabled
         self.Active = true
         self.Generation += 1
@@ -3006,7 +2950,6 @@ function Library._MouseControl.Initialize()
             self:Unlock()
         end)
         self:Unlock()
-        self:UpdateCursor()
     end
 
     function Control:Bind(Frame)
@@ -3035,7 +2978,6 @@ function Library._MouseControl.Initialize()
         table.clear(self.Frames)
         table.clear(self.Connections)
         Modal:Destroy()
-        CursorGui:Destroy()
     end
 
     table.insert(Control.Connections, ScreenGui:GetPropertyChangedSignal("Enabled"):Connect(function() Control:Refresh() end))
@@ -3552,11 +3494,7 @@ function Library:MakeWindow(Configs)
 			Handle = MainFrame,
 			Threshold = DragThreshold,
 			Move = function(Delta) WindowPosition:MoveBy(Delta) end,
-			MoveTo = function(Target)
-				WindowPosition:MoveGrabbedTo(Target)
-				Library._MouseControl:UpdateCursor()
-			end,
-			OnDragChanged = function(Dragging) Library._MouseControl:SetDraggingHub(Dragging) end,
+			MoveTo = function(Target) WindowPosition:MoveGrabbedTo(Target) end,
 			CanStart = CanDragWindow,
 			GlobalInput = true,
 			ShouldCancel = function()
