@@ -1139,6 +1139,7 @@ local function MakeDrag(Instance, Options)
     local DragInput
     local DragStart
     local LastPointer
+    local GrabOffset
     local PassedThreshold = false
     local MovementThreshold = Threshold
     local RenderConnection
@@ -1179,6 +1180,7 @@ local function MakeDrag(Instance, Options)
         DragInput = nil
         DragStart = nil
         LastPointer = nil
+        GrabOffset = nil
         PassedThreshold = false
     end
 
@@ -1197,9 +1199,9 @@ local function MakeDrag(Instance, Options)
             PassedThreshold = true
         end
 
-        if MoveTo and DragInput.UserInputType == Enum.UserInputType.MouseButton1 then
+        if MoveTo and GrabOffset then
             LastPointer = Pointer
-            MoveTo(Pointer)
+            MoveTo(Pointer - GrabOffset)
             return
         end
 
@@ -1238,6 +1240,8 @@ local function MakeDrag(Instance, Options)
         local Pointer = GetPointer()
         DragStart = Pointer
         LastPointer = Pointer
+        GrabOffset = MoveTo and Input.UserInputType == Enum.UserInputType.MouseButton1
+            and (Pointer - Instance.AbsolutePosition) or nil
         PassedThreshold = false
         MovementThreshold = Input.UserInputType == Enum.UserInputType.Touch and math.max(Threshold, 6) or Threshold
         local function CheckInputState()
@@ -1404,11 +1408,10 @@ function Library._PositionSettings.Bind(Object, Key, Options)
         self:ScheduleRemember()
     end
 
-    function State:MoveCenteredAt(Pointer)
+    function State:MoveGrabbedTo(Target)
         if self.Destroyed or not Object.Parent then return end
         self:Initialize()
         local MinX, MinY, MaxX, MaxY = Library._PositionSettings.GetBounds(Object, Padding, Options.TopPadding, Options.Oversized)
-        local Target = Pointer - Object.AbsoluteSize / 2
         self:Move(Vector2.new(math.clamp(Target.X, MinX, MaxX), math.clamp(Target.Y, MinY, MaxY)))
         self:ScheduleRemember()
     end
@@ -3577,7 +3580,7 @@ function Library:MakeWindow(Configs)
 			Handle = MainFrame,
 			Threshold = DragThreshold,
 			Move = function(Delta) WindowPosition:MoveBy(Delta) end,
-			MoveTo = function(Pointer) WindowPosition:MoveCenteredAt(Pointer) end,
+			MoveTo = function(Target) WindowPosition:MoveGrabbedTo(Target) end,
 			CanStart = CanDragWindow,
 			GlobalInput = true,
 			ShouldCancel = function()
