@@ -2897,6 +2897,29 @@ function Library._MouseControl.Initialize()
     })
     Modal.Parent = ScreenGui
 
+    function Control:IsOverHubBackground(Position)
+        local Container = ScreenGui:FindFirstAncestorWhichIsA("BasePlayerGui")
+        if not Container then return false end
+        local Success, Objects = pcall(Container.GetGuiObjectsAtPosition, Container, Position.X, Position.Y)
+        if not Success or type(Objects) ~= "table" then return false end
+
+        local OverHub = false
+        for _, Object in ipairs(Objects) do
+            if Object ~= Modal and not Object:IsDescendantOf(CursorGui) then
+                if Object:IsDescendantOf(ScreenGui) then
+                    if Object:IsA("GuiButton") or Object:IsA("TextBox")
+                        or (Object.Active and Object ~= Library.MainFrame and not Object:IsA("ScrollingFrame")) then
+                        return false
+                    end
+                    OverHub = true
+                elseif not OverHub and (Object.Active or Object:IsA("GuiButton") or Object:IsA("TextBox")) then
+                    return false
+                end
+            end
+        end
+        return OverHub
+    end
+
     function Control:ReleaseCursor()
         Cursor.Visible = false
         if self.CursorOwned and not UserInputService.MouseIconEnabled then
@@ -2914,6 +2937,10 @@ function Library._MouseControl.Initialize()
             return
         end
         local Position = UserInputService:GetMouseLocation()
+        if not self.DraggingHub and not self:IsOverHubBackground(Position - GuiService:GetGuiInset()) then
+            self:ReleaseCursor()
+            return
+        end
         if not self.CursorOwned then
             self.CursorPreviousIconEnabled = UserInputService.MouseIconEnabled
             self.CursorOwned = true
