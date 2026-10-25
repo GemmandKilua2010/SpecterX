@@ -1575,7 +1575,9 @@ end)
 
 -- Share the same theme colors across window and component backgrounds.
 local function ThemeBackgroundColors()
-	return Theme["Color Hub 1"]
+	local Stops = Theme["Color Hub 1"].Keypoints
+	local Start = Stops[1].Value
+	return ColorSequence.new(Start, Start:Lerp(Stops[math.ceil(#Stops / 2)].Value, 0.75))
 end
 
 AddEle("Gradient", function(parent, props, ...)
