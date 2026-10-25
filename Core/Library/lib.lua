@@ -2897,29 +2897,6 @@ function Library._MouseControl.Initialize()
     })
     Modal.Parent = ScreenGui
 
-    function Control:IsOverHubBackground(Position)
-        local Container = ScreenGui:FindFirstAncestorWhichIsA("BasePlayerGui")
-        if not Container then return false end
-        local Success, Objects = pcall(Container.GetGuiObjectsAtPosition, Container, Position.X, Position.Y)
-        if not Success or type(Objects) ~= "table" then return false end
-
-        local OverHub = false
-        for _, Object in ipairs(Objects) do
-            if Object ~= Modal and not Object:IsDescendantOf(CursorGui) then
-                if Object:IsDescendantOf(ScreenGui) then
-                    if Object:IsA("GuiButton") or Object:IsA("TextBox")
-                        or (Object.Active and Object ~= Library.MainFrame and not Object:IsA("ScrollingFrame")) then
-                        return false
-                    end
-                    OverHub = true
-                elseif not OverHub and (Object.Active or Object:IsA("GuiButton") or Object:IsA("TextBox")) then
-                    return false
-                end
-            end
-        end
-        return OverHub
-    end
-
     function Control:ReleaseCursor()
         Cursor.Visible = false
         if self.CursorOwned and not UserInputService.MouseIconEnabled then
@@ -2930,17 +2907,13 @@ function Library._MouseControl.Initialize()
     end
 
     function Control:UpdateCursor()
-        if self.Destroyed or self.Focused == false or not ScreenGui.Enabled
+        if not self.DraggingHub or self.Destroyed or self.Focused == false or not ScreenGui.Enabled
             or not ScreenGui:IsDescendantOf(game) or not UserInputService.MouseEnabled
             or GetInputMode() ~= "KeyboardAndMouse" then
             self:ReleaseCursor()
             return
         end
         local Position = UserInputService:GetMouseLocation()
-        if not self.DraggingHub and not self:IsOverHubBackground(Position - GuiService:GetGuiInset()) then
-            self:ReleaseCursor()
-            return
-        end
         if not self.CursorOwned then
             self.CursorPreviousIconEnabled = UserInputService.MouseIconEnabled
             self.CursorOwned = true
@@ -2956,6 +2929,14 @@ function Library._MouseControl.Initialize()
         Dragging = Dragging == true
         if self.DraggingHub == Dragging then return end
         self.DraggingHub = Dragging
+        if Dragging then
+            -- Only render the custom pointer while the hub is being dragged.
+            RunService:BindToRenderStep(IconBindingName, Enum.RenderPriority.Last.Value + 2, function()
+                self:UpdateCursor()
+            end)
+        else
+            RunService:UnbindFromRenderStep(IconBindingName)
+        end
         self:UpdateCursor()
     end
 
@@ -2989,6 +2970,7 @@ function Library._MouseControl.Initialize()
         local WasActive = self.Active
         self.Active = false
         self.DraggingHub = false
+        RunService:UnbindFromRenderStep(IconBindingName)
         self.Generation += 1
         -- Also clean partial/stale registrations if release is called a second time.
         RunService:UnbindFromRenderStep(BindingName)
@@ -3076,9 +3058,6 @@ function Library._MouseControl.Initialize()
         Control:Refresh()
     end))
     table.insert(Control.Connections, ScreenGui.Destroying:Connect(function() Control:Destroy() end))
-    RunService:BindToRenderStep(IconBindingName, Enum.RenderPriority.Last.Value + 2, function()
-        Control:UpdateCursor()
-    end)
 end
 
 Library._MouseControl.Initialize()
