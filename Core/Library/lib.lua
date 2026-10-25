@@ -6458,7 +6458,7 @@ function Library:MakeWindow(Configs)
 				IconSize = Configs.SearchConfig and Configs.SearchConfig.IconSize or DropdownConfig.SearchConfig.IconSize,
 				IconPosition = Configs.SearchConfig and Configs.SearchConfig.IconPosition or DropdownConfig.SearchConfig.IconPosition,
 				InputOffset = Configs.SearchConfig and Configs.SearchConfig.InputOffset or DropdownConfig.SearchConfig.InputOffset,
-				NoResultText = CustomNoResultText or TranslateText("No options found"),
+				NoResultText = TranslateText(CustomNoResultText or "No options found"),
 				NoResultTextSize = Configs.SearchConfig and Configs.SearchConfig.NoResultTextSize or DropdownConfig.SearchConfig.NoResultTextSize,
 				PrefixOnly = DPrefixOnly == true
 			}
@@ -6582,8 +6582,8 @@ function Library:MakeWindow(Configs)
 					if SearchInput and SearchInput.Parent and not CustomSearchPlaceholder then
 						SearchInput.PlaceholderText = TranslateText("Search...")
 					end
-					if SearchMessage and SearchMessage.Parent and not CustomNoResultText then
-						SearchMessage.Text = TranslateText("No options found")
+					if SearchMessage and SearchMessage.Parent then
+						SearchMessage.Text = TranslateText(CustomNoResultText or "No options found")
 					end
 				end)))
 			end
