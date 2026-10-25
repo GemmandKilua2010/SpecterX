@@ -1573,17 +1573,9 @@ AddEle("Button", function(parent, props, ...)
 	return New
 end)
 
--- A single continuous ramp avoids repeated diagonal light/dark bands.
 -- Share the same theme colors across window and component backgrounds.
 local function ThemeBackgroundColors()
-	local Stops = Theme["Color Hub 1"].Keypoints
-	local Surface = Theme["Color Hub 2"]
-	local Center = Stops[math.ceil(#Stops / 2)].Value
-	local Edge = Stops[#Stops].Value
-	return ColorSequence.new(
-		Surface:Lerp(Center, 0.3),
-		Surface:Lerp(Edge, 0.4)
-	)
+	return Theme["Color Hub 1"]
 end
 
 AddEle("Gradient", function(parent, props, ...)
