@@ -332,21 +332,24 @@ local function EnsureSoundPreset(Id)
 end
 EnsureSoundPreset(DefaultSoundId)
 
-local DropdownConfig = ConfigSection("Dropdown")
+-- Keep initialization-only locals out of the long-lived module scope (Luau limit: 200).
+local DropdownConfig, DefaultDropdownMaxVisibleOptions
+local AnimationDefault, AnimationWindow, AnimationTopBar, AnimationTab, AnimationToggle, AnimationDropdown, AnimationDropdownPosition do
+DropdownConfig = ConfigSection("Dropdown")
 local DefaultDropdownSearch = DropdownConfig.Search == true
 local DefaultDropdownPrefixOnly = DropdownConfig.PrefixOnly ~= false
 local DefaultDropdownCloseOnSelect = DropdownConfig.CloseOnSelect == true
-local DefaultDropdownMaxVisibleOptions = math.clamp(math.floor(ConfigNumber(DropdownConfig, "MaxVisibleOptions")), 3, 12)
+DefaultDropdownMaxVisibleOptions = math.clamp(math.floor(ConfigNumber(DropdownConfig, "MaxVisibleOptions")), 3, 12)
 
 local AnimationConfig = ConfigSection("Animation")
-local AnimationDefault = math.max(0, ConfigNumber(AnimationConfig, "Default"))
-local AnimationWindow = math.max(0, ConfigNumber(AnimationConfig, "Window"))
-local AnimationTopBar = math.max(0, ConfigNumber(AnimationConfig, "TopBar"))
+AnimationDefault = math.max(0, ConfigNumber(AnimationConfig, "Default"))
+AnimationWindow = math.max(0, ConfigNumber(AnimationConfig, "Window"))
+AnimationTopBar = math.max(0, ConfigNumber(AnimationConfig, "TopBar"))
 local AnimationTabOpen = math.max(0, ConfigNumber(AnimationConfig, "TabOpen"))
-local AnimationTab = math.max(0, ConfigNumber(AnimationConfig, "Tab"))
-local AnimationToggle = math.max(0, ConfigNumber(AnimationConfig, "Toggle"))
-local AnimationDropdown = math.max(0, ConfigNumber(AnimationConfig, "Dropdown"))
-local AnimationDropdownPosition = math.max(0, ConfigNumber(AnimationConfig, "DropdownPosition"))
+AnimationTab = math.max(0, ConfigNumber(AnimationConfig, "Tab"))
+AnimationToggle = math.max(0, ConfigNumber(AnimationConfig, "Toggle"))
+AnimationDropdown = math.max(0, ConfigNumber(AnimationConfig, "Dropdown"))
+AnimationDropdownPosition = math.max(0, ConfigNumber(AnimationConfig, "DropdownPosition"))
 local AnimationSlider = math.max(0, ConfigNumber(AnimationConfig, "Slider"))
 local AnimationDialog = math.max(0, ConfigNumber(AnimationConfig, "Dialog"))
 local AnimationDialogFade = math.max(0, ConfigNumber(AnimationConfig, "DialogFade"))
@@ -399,6 +402,7 @@ Library.Save.StartupGreetingDismissed = false
 if type(Hub) == "table" and type(Hub.GetLanguage) == "function" then
     Library.Save.Language = Hub:GetLanguage()
 end
+end
 
 local Settings = Library.Settings
 local Flags = Library.Flags
@@ -427,7 +431,8 @@ function JsonFiles.Write(Path, Data)
     return Hub:CreateFile(Path, Encoded) == true, Encoded
 end
 
-local DropdownFavorites = {}
+local DropdownFavorites, SaveDropdownFavorites, SetProps, InsertTheme, Create do
+DropdownFavorites = {}
 local LegacyDropdownFavorites
 
 local function NormalizeFavoriteOptions(Values)
@@ -555,13 +560,13 @@ local function FormatFavoritesJSON(Value, Depth)
         .. string.rep("  ", Depth) .. (IsArray and "]" or "}")
 end
 
-local function SaveDropdownFavorites()
+SaveDropdownFavorites = function()
     if type(Hub) ~= "table" or type(Hub.CreateFile) ~= "function" then return false end
     local Success, Encoded = pcall(FormatFavoritesJSON, SerializeDropdownFavorites(), 0)
     return Success and Hub:CreateFile(DropdownFavoritesPath, Encoded) == true
 end
 
-local SetProps, SetChildren, InsertTheme, Create do
+local SetChildren do
 	InsertTheme = function(Instance, Type)
 		local Entry = {Instance = Instance, Type = Type}
 		table.insert(Library.Instances, Entry)
@@ -718,6 +723,7 @@ local SetProps, SetChildren, InsertTheme, Create do
 	ScrollTransparency = Library.Save.ScrollTransparency
 
 	JsonFiles.Write(SettingsPath, Library.Save)
+end
 end
 
 local Funcs = {} do
@@ -1088,8 +1094,9 @@ local function GetStr(val)
     return val
 end
 
+local CreateTween do
 local TweenInfoCache = {}
-local function CreateTween(Configs)
+CreateTween = function(Configs)
     local Instance = Configs[1] or Configs.Instance
     local Prop = Configs[2] or Configs.Prop
     local NewVal = Configs[3]
@@ -1108,6 +1115,7 @@ local function CreateTween(Configs)
         Tween.Completed:Wait()
     end
     return Tween
+end
 end
 
 local function MakeDrag(Instance, Options)
@@ -1281,6 +1289,7 @@ local function VerifyTheme(Theme)
     return type(Theme) == "string" and type(Library.Themes[Theme]) == "table"
 end
 
+local QueueSettingsSave do
 local SaveJson = JsonFiles.Write
 
 local SettingsSaveQueued = false
@@ -1297,7 +1306,7 @@ local function FlushSettingsWhenIdle()
     SaveJson(SettingsPath, Library.Save)
 end
 
-local function QueueSettingsSave()
+QueueSettingsSave = function()
     SettingsLastChange = os.clock()
     if SettingsSaveQueued then return end
     SettingsSaveQueued = true
@@ -1326,6 +1335,7 @@ ScreenGui.Destroying:Connect(function()
     SettingsSaveQueued = false
     SaveJson(SettingsPath, Library.Save)
 end)
+end
 
 -- Positions are stored as viewport fractions, independently of the interface scale.
 function Library._PositionSettings.GetBounds(Object, Padding, TopPadding, Oversized)
