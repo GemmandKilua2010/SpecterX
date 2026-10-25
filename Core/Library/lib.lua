@@ -2880,16 +2880,16 @@ function Library._MouseControl.Initialize()
     local RunService = game:GetService("RunService")
     local Actions = game:GetService("ContextActionService")
     local BindingName = "SpecterXCursor_" .. Hub:GenerateName(12)
-    -- A transparent native button provides Roblox's own button hover cursor
-    -- during window dragging, without drawing a cursor or polling hover targets.
+    -- The normal cursor stays native; render the drag icon only while moving the hub.
     local CursorGui = Create("ScreenGui", ScreenGui.Parent, {
         Archivable = false, ResetOnSpawn = false, ScreenInsets = Enum.ScreenInsets.None,
         DisplayOrder = 2147483647, ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     })
-    local DragCursorButton = Create("TextButton", CursorGui, {
-        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
-        Text = "", TextTransparency = 1, BorderSizePixel = 0,
-        AutoButtonColor = false, Active = true, Selectable = false,
+    local DragCursorImage = Create("ImageLabel", CursorGui, {
+        Size = UDim2.fromOffset(48, 48),
+        BackgroundTransparency = 1, BorderSizePixel = 0,
+        Image = "rbxasset://textures/ArrowCursorDecalDrag.png",
+        Active = false, Selectable = false, Interactable = false,
         Visible = false
     })
     local Modal = Create("TextButton", {
@@ -2900,14 +2900,29 @@ function Library._MouseControl.Initialize()
     Modal.Parent = ScreenGui
 
     function Control:ReleaseCursor()
-        DragCursorButton.Visible = false
+        DragCursorImage.Visible = false
+        if self.CursorOwned then
+            UserInputService.MouseIconEnabled = self.CursorPreviousIconEnabled
+            self.CursorOwned = false
+            self.CursorPreviousIconEnabled = nil
+        end
     end
 
     function Control:UpdateCursor()
-        DragCursorButton.Visible = self.DraggingHub == true and not self.Destroyed
-            and self.Focused ~= false and ScreenGui.Enabled
-            and ScreenGui:IsDescendantOf(game) and UserInputService.MouseEnabled
-            and GetInputMode() == "KeyboardAndMouse"
+        if not self.DraggingHub or self.Destroyed or self.Focused == false or not ScreenGui.Enabled
+            or not ScreenGui:IsDescendantOf(game) or not UserInputService.MouseEnabled
+            or GetInputMode() ~= "KeyboardAndMouse" then
+            self:ReleaseCursor()
+            return
+        end
+        if not self.CursorOwned then
+            self.CursorPreviousIconEnabled = UserInputService.MouseIconEnabled
+            self.CursorOwned = true
+        end
+        local Position = UserInputService:GetMouseLocation()
+        DragCursorImage.Position = UDim2.fromOffset(Position.X, Position.Y)
+        DragCursorImage.Visible = true
+        UserInputService.MouseIconEnabled = false
     end
 
     function Control:SetDraggingHub(Dragging)
@@ -2941,7 +2956,7 @@ function Library._MouseControl.Initialize()
         if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
             UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         end
-        if not UserInputService.MouseIconEnabled then UserInputService.MouseIconEnabled = true end
+        if not self.DraggingHub and not UserInputService.MouseIconEnabled then UserInputService.MouseIconEnabled = true end
     end
 
     function Control:Release()
@@ -3537,7 +3552,10 @@ function Library:MakeWindow(Configs)
 			Handle = MainFrame,
 			Threshold = DragThreshold,
 			Move = function(Delta) WindowPosition:MoveBy(Delta) end,
-			MoveTo = function(Target) WindowPosition:MoveGrabbedTo(Target) end,
+			MoveTo = function(Target)
+				WindowPosition:MoveGrabbedTo(Target)
+				Library._MouseControl:UpdateCursor()
+			end,
 			OnDragChanged = function(Dragging) Library._MouseControl:SetDraggingHub(Dragging) end,
 			CanStart = CanDragWindow,
 			GlobalInput = true,
