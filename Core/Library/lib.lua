@@ -452,7 +452,7 @@ end
 local function ReadDropdownFavorites(Data)
     if type(Data) ~= "table" then return end
 
-    if Data.Version == 2 and type(Data.Hubs) == "table" then
+    if type(Data.Hubs) == "table" then
         for HubName, Tabs in pairs(Data.Hubs) do
             if type(HubName) == "string" and type(Tabs) == "table" then
                 for TabName, Groups in pairs(Tabs) do
@@ -501,7 +501,7 @@ local function ReadDropdownFavorites(Data)
 end
 
 local function SerializeDropdownFavorites()
-    local Data = {Version = 2, Hubs = {}}
+    local Data = {Hubs = {}}
     for HubName, Tabs in pairs(DropdownFavorites) do
         for TabName, Groups in pairs(Tabs) do
             for _, GroupName in ipairs({"Flags", "Names"}) do
