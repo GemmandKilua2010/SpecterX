@@ -6387,11 +6387,10 @@ function Library:MakeWindow(Configs)
 				return ConnectionObject
 			end
 
-			local CustomSearchPlaceholder = Configs.SearchConfig and Configs.SearchConfig.Placeholder
 			local CustomNoResultText = Configs.SearchConfig and Configs.SearchConfig.NoResultText
 			local SearchConfig = {
 				Enabled = DSearch,
-				Placeholder = CustomSearchPlaceholder or TranslateText("Search"),
+				Placeholder = TranslateText("Search"),
 				TextSize = Configs.SearchConfig and Configs.SearchConfig.TextSize or DropdownConfig.SearchConfig.TextSize,
 				MinTextSize = Configs.SearchConfig and Configs.SearchConfig.MinTextSize or DropdownConfig.SearchConfig.MinTextSize,
 				SearchFrameHeight = Configs.SearchConfig and Configs.SearchConfig.SearchFrameHeight or DropdownConfig.SearchConfig.SearchFrameHeight,
@@ -6521,7 +6520,7 @@ function Library:MakeWindow(Configs)
 				}), "DarkText")
 
 				TrackConnection(TrackDropdownConnection(Connection.LanguageChanged:Connect(function()
-					if SearchInput and SearchInput.Parent and not CustomSearchPlaceholder then
+					if SearchInput and SearchInput.Parent then
 						SearchInput.PlaceholderText = TranslateText("Search")
 					end
 					if SearchMessage and SearchMessage.Parent then
