@@ -6458,6 +6458,7 @@ function Library:MakeWindow(Configs)
 			local SearchIcon
 			local SearchInputFrame
 			local SearchInput
+			local SearchPlaceholderLabel
 			local SearchMessage
 			local SearchResizePending = false
 
@@ -6487,6 +6488,23 @@ function Library:MakeWindow(Configs)
 					ClipsDescendants = true
 				})
 
+				-- Render the placeholder ourselves: Roblox or other scripts can replace
+				-- a TextBox's native placeholder even when AutoLocalize is disabled.
+				SearchPlaceholderLabel = InsertTheme(Create("TextLabel", SearchInputFrame, {
+					AutoLocalize = false,
+					Size = UDim2.new(1, -2, 1, 0),
+					BackgroundTransparency = 1,
+					Font = Enum.Font.GothamBold,
+					Text = SearchConfig.Placeholder,
+					TextColor3 = Theme["Color Dark Text"],
+					TextSize = SearchConfig.TextSize,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextYAlignment = Enum.TextYAlignment.Center,
+					TextWrapped = false,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					Active = false, Interactable = false, Selectable = false
+				}), "DarkText")
+
 				SearchInput = InsertTheme(Create("TextBox", SearchInputFrame, {
                     AutoLocalize = false,
 					Size = UDim2.new(1, -2, 1, 0),
@@ -6495,7 +6513,7 @@ function Library:MakeWindow(Configs)
 					ClearTextOnFocus = false,
 					Font = Enum.Font.GothamBold,
 					Text = "",
-					PlaceholderText = SearchConfig.Placeholder,
+					PlaceholderText = "",
 					PlaceholderColor3 = Theme["Color Dark Text"],
 					TextColor3 = Theme["Color Text"],
 					TextSize = SearchConfig.TextSize,
@@ -6520,8 +6538,8 @@ function Library:MakeWindow(Configs)
 				}), "DarkText")
 
 				TrackConnection(TrackDropdownConnection(Connection.LanguageChanged:Connect(function()
-					if SearchInput and SearchInput.Parent then
-						SearchInput.PlaceholderText = TranslateText("Search")
+					if SearchPlaceholderLabel and SearchPlaceholderLabel.Parent then
+						SearchPlaceholderLabel.Text = TranslateText("Search")
 					end
 					if SearchMessage and SearchMessage.Parent then
 						SearchMessage.Text = TranslateText(CustomNoResultText or "No options found")
@@ -6579,7 +6597,20 @@ function Library:MakeWindow(Configs)
 			end
 
 			if SearchInput then
-				SearchInput:GetPropertyChangedSignal("Text"):Connect(UpdateSearchTextSize)
+				local function UpdateSearchPlaceholder()
+					if SearchPlaceholderLabel and SearchPlaceholderLabel.Parent then
+						SearchPlaceholderLabel.Visible = SearchInput.Text == "" and not SearchInput:IsFocused()
+					end
+				end
+				TrackDropdownConnection(SearchInput:GetPropertyChangedSignal("Text"):Connect(function()
+					UpdateSearchTextSize()
+					UpdateSearchPlaceholder()
+				end))
+				TrackDropdownConnection(SearchInput.Focused:Connect(UpdateSearchPlaceholder))
+				TrackDropdownConnection(SearchInput.FocusLost:Connect(UpdateSearchPlaceholder))
+				TrackDropdownConnection(SearchInput:GetPropertyChangedSignal("PlaceholderText"):Connect(function()
+					if SearchInput.PlaceholderText ~= "" then SearchInput.PlaceholderText = "" end
+				end))
 				SearchInput:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateSearchTextSize)
 			end
 
