@@ -611,6 +611,9 @@ local SetChildren do
 			SetChildren(new, args[4])
 		end
 
+        -- The hub manages its own language; prevent Roblox from overriding it.
+        if new:IsA("GuiBase2d") then new.AutoLocalize = false end
+
 		if new:IsA("GuiObject") and OrderedParents[new.Parent] ~= nil then
 			OrderedParents[new.Parent] += 1
 			new.LayoutOrder = OrderedParents[new.Parent]
@@ -971,6 +974,7 @@ local GuiContainer = Hub:GetGuiContainer()
 local ScreenGui = Create("ScreenGui", GuiContainer, {
     Archivable = false,
     ResetOnSpawn = false,
+    AutoLocalize = false,
     ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 }, {
@@ -6387,7 +6391,7 @@ function Library:MakeWindow(Configs)
 			local CustomNoResultText = Configs.SearchConfig and Configs.SearchConfig.NoResultText
 			local SearchConfig = {
 				Enabled = DSearch,
-				Placeholder = CustomSearchPlaceholder or TranslateText("Search..."),
+				Placeholder = CustomSearchPlaceholder or TranslateText("Search"),
 				TextSize = Configs.SearchConfig and Configs.SearchConfig.TextSize or DropdownConfig.SearchConfig.TextSize,
 				MinTextSize = Configs.SearchConfig and Configs.SearchConfig.MinTextSize or DropdownConfig.SearchConfig.MinTextSize,
 				SearchFrameHeight = Configs.SearchConfig and Configs.SearchConfig.SearchFrameHeight or DropdownConfig.SearchConfig.SearchFrameHeight,
@@ -6485,6 +6489,7 @@ function Library:MakeWindow(Configs)
 				})
 
 				SearchInput = InsertTheme(Create("TextBox", SearchInputFrame, {
+                    AutoLocalize = false,
 					Size = UDim2.new(1, -2, 1, 0),
 					Position = UDim2.new(0, 0, 0, 0),
 					BackgroundTransparency = 1,
@@ -6517,7 +6522,7 @@ function Library:MakeWindow(Configs)
 
 				TrackConnection(TrackDropdownConnection(Connection.LanguageChanged:Connect(function()
 					if SearchInput and SearchInput.Parent and not CustomSearchPlaceholder then
-						SearchInput.PlaceholderText = TranslateText("Search...")
+						SearchInput.PlaceholderText = TranslateText("Search")
 					end
 					if SearchMessage and SearchMessage.Parent then
 						SearchMessage.Text = TranslateText(CustomNoResultText or "No options found")
