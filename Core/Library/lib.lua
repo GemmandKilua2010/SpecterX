@@ -1630,11 +1630,6 @@ local function InputSurface(Frame)
 	return Frame
 end
 
-local function PickerColors()
-	local Base = Theme["Color Hub 2"]
-	return ColorSequence.new(Base:Lerp(Color3.new(1, 1, 1), 0.015), Base:Lerp(Color3.new(0, 0, 0), 0.08))
-end
-
 local function ComponentSurface(Frame)
 	Frame.BackgroundColor3 = ComponentColor()
 	Frame.BackgroundTransparency = 0.18
@@ -2252,8 +2247,6 @@ function Library:SetTheme(NewTheme)
 	for _, Val in ipairs(Library.Instances) do
 		if Val.Type == "MainGradient" or Val.Type == "Gradient" then
 			Val.Instance.Color = ThemeBackgroundColors()
-		elseif Val.Type == "PickerGradient" then
-			Val.Instance.Color = PickerColors()
 		elseif Val.Type == "InputSurface" then
 			Val.Instance.BackgroundColor3 = InputSurfaceColor()
 		elseif Val.Type == "ComponentSurface" then
@@ -10130,9 +10123,9 @@ function Library:MakeWindow(Configs)
 			})
 			Make("Corner", PickerFrame, UDim.new(0, 10))
 			InsertTheme(Create("UIGradient", PickerFrame, {
-				Color = PickerColors(),
-				Rotation = 90
-			}), "PickerGradient")
+				Color = ThemeBackgroundColors(),
+				Rotation = GradientRotation
+			}), "Gradient")
 			Create("UISizeConstraint", PickerFrame, {
 				MinSize = Vector2.new(240, 305),
 				MaxSize = Vector2.new(360, 314)
