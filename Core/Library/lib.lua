@@ -9247,13 +9247,13 @@ function Library:MakeWindow(Configs)
 				BackgroundTransparency = 1,
 				Font = Enum.Font.Gotham,
 				TextSize = ElementDescriptionTextSize,
-				TextColor3 = Theme["Color Dark Text"],
+				TextColor3 = Color3.fromRGB(180, 180, 188),
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextYAlignment = Enum.TextYAlignment.Top,
 				Text = "",
 				Visible = false
-			}), "DarkText")
+			}), "DescriptionText")
 
 			local Editor = InputSurface(Create("Frame", Content, {
 				LayoutOrder = 2,
