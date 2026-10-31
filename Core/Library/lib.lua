@@ -24,7 +24,7 @@ assert(type(RootTheme) == "string" and type(SharedThemes[RootTheme]) == "table",
 local Library = {
 	Themes = SharedThemes,
 	Info = {
-		Version = "1.1.6"
+		Version = "1.1.7"
 	},
 	Save = {},
 	Settings = {},

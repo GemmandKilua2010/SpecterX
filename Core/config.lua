@@ -8,14 +8,10 @@ local Config = {
 
     --// Version and update checks
     Version = {
-        -- Semantic version shown in startup notices; bump Current for each public release.
-        Current = "1.1.6",
-        -- Compare the configured branch with the last saved commit SHA.
-        CheckForChanges = true,
-        -- Avoid repeat GitHub requests during quick re-executions (seconds).
-        CheckInterval = 300,
-        -- Saved beneath the SpecterX workspace folder.
-        StateFile = "Version/last-seen.json"
+        -- Latest released version. Bump Current for each public release.
+        Current = "1.1.7",
+        -- Warn only when the loaded library is older than Current.
+        WarnWhenOutdated = true
     },
 
     --// Startup dialog
