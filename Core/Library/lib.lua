@@ -7019,17 +7019,15 @@ function Library:MakeWindow(Configs)
 
 					for _, Value in pairs(Options) do
 						local OptionButton = Value.Holder or Value.nodes[1]
-						local OptionName = TranslateText(Value.Name)
+						local OptionName = Value.SearchName
 
 						if type(OnSearch) == "function" then
 							local Success, Result = pcall(OnSearch, SearchText, Value.Value)
 
 							if Success and Result ~= nil then
-								OptionName = tostring(Result)
+								OptionName = tostring(Result):lower()
 							end
 						end
-
-						OptionName = OptionName:lower()
 
 						local Match
 
@@ -7039,7 +7037,7 @@ function Library:MakeWindow(Configs)
 							Match = SearchText == "" or OptionName:find(SearchText, 1, true) ~= nil
 						end
 
-						OptionButton.Visible = Match
+						if OptionButton.Visible ~= Match then OptionButton.Visible = Match end
 
 						if Match then
 							Found = true
@@ -7154,6 +7152,7 @@ function Library:MakeWindow(Configs)
 						index = Index,
 						Value = Value,
 						Name = Name,
+						SearchName = TranslateText(Name):lower(),
 						Stats = false,
 						SortIndex = NextOptionOrder,
 						Favorite = FavoriteEnabled and FavoriteEntries[Name] == true or false
@@ -7204,6 +7203,7 @@ function Library:MakeWindow(Configs)
 					}), "Text")
 
 					local Entry = Options[Name]
+					Entry.Connections = FavoriteEnabled and {} or nil
 					Entry.Holder = FavoriteEnabled and Holder or nil
 					Entry.nodes = {
 						OptionButton,
@@ -7246,16 +7246,16 @@ function Library:MakeWindow(Configs)
 							Entry.StarTween:Play()
 						end
 
-						TrackDropdownConnection(StarButton.MouseEnter:Connect(function()
+						Entry.Connections[#Entry.Connections + 1] = StarButton.MouseEnter:Connect(function()
 							Entry.StarHovered = true
 							TweenStarScale(1.18, 0.16, Enum.EasingStyle.Quad)
 							UpdateFavoriteVisual(Entry, true)
-						end))
-						TrackDropdownConnection(StarButton.MouseLeave:Connect(function()
+						end)
+						Entry.Connections[#Entry.Connections + 1] = StarButton.MouseLeave:Connect(function()
 							Entry.StarHovered = false
 							TweenStarScale(1, 0.16, Enum.EasingStyle.Quad)
 							UpdateFavoriteVisual(Entry, true)
-						end))
+						end)
 
 						UpdateFavoriteVisual(Entry)
 						StarButton.Activated:Connect(function()
@@ -7286,7 +7286,7 @@ function Library:MakeWindow(Configs)
 					end
 				end
 
-				RemoveOption = function(Index, Value)
+				RemoveOption = function(Index, Value, SkipRefresh)
 					local Name = GetOptionName(Value, Index)
 
 					if Options[Name] then
@@ -7296,6 +7296,9 @@ function Library:MakeWindow(Configs)
 							Selected = nil
 						end
 
+						if Options[Name].Connections then
+							for _, ConnectionObject in ipairs(Options[Name].Connections) do ConnectionObject:Disconnect() end
+						end
 						if Options[Name].MoveTween then Options[Name].MoveTween:Cancel() end
 						if Options[Name].StarTween then Options[Name].StarTween:Cancel() end
 						if Options[Name].ColorTween then Options[Name].ColorTween:Cancel() end
@@ -7304,10 +7307,9 @@ function Library:MakeWindow(Configs)
 						Options[Name] = nil
 					end
 
-					UpdateSelected()
-
-					if SearchConfig.Enabled then
-						UpdateSearch()
+					if not SkipRefresh then
+						UpdateSelected()
+						if SearchConfig.Enabled then UpdateSearch() end
 					end
 				end
 
@@ -7330,7 +7332,7 @@ function Library:MakeWindow(Configs)
 							end
 						end
 						for _, Entry in ipairs(RemoveList) do
-							RemoveOption(Entry[1], Entry[2])
+							RemoveOption(Entry[1], Entry[2], true)
 							Changed = true
 						end
 					end
@@ -7349,8 +7351,9 @@ function Library:MakeWindow(Configs)
 				end
 
 				for Index, Value in pairs(DOptions) do
-					AddOption(Index, Value)
+					AddOption(Index, Value, true)
 				end
+				if SearchConfig.Enabled then UpdateSearch() end
 
 				CallbackSelected()
 				UpdateSelected()
@@ -7358,6 +7361,7 @@ function Library:MakeWindow(Configs)
 				TrackDropdownConnection(SearchInput:GetPropertyChangedSignal("Text"):Connect(UpdateSearch))
 
 				local Dropdown = {}
+				local DropdownDestroyed = false
 
 				if FavoriteEnabled then
 					TrackDropdownConnection(Connection.ThemeChanged:Connect(function()
@@ -7369,6 +7373,7 @@ function Library:MakeWindow(Configs)
 
 				TrackDropdownConnection(Connection.LanguageChanged:Connect(function()
 					for _, Option in pairs(Options) do
+						Option.SearchName = TranslateText(Option.Name):lower()
 						if Option.nodes and Option.nodes[3] and Option.nodes[3].Parent then
 							Option.nodes[3].Text = TranslateText(Option.Name)
 						end
@@ -7400,11 +7405,14 @@ function Library:MakeWindow(Configs)
 				end
 
 				function Dropdown:Destroy()
+					if DropdownDestroyed then return end
+					DropdownDestroyed = true
 					if FavoriteEnabled then
 						for _, Entry in pairs(Options) do
 							if Entry.MoveTween then Entry.MoveTween:Cancel() end
 							if Entry.StarTween then Entry.StarTween:Cancel() end
 							if Entry.ColorTween then Entry.ColorTween:Cancel() end
+							for _, ConnectionObject in ipairs(Entry.Connections) do ConnectionObject:Disconnect() end
 						end
 					end
 					DropdownSearchListeners[self] = nil
@@ -7421,6 +7429,7 @@ function Library:MakeWindow(Configs)
 
 					NoClickFrame:Destroy()
 					Button:Destroy()
+					table.clear(Options)
 				end
 
 				function Dropdown:Callback(...)
@@ -7437,15 +7446,15 @@ function Library:MakeWindow(Configs)
 						local Value = NewOptions[1]
 
 						if Value.Player then
-							AddOption(Value.Name, Value)
+							AddOption(Value.Name, Value, true)
 						else
 							for Index, Name in pairs(Value) do
-								AddOption(Index, Name)
+								AddOption(Index, Name, true)
 							end
 						end
 					else
 						for _, Name in pairs(NewOptions) do
-							AddOption(Name, Name)
+							AddOption(Name, Name, true)
 						end
 					end
 
@@ -7497,6 +7506,7 @@ function Library:MakeWindow(Configs)
 					end
 				end
 
+				Button.Destroying:Connect(function() Dropdown:Destroy() end)
 				Button.Activated:Connect(Minimize)
 				NoClickFrame.MouseButton1Down:Connect(Disable)
 				NoClickFrame.MouseButton1Click:Connect(Disable)
