@@ -9,7 +9,7 @@ local Config = {
     --// Version and update checks
     Version = {
         -- Latest released version. Bump Current for each public release.
-        Current = "1.1.7",
+        Current = "1.1.8",
         -- Warn only when the loaded library is older than Current.
         WarnWhenOutdated = true
     },
@@ -49,6 +49,17 @@ local Config = {
             BR = "BR",
             US = "US",
             ES = "ES"
+        },
+        Aliases = {
+            pt = "BR",
+            ["pt-br"] = "BR",
+            ["pt-pt"] = "BR",
+            en = "US",
+            ["en-us"] = "US",
+            ["en-gb"] = "US",
+            es = "ES",
+            ["es-es"] = "ES",
+            ["es-mx"] = "ES"
         },
         Names = {
             BR = "Português",

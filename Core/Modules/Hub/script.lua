@@ -440,24 +440,49 @@ local function ResolveLanguage(Config, Value)
     end
 
     local Names = type(Config.Names) == "table" and Config.Names or {}
-    local Target = Lower(tostring(Value or ""))
+    local function Normalize(Item)
+        return Lower(tostring(Item or "")):gsub("^%s+", ""):gsub("%s+$", ""):gsub("_", "-")
+    end
+    local Target = Normalize(Value)
+    local function FindCode(Candidate)
+        local Normalized = Normalize(Candidate)
+        for Code, Name in pairs(Names) do
+            if Normalize(Code) == Normalized or Normalize(Name) == Normalized then
+                return tostring(Code):upper()
+            end
+        end
 
-    for Code, Name in pairs(Names) do
-        if Lower(tostring(Code)) == Target or Lower(tostring(Name)) == Target then
-            return tostring(Code):upper()
+        local Countries = type(Config.Countries) == "table" and Config.Countries or {}
+        for Country, Code in pairs(Countries) do
+            if Normalize(Country) == Normalized or Normalize(Code) == Normalized then
+                return tostring(Code):upper()
+            end
+        end
+
+        local Default = tostring(Config.Default or "US")
+        if Normalize(Default) == Normalized then return Default:upper() end
+        return nil
+    end
+
+    local Direct = FindCode(Target)
+    if Direct then return Direct end
+
+    local Aliases = type(Config.Aliases) == "table" and Config.Aliases or {}
+    for Alias, Code in pairs(Aliases) do
+        if Normalize(Alias) == Target then
+            local Resolved = FindCode(Code)
+            if Resolved then return Resolved end
         end
     end
 
-    local Countries = type(Config.Countries) == "table" and Config.Countries or {}
-    for _, Code in pairs(Countries) do
-        if Lower(tostring(Code)) == Target then
-            return tostring(Code):upper()
+    -- If a caller provides a bare language tag such as "pt" or a regional
+    -- tag such as "pt-BR", use the configured alias for that language.
+    local Base = Target:match("^([%a]+)")
+    for Alias, Code in pairs(Aliases) do
+        if Normalize(Alias) == Base then
+            local Resolved = FindCode(Code)
+            if Resolved then return Resolved end
         end
-    end
-
-    local Default = tostring(Config.Default or "US"):upper()
-    if Lower(Default) == Target then
-        return Default
     end
 
     return nil
@@ -466,6 +491,12 @@ end
 function Main:GetLanguage()
     local Runtime = GetRuntime(self)
     if type(Runtime.Language) == "string" then
+        local LanguageConfig = type(Configs.language) == "table" and Configs.language or {}
+        local Resolved = ResolveLanguage(LanguageConfig, Runtime.Language)
+        if Resolved then
+            Runtime.Language = Resolved
+            return Resolved
+        end
         return Runtime.Language
     end
 
@@ -857,8 +888,13 @@ function Main:GetPlayerRegion(Plr)
     return Region
 end
 
-function Main:Translate(Text, Language)
-    return Translation:Translate(Text, Language or self:GetLanguage())
+function Main:Translate(Text, Language, Values)
+    if type(Language) == "table" and Values == nil then
+        Values = Language
+        Language = nil
+    end
+    local Result = Translation:Translate(Text, Language or self:GetLanguage())
+    return type(Values) == "table" and self:Format(Result, Values) or Result
 end
 
 function Main:RegisterTranslations(Dictionaries)

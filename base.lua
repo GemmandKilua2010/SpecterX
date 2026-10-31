@@ -51,9 +51,6 @@ if Hub:FileExists(SettingsPath) then
         local Success, Saved = pcall(HttpService.JSONDecode, HttpService, Source)
         if Success and type(Saved) == "table" then
             SavedSettings = Saved
-            if type(Saved.Language) == "string" then
-                Hub:SetLanguage(Saved.Language)
-            end
         end
     end
 end
@@ -153,6 +150,11 @@ end
 
 local Addons = Hub:LoadRequire("Core/Modules/Hub/Addon/script.lua", nil, nil, Hub, ConfigData)
 Addons = type(Addons) == "table" and Addons or {}
+
+-- Load addon locale codes before resolving the saved language preference.
+if type(SavedSettings) == "table" and type(SavedSettings.Language) == "string" then
+    Hub:SetLanguage(SavedSettings.Language)
+end
 
 local ThemeReady, ThemeError = Hub:SetTheme(ConfigData.Theme)
 assert(ThemeReady, ThemeError or "Config.Theme must name a configured theme.")

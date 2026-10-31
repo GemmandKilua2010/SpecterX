@@ -27,9 +27,13 @@ return {}
 PT-BR: Troque "return {}" pelo exemplo para mudar traduções (BR = português).
 EN: Replace "return {}" with the example to change translations (BR = Portuguese).
 ES: Sustituye "return {}" por el ejemplo para cambiar traducciones (BR = portugués).
+Você pode adicionar Aliases para aceitar tags como "pt-BR" ou "en-US".
+You can add Aliases to accept locale tags such as "pt-BR" or "en-US".
+Puedes agregar Aliases para aceptar etiquetas como "pt-BR" o "en-US".
 
 Exemplo / Example / Ejemplo:
 return {
+    Aliases = { ["pt-BR"] = "BR", pt = "BR" },
     BR = { Name = "Português (Brasil)", Translations = { ["Settings"] = "Ajustes" } }
 }
 ]]
@@ -179,11 +183,19 @@ if LanguageData then
     Config.Language = type(Config.Language) == "table" and Config.Language or {}
     local Names = type(Config.Language.Names) == "table" and Config.Language.Names or {}
     Config.Language.Names = Names
+    local LanguageAliases = type(Config.Language.Aliases) == "table" and Config.Language.Aliases or {}
+    Config.Language.Aliases = LanguageAliases
 
     local Dictionaries = {}
+    local Aliases = type(LanguageData.Aliases) == "table" and LanguageData.Aliases or {}
+    for Alias, Code in pairs(Aliases) do
+        if type(Alias) == "string" and type(Code) == "string" and Code:match("^[%w_%-]+$") then
+            LanguageAliases[Alias] = Code:upper()
+        end
+    end
 
     for Code, Definition in pairs(LanguageData) do
-        if type(Code) == "string" and Code:match("^[%w_%-]+$") and type(Definition) == "table" then
+        if Code ~= "Aliases" and type(Code) == "string" and Code:match("^[%w_%-]+$") and type(Definition) == "table" then
             local Language = Code:upper()
             local Translations = Definition.Translations or Definition.Dictionary or Definition
             if type(Translations) == "table" then

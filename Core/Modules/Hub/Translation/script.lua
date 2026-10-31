@@ -42,8 +42,33 @@ Game = type(Game) == "string" and Game ~= "Universal" and Game or nil
 local Translation = {}
 local Dictionaries = {}
 local Aliases = {}
+local AnyLanguageAliases = {}
 local Templates = {}
 local TemplateLookup = {}
+local BuiltInLanguageAliases = {pt = "br", en = "us", es = "es"}
+
+local function NormalizeLanguageTag(Value)
+    return Lower(tostring(Value or "")):gsub("^%s+", ""):gsub("%s+$", ""):gsub("_", "-")
+end
+
+local function NormalizeText(Value)
+    return Lower(tostring(Value or "")):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function ResolveDictionaryKey(Language)
+    local Key = NormalizeLanguageTag(Language)
+    if Dictionaries[Key] then return Key end
+
+    local Base = Key:match("^([^-]+)")
+    if Base and Dictionaries[Base] then return Base end
+
+    local BaseAlias = Base and BuiltInLanguageAliases[Base]
+    if BaseAlias and Dictionaries[BaseAlias] then return BaseAlias end
+
+    local Region = Key:match("%-([^-]+)$")
+    if Region and Dictionaries[Region] then return Region end
+    return nil
+end
 
 local function EscapePattern(Text)
     return (Text:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1"))
@@ -76,22 +101,39 @@ local function BuildTemplatePattern(Text)
     return table.concat(Parts), Names
 end
 
-local function AddTemplate(Canonical, Variant)
+local function AddTemplate(LanguageKey, Canonical, Variant)
     local Pattern, Names = BuildTemplatePattern(Variant)
     if not Pattern then
         return
     end
 
-    local Signature = Canonical .. "\0" .. Variant
-    if TemplateLookup[Signature] then
+    local Signature = NormalizeText(Canonical) .. "\0" .. Variant
+    local LanguageLookup = TemplateLookup[LanguageKey]
+    if not LanguageLookup then
+        LanguageLookup = {}
+        TemplateLookup[LanguageKey] = LanguageLookup
+    end
+    if LanguageLookup[Signature] then
         return
     end
 
-    TemplateLookup[Signature] = true
-    Templates[#Templates + 1] = {
-        Canonical = Canonical,
+    LanguageLookup[Signature] = true
+    local LanguageTemplates = Templates[LanguageKey]
+    if not LanguageTemplates then
+        LanguageTemplates = {}
+        Templates[LanguageKey] = LanguageTemplates
+    end
+    local PlaceholderCount = #Names
+    local Candidates = LanguageTemplates[PlaceholderCount]
+    if not Candidates then
+        Candidates = {}
+        LanguageTemplates[PlaceholderCount] = Candidates
+    end
+    Candidates[#Candidates + 1] = {
+        Canonical = NormalizeText(Canonical),
         Pattern = Pattern,
-        Names = Names
+        Names = Names,
+        Specificity = #Variant - PlaceholderCount
     }
 end
 
@@ -102,7 +144,7 @@ local function AddDictionary(Loaded)
 
     for Language, Entries in pairs(Loaded) do
         if type(Language) == "string" and type(Entries) == "table" then
-            local LanguageKey = Lower(Language)
+            local LanguageKey = NormalizeLanguageTag(Language)
             local Dictionary = Dictionaries[LanguageKey]
 
             if not Dictionary then
@@ -110,18 +152,51 @@ local function AddDictionary(Loaded)
                 Dictionaries[LanguageKey] = Dictionary
             end
 
+            local LanguageAliases = Aliases[LanguageKey]
+            if not LanguageAliases then
+                LanguageAliases = {}
+                Aliases[LanguageKey] = LanguageAliases
+            end
+
             for Key, Value in pairs(Entries) do
                 if type(Key) == "string" and type(Value) == "string" then
-                    local Canonical = Lower(Key)
+                    local Canonical = NormalizeText(Key)
+                    if Canonical == "" then continue end
                     Dictionary[Canonical] = Value
-                    Aliases[Canonical] = Canonical
-                    local Alias = Lower(Value)
-                    if Aliases[Alias] == nil then
-                        Aliases[Alias] = Canonical
+                    LanguageAliases[Canonical] = Canonical
+                    local ExistingCanonical = AnyLanguageAliases[Canonical]
+                    if ExistingCanonical == nil then
+                        AnyLanguageAliases[Canonical] = Canonical
+                    elseif ExistingCanonical ~= Canonical then
+                        AnyLanguageAliases[Canonical] = false
                     end
-                    AddTemplate(Canonical, Key)
-                    AddTemplate(Canonical, Value)
+                    local Alias = NormalizeText(Value)
+                    if Alias ~= "" then
+                        local Existing = LanguageAliases[Alias]
+                        if Existing == nil then
+                            LanguageAliases[Alias] = Canonical
+                        elseif Existing ~= Canonical then
+                            -- A translated phrase that maps to multiple source
+                            -- keys is ambiguous; leave it untouched.
+                            LanguageAliases[Alias] = false
+                        end
+
+                        local ExistingAnyLanguage = AnyLanguageAliases[Alias]
+                        if ExistingAnyLanguage == nil then
+                            AnyLanguageAliases[Alias] = Canonical
+                        elseif ExistingAnyLanguage ~= Canonical then
+                            AnyLanguageAliases[Alias] = false
+                        end
+                    end
+                    AddTemplate(LanguageKey, Canonical, Key)
+                    AddTemplate(LanguageKey, Canonical, Value)
                 end
+            end
+
+            for _, Candidates in pairs(Templates[LanguageKey] or {}) do
+                table.sort(Candidates, function(Left, Right)
+                    return Left.Specificity > Right.Specificity
+                end)
             end
         end
     end
@@ -155,43 +230,75 @@ function Translation:Translate(Text, Language)
         return Text
     end
 
-    local Dictionary = Dictionaries[Lower(Language)]
+    local Leading, Content, Trailing = Text:match("^(%s*)(.-)(%s*)$")
+    Content = Content or Text
+    local LanguageKey = ResolveDictionaryKey(Language)
+    local Dictionary = LanguageKey and Dictionaries[LanguageKey]
     if not Dictionary then
         return Text
     end
 
-    local Lookup = Lower(Text)
-    -- Prefer an explicit key in the requested language. Shared aliases can
-    -- point at a different canonical entry when dictionaries overlap.
+    local Lookup = NormalizeText(Content)
     local Direct = Dictionary[Lookup]
-    if Direct ~= nil then
-        return Direct
+    if Direct == nil then
+        local AliasesForLanguage = Aliases[LanguageKey]
+        local Canonical = AliasesForLanguage and AliasesForLanguage[Lookup]
+        Direct = Canonical and Dictionary[Canonical] or nil
+    end
+    if Direct == nil then
+        local Canonical = AnyLanguageAliases[Lookup]
+        Direct = Canonical and Dictionary[Canonical] or nil
     end
 
-    local Canonical = Aliases[Lookup] or Lookup
-    Direct = Dictionary[Canonical]
-    if Direct ~= nil then
-        return Direct
-    end
-
-    for _, Template in ipairs(Templates) do
-        local Captures = {Text:match(Template.Pattern)}
-
-        if #Captures == #Template.Names and #Captures > 0 then
-            local Target = Dictionary[Template.Canonical]
-
-            if Target then
-                local Values = {}
-
-                for Index, Name in ipairs(Template.Names) do
-                    Values[Name] = Captures[Index]
-                end
-
-                return (Target:gsub("{([%w_]+)}", function(Name)
-                    return Values[Name] or "{" .. Name .. "}"
-                end))
+    -- Incomplete addon or game dictionaries fall back to the English source
+    -- dictionary before returning the caller's original text.
+    if Direct == nil and LanguageKey ~= "us" then
+        local English = Dictionaries.us
+        if English then
+            Direct = English[Lookup]
+            if Direct == nil then
+                local EnglishAlias = Aliases.us and Aliases.us[Lookup]
+                Direct = EnglishAlias and English[EnglishAlias] or nil
+            end
+            if Direct == nil then
+                local EnglishCanonical = AnyLanguageAliases[Lookup]
+                Direct = EnglishCanonical and English[EnglishCanonical] or nil
             end
         end
+    end
+
+    if Direct ~= nil then
+        return (Leading or "") .. Direct .. (Trailing or "")
+    end
+
+    local _, PlaceholderCount = Content:gsub("{[%w_]+}", "")
+    local Candidates = Templates[LanguageKey] and Templates[LanguageKey][PlaceholderCount]
+    local function MatchTemplate(TemplateList, TargetDictionary)
+        for _, Template in ipairs(TemplateList or {}) do
+            local Captures = {Content:match(Template.Pattern)}
+            if #Captures == #Template.Names and #Captures > 0 then
+                local Target = TargetDictionary[Template.Canonical]
+                if Target then
+                    local Values = {}
+                    for Index, Name in ipairs(Template.Names) do
+                        Values[Name] = Captures[Index]
+                    end
+                    local Translated = Target:gsub("{([%w_]+)}", function(Name)
+                        local Value = Values[Name]
+                        return Value == nil and "{" .. Name .. "}" or tostring(Value)
+                    end)
+                    return (Leading or "") .. Translated .. (Trailing or "")
+                end
+            end
+        end
+    end
+
+    local Matched = MatchTemplate(Candidates, Dictionary)
+    if Matched then return Matched end
+
+    if LanguageKey ~= "us" and Dictionaries.us then
+        Matched = MatchTemplate(Templates.us and Templates.us[PlaceholderCount], Dictionaries.us)
+        if Matched then return Matched end
     end
 
     return Text
