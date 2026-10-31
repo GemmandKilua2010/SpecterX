@@ -24,7 +24,7 @@ assert(type(RootTheme) == "string" and type(SharedThemes[RootTheme]) == "table",
 local Library = {
 	Themes = SharedThemes,
 	Info = {
-		Version = "1.3.2"
+		Version = "1.3.3"
 	},
 	Save = {},
 	Settings = {},
@@ -157,10 +157,32 @@ local function ResolveGuiImage(Value)
     local Cached = GuiImageCache[Id]
     if Cached then return Cached end
 
+    return "rbxassetid://" .. Id
+end
+
+local function ResolveBackgroundImage(Value)
+    local Id = NormalizeAssetId(Value)
+    if Id == "" then return "" end
+    if not Id then return type(Value) == "string" and Value or "" end
+
+    local Cached = GuiImageCache[Id]
+    if Cached then return Cached end
+
     local Content = "rbxassetid://" .. Id
-    -- Keep image resolution local and immediate. GetObjects can yield while an
-    -- asset is fetched, which stalls the caller when a window builds its UI.
-    GuiImageCache[Id] = Content
+    local Success, Objects = pcall(game.GetObjects, game, Content)
+    if Success and type(Objects) == "table" then
+        for _, Object in ipairs(Objects) do
+            if typeof(Object) == "Instance" then
+                local Decal = Object:IsA("Decal") and Object or Object:FindFirstChildWhichIsA("Decal", true)
+                if Decal and Decal.Texture ~= "" then
+                    Content = Decal.Texture
+                end
+                pcall(Object.Destroy, Object)
+            end
+        end
+        GuiImageCache[Id] = Content
+    end
+
     return Content
 end
 
@@ -2434,7 +2456,7 @@ function Library._BackgroundSettings.Resolve()
     local Generation, Id = State.Generation, Library:GetBackground()
     if Id == "" or GuiImageCache[Id] then return end
     task.spawn(function()
-        ResolveGuiImage(Id)
+        ResolveBackgroundImage(Id)
         if State.Generation == Generation and Library:GetBackground() == Id then State.Apply(true) end
     end)
 end
