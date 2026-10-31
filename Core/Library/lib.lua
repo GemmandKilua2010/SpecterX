@@ -7560,6 +7560,9 @@ function Library:MakeWindow(Configs)
 			local PlayerConnections = {}
 			local SelectedPlayers = {}
 			local PlayerDropdown
+			local PlayersDestroyed = false
+			local ThumbnailQueue = {}
+			local ThumbnailHead, ThumbnailTail, ThumbnailWorkers = 1, 0, 0
 
 			local function IsWhitelisted(Player)
 				if #Whitelist == 0 then
@@ -7642,7 +7645,7 @@ function Library:MakeWindow(Configs)
 			end
 
 			local function CreatePlayerDataIfValid(Player)
-				if not Player or not Player.Parent then
+				if PlayersDestroyed or not Player or not Player.Parent then
 					return
 				end
 
@@ -7689,6 +7692,41 @@ function Library:MakeWindow(Configs)
 
 			local ThumbnailNodes = setmetatable({}, {__mode = "k"})
 
+			local function QueueThumbnail(Value, Thumbnail)
+				ThumbnailTail += 1
+				ThumbnailQueue[ThumbnailTail] = {Value, Thumbnail}
+				if ThumbnailWorkers >= 4 then return end
+				ThumbnailWorkers += 1
+				task.spawn(function()
+					while not PlayersDestroyed and ThumbnailHead <= ThumbnailTail do
+						local Request = ThumbnailQueue[ThumbnailHead]
+						ThumbnailQueue[ThumbnailHead] = nil
+						ThumbnailHead += 1
+						local Data, Node = Request[1], Request[2]
+						if PlayerOptions[Data.Player] == Data and Node.Parent then
+							local Success, Content, IsReady = pcall(function()
+								return Players:GetUserThumbnailAsync(
+									Data.UserId,
+									Enum.ThumbnailType.HeadShot,
+									Enum.ThumbnailSize.Size100x100
+								)
+							end)
+							if Success and Content and not PlayersDestroyed
+								and PlayerOptions[Data.Player] == Data and Node.Parent then
+								if IsReady then Data.Thumbnail = Content end
+								Node.Image = Content
+								Node.ImageTransparency = 0
+							end
+						end
+					end
+					ThumbnailWorkers -= 1
+					if ThumbnailWorkers == 0 then
+						table.clear(ThumbnailQueue)
+						ThumbnailHead, ThumbnailTail = 1, 0
+					end
+				end)
+			end
+
 			PlayerDropdown = Tab:AddDropdown({
 				Name = PName,
 				Desc = PDesc,
@@ -7729,21 +7767,7 @@ function Library:MakeWindow(Configs)
 					NameLabel.Size = UDim2.new(1, -30, 1, 0)
 
 					if Value.Thumbnail and Value.Thumbnail ~= "" then return end
-					task.spawn(function()
-						local Success, Content = pcall(function()
-							return Players:GetUserThumbnailAsync(
-								Value.UserId,
-								Enum.ThumbnailType.HeadShot,
-								Enum.ThumbnailSize.Size100x100
-							)
-						end)
-
-						if Success and Content and Thumbnail.Parent then
-							Value.Thumbnail = Content
-							Thumbnail.Image = Content
-							Thumbnail.ImageTransparency = 0
-						end
-					end)
+					QueueThumbnail(Value, Thumbnail)
 				end,
 
 				OnSearch = function(SearchText, Value)
@@ -7908,7 +7932,11 @@ function Library:MakeWindow(Configs)
 				return PlayerDropdown:GetLockedMessage()
 			end
 
-			function PlayersElement:Destroy()
+			local function CleanupPlayers()
+				if PlayersDestroyed then return end
+				PlayersDestroyed = true
+				table.clear(ThumbnailQueue)
+				table.clear(ThumbnailNodes)
 				for _, Connection in pairs(PlayerConnections) do
 					if Connection then
 						Connection:Disconnect()
@@ -7919,7 +7947,16 @@ function Library:MakeWindow(Configs)
 				table.clear(PlayerConnections)
 				table.clear(PlayerOptions)
 				table.clear(SelectedPlayers)
+			end
 
+			local DestroyDropdown = PlayerDropdown.Destroy
+			function PlayerDropdown:Destroy()
+				CleanupPlayers()
+				DestroyDropdown(self)
+			end
+
+			function PlayersElement:Destroy()
+				CleanupPlayers()
 				if PlayerDropdown then
 					PlayerDropdown:Destroy()
 					PlayerDropdown = nil
