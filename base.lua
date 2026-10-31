@@ -36,6 +36,10 @@ if Genv.State.Loading then
     return Genv.State.Base
 end
 
+-- Create only the games namespace during startup; individual game folders are
+-- created later when data is first saved for that game.
+Hub:CreateFolder("Games")
+
 --// Preferences
 
 local LibraryConfig = assert(type(ConfigData.Library) == "table" and ConfigData.Library, "Config.Library is required.")
