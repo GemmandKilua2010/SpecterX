@@ -16,6 +16,7 @@ local Translation = {
         ["SpecterX is outdated. Running version: {RunningVersion}; latest version: {LatestVersion}. Execute the hub again to update."] = "Seu SpecterX está desatualizado. Versão em uso: {RunningVersion}; versão atual: {LatestVersion}. Execute novamente o hub para atualizar.",
         ["You are not on the whitelist."] = "Você não está na lista de acesso do SpecterX.",
         ["Whitelist verification is unavailable. Please try again later."] = "Não foi possível verificar seu acesso ao SpecterX. Tente novamente mais tarde.",
+        ["Spam detected."] = "Spam detectado.",
         ["Hub keybind"] = "Atalho do Hub",
         ["Keybinds"] = "Atalhos",
         ["No results"] = "Nenhum resultado",
@@ -183,6 +184,7 @@ local Translation = {
         ["SpecterX is outdated. Running version: {RunningVersion}; latest version: {LatestVersion}. Execute the hub again to update."] = "SpecterX is outdated. Running version: {RunningVersion}; latest version: {LatestVersion}. Execute the hub again to update.",
         ["You are not on the whitelist."] = "You are not on the SpecterX whitelist.",
         ["Whitelist verification is unavailable. Please try again later."] = "SpecterX could not verify your access. Please try again later.",
+        ["Spam detected."] = "Spam detected.",
         ["Hub keybind"] = "Hub keybind",
         ["Keybinds"] = "Keybinds",
         ["No results"] = "No results",
@@ -350,6 +352,7 @@ local Translation = {
         ["SpecterX is outdated. Running version: {RunningVersion}; latest version: {LatestVersion}. Execute the hub again to update."] = "SpecterX está desactualizado. Versión en uso: {RunningVersion}; versión actual: {LatestVersion}. Vuelve a ejecutar el hub para actualizarlo.",
         ["You are not on the whitelist."] = "No estás en la lista de acceso de SpecterX.",
         ["Whitelist verification is unavailable. Please try again later."] = "No se pudo verificar tu acceso a SpecterX. Inténtalo de nuevo más tarde.",
+        ["Spam detected."] = "Spam detectado.",
         ["Hub keybind"] = "Atajo del Hub",
         ["Keybinds"] = "Atajos",
         ["No results"] = "Sin resultados",
@@ -502,3 +505,4 @@ local Translation = {
 }
 
 return Translation
+
