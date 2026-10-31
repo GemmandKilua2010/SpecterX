@@ -100,6 +100,8 @@ function Loader:_Complete()
 
     self._completed = true
     self._running = false
+    self._screenGui, self._window = nil, nil
+    self._blur, self._music, self._config = nil, nil, nil
 
     local State = self._state
     if State then
@@ -135,6 +137,7 @@ function Loader:_TryClose()
         local Cfg = self._config
 
         if not ScreenGui or not ScreenGui.Parent then
+            CleanupState(State)
             self:_Complete()
             return
         end
@@ -172,7 +175,7 @@ function Loader:_TryClose()
         for _, Obj in ipairs(Window:GetDescendants()) do
             local Prop = FADE_PROPS[Obj.ClassName]
 
-            if Prop then
+            if Prop and Obj[Prop] ~= 1 then
                 TweenService:Create(Obj, FadeInfo, {[Prop] = 1}):Play()
             end
         end
@@ -535,6 +538,7 @@ function Loader:Destroy()
     self._running = false
     CleanupState(self._state)
     self:_Complete()
+    self._state = nil
 end
 
 --// Return

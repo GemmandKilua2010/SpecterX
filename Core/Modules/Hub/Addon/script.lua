@@ -97,11 +97,8 @@ local function Load(Name)
             return nil
         end
 
-        Source, ReadError = Hub:ReadFile(Path)
-        if type(Source) ~= "string" then
-            Warn("Could not read " .. Path .. ": " .. tostring(ReadError))
-            return nil
-        end
+        -- CreateFile writes this exact source; avoid reading it back immediately.
+        Source = Templates[Name]
     end
 
     local Chunk, CompileError = Hub:Compile(Source, "@" .. Path)
