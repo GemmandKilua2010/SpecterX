@@ -587,10 +587,10 @@ local SetChildren do
 		return Instance
 	end
 	
-	SetProps = function(Instance, Props)
+	SetProps = function(Instance, Props, SkipParent)
 		if Props then
 			for Prop, Value in pairs(Props) do
-				if Prop ~= "Name" then
+				if Prop ~= "Name" and (not SkipParent or Prop ~= "Parent") then
 					Instance[Prop] = Value
 				end
 			end
@@ -602,22 +602,26 @@ local SetChildren do
 		local args = {...}
 		if type(args) ~= "table" then return end
 		local new = Hub:CreateInstance(args[1])
+		local Parent
 		if type(args[2]) == "table" then
-			SetProps(new, args[2])
+			Parent = args[2].Parent
+			SetProps(new, args[2], true)
 			SetChildren(new, args[3])
 		elseif typeof(args[2]) == "Instance" then
-			new.Parent = args[2]
-			SetProps(new, args[3])
+			Parent = type(args[3]) == "table" and args[3].Parent or args[2]
+			SetProps(new, args[3], true)
 			SetChildren(new, args[4])
 		end
 
         -- The hub manages its own language; prevent Roblox from overriding it.
         if new:IsA("GuiBase2d") then new.AutoLocalize = false end
 
-		if new:IsA("GuiObject") and OrderedParents[new.Parent] ~= nil then
-			OrderedParents[new.Parent] += 1
-			new.LayoutOrder = OrderedParents[new.Parent]
+		if new:IsA("GuiObject") and OrderedParents[Parent] ~= nil then
+			OrderedParents[Parent] += 1
+			new.LayoutOrder = OrderedParents[Parent]
 		end
+		-- Publish the configured hierarchy only after its initial properties are ready.
+		new.Parent = Parent
 		return new
 	end
 	
@@ -716,7 +720,7 @@ local SetChildren do
     else
         ReadDropdownFavorites(LegacyDropdownFavorites)
     end
-    if not SavedFavorites or SavedFavorites.Version ~= 2 then
+    if not SavedFavorites or type(SavedFavorites.Hubs) ~= "table" then
         SaveDropdownFavorites()
     end
     EnsureSoundPreset(Library.Save.SoundId)
@@ -851,7 +855,9 @@ local Connections, Connection = {}, Library.Connection do
 			return
 		end
 
-		for _, Func in ipairs(Callbacks) do
+		-- A callback may disconnect itself while task.spawn resumes it immediately.
+		-- Iterate a snapshot so removing it cannot skip the next listener.
+		for _, Func in ipairs(table.clone(Callbacks)) do
 			task.spawn(Func, ...)
 		end
 	end
@@ -876,18 +882,26 @@ local GetFlag, SetFlag, CheckFlag do
 		end
 	end
 	
-	local db
+	local db, PendingFile
+	local function FlushFlags()
+		local ScriptFile = PendingFile
+		if not ScriptFile then return end
+		PendingFile = nil
+		local Saved, Encoded = JsonFiles.Write(ScriptFile, Flags)
+		if Saved and not Library._Destroyed then
+			Connection:FireConnection("FileSaved", "Script-Flags", ScriptFile, Encoded)
+		end
+	end
+	Library._FlushFlags = FlushFlags
 	Connection.FlagsChanged:Connect(function(Flag, Value)
+		if Library._Destroyed then return end
 		local ScriptFile = Settings.ScriptFile
 		if not db and type(ScriptFile) == "string" and ScriptFile ~= "" then
 			db = true
+			PendingFile = ScriptFile
 			task.wait(math.max(0, ConfigNumber(LibraryConfig, "FlagsSaveDelay")))
 			db = false
-
-			local Saved, Encoded = JsonFiles.Write(ScriptFile, Flags)
-			if Saved then
-				Connection:FireConnection("FileSaved", "Script-Flags", ScriptFile, Encoded)
-			end
+			FlushFlags()
 		end
 	end)
 end
@@ -914,15 +928,16 @@ local RuntimeConnections = {}
 local ResponsiveWidth, ResponsiveHeight = table.unpack(Library.Save.UISize)
 
 local function TrackConnection(Connection)
-    RuntimeConnections[#RuntimeConnections + 1] = Connection
+    if Library._Destroyed then
+        Connection:Disconnect()
+        return Connection
+    end
+    RuntimeConnections[Connection] = true
     return Connection
 end
 
 local function UntrackConnection(Connection)
-    local Index = table.find(RuntimeConnections, Connection)
-    if Index then
-        table.remove(RuntimeConnections, Index)
-    end
+    RuntimeConnections[Connection] = nil
 end
 
 local function GetViewportSize()
@@ -1015,7 +1030,7 @@ local CameraConnection
 
 local function UpdateResponsiveScale()
     UIScale = CalculateScale(ResponsiveWidth, ResponsiveHeight)
-    ScreenScale.Scale = UIScale
+    if ScreenScale.Scale ~= UIScale then ScreenScale.Scale = UIScale end
 end
 
 local function BindCamera()
@@ -1038,18 +1053,24 @@ TrackConnection(UserInputService:GetPropertyChangedSignal("PreferredInput"):Conn
 BindCamera()
 
 ScreenGui.Destroying:Connect(function()
+    Library._Destroyed = true
+    if Library._FlushFlags then
+        Library._FlushFlags()
+        Library._FlushFlags = nil
+    end
     UISound:Destroy()
     if Library._BackgroundSettings then
         Library._BackgroundSettings.Generation += 1
         Library._BackgroundSettings.Sync = nil
         Library._BackgroundSettings.Owner = nil
+        table.clear(Library._BackgroundSettings.Objects)
     end
     if CameraConnection then
         CameraConnection:Disconnect()
         CameraConnection = nil
     end
 
-    for _, Connection in ipairs(RuntimeConnections) do
+    for Connection in pairs(RuntimeConnections) do
         if Connection.Connected then
             Connection:Disconnect()
         end
@@ -1148,6 +1169,11 @@ local function MakeDrag(Instance, Options)
     local MovementThreshold = Threshold
     local RenderConnection
     local StateConnection
+    local DragConnections = {}
+    local function Connect(Signal, Callback)
+        local Connection = TrackConnection(Signal:Connect(Callback))
+        DragConnections[#DragConnections + 1] = Connection
+    end
 
     local function IsAvailable()
         if not ScreenGui.Enabled or not Instance.Parent or not Handle.Parent then return false end
@@ -1271,12 +1297,13 @@ local function MakeDrag(Instance, Options)
         end))
     end
 
-    TrackConnection(Handle.InputBegan:Connect(Begin))
     if GlobalInput then
-        TrackConnection(UserInputService.InputBegan:Connect(Begin))
+        Connect(UserInputService.InputBegan, Begin)
+    else
+        Connect(Handle.InputBegan, Begin)
     end
 
-    TrackConnection(UserInputService.InputEnded:Connect(function(Input)
+    Connect(UserInputService.InputEnded, function(Input)
         if not Dragging then
             return
         end
@@ -1285,16 +1312,23 @@ local function MakeDrag(Instance, Options)
             if Input.UserInputState ~= Enum.UserInputState.Cancel then Update() end
             StopDrag()
         end
-    end))
+    end)
 
-    TrackConnection(UserInputService.WindowFocusReleased:Connect(StopDrag))
-    TrackConnection(ScreenGui:GetPropertyChangedSignal("Enabled"):Connect(function()
+    Connect(UserInputService.WindowFocusReleased, StopDrag)
+    Connect(ScreenGui:GetPropertyChangedSignal("Enabled"), function()
         if not ScreenGui.Enabled then StopDrag() end
-    end))
-    TrackConnection(Instance:GetPropertyChangedSignal("Visible"):Connect(function()
+    end)
+    Connect(Instance:GetPropertyChangedSignal("Visible"), function()
         if not Instance.Visible then StopDrag() end
-    end))
-    TrackConnection(Instance.Destroying:Connect(StopDrag))
+    end)
+    Connect(Instance.Destroying, function()
+        StopDrag()
+        for _, Connection in ipairs(DragConnections) do
+            Connection:Disconnect()
+            UntrackConnection(Connection)
+        end
+        table.clear(DragConnections)
+    end)
 
     return Instance
 end
@@ -2244,13 +2278,15 @@ function Library:SetTheme(NewTheme)
 	end
 	
 	Connection:FireConnection("ThemeChanged", NewTheme)
+	local BackgroundColors = ThemeBackgroundColors()
+	local InputColor, SurfaceColor = InputSurfaceColor(), ComponentColor()
 	for _, Val in ipairs(Library.Instances) do
 		if Val.Type == "MainGradient" or Val.Type == "Gradient" then
-			Val.Instance.Color = ThemeBackgroundColors()
+			Val.Instance.Color = BackgroundColors
 		elseif Val.Type == "InputSurface" then
-			Val.Instance.BackgroundColor3 = InputSurfaceColor()
+			Val.Instance.BackgroundColor3 = InputColor
 		elseif Val.Type == "ComponentSurface" then
-			Val.Instance.BackgroundColor3 = ComponentColor()
+			Val.Instance.BackgroundColor3 = SurfaceColor
 		elseif Val.Type == "TitleText" then
 			Val.Instance.TextColor3 = Color3.new(1, 1, 1)
 		elseif Val.Type == "DescriptionText" then
@@ -2308,7 +2344,7 @@ function Library:GetBackgroundPresets()
     return Presets
 end
 
-Library._BackgroundSettings = {Generation = 0}
+Library._BackgroundSettings = {Generation = 0, Objects = setmetatable({}, {__mode = "k"})}
 
 function Library:GetBackgroundEnabled()
     return Library.Save.BackgroundEnabled ~= false
@@ -2326,9 +2362,8 @@ function Library._BackgroundSettings.Apply(SkipSync)
     local Id = Library:GetBackground()
     local Enabled = Library:GetBackgroundEnabled() and Id ~= "" and Library:GetBackgroundImageTransparency() < 100
     local Brightness = Library:GetBackgroundImageBrightness() / 100
-    for _, Entry in ipairs(Library.Instances) do
-        if Entry.Type == "Main" then
-            local Frame = Entry.Instance
+    for Frame, Kind in pairs(Library._BackgroundSettings.Objects) do
+        if Kind == "Main" then
             Frame.Image = Enabled and (GuiImageCache[Id] or ToAssetContentId(Id)) or ""
             Frame.ImageTransparency = Library:GetBackgroundImageTransparency() / 100
             Frame.ImageColor3 = Color3.new(Brightness, Brightness, Brightness)
@@ -2336,8 +2371,8 @@ function Library._BackgroundSettings.Apply(SkipSync)
             Frame.TileSize = UDim2.fromOffset(Library:GetBackgroundTileSize(), Library:GetBackgroundTileSize())
             -- A disabled gradient must reveal the theme surface, never default white.
             Frame.BackgroundColor3 = Enabled and Theme["Color Hub 2"] or Color3.new(1, 1, 1)
-        elseif Entry.Type == "MainGradient" then
-            Entry.Instance.Enabled = not Enabled
+        elseif Kind == "MainGradient" then
+            Frame.Enabled = not Enabled
         end
     end
     local Sync = Library._BackgroundSettings.Sync
@@ -3104,6 +3139,12 @@ function Library:MakeWindow(Configs)
 		Rotation = GradientRotation,
 		Enabled = (Library.Save.BackgroundImage or "") == ""
 	}), "MainGradient")
+    Library._BackgroundSettings.Objects[MainFrame] = "Main"
+    Library._BackgroundSettings.Objects[MainGradient] = "MainGradient"
+    MainFrame.Destroying:Connect(function()
+        Library._BackgroundSettings.Objects[MainFrame] = nil
+        Library._BackgroundSettings.Objects[MainGradient] = nil
+    end)
     Library._BackgroundSettings.Apply()
     Library._BackgroundSettings.Resolve()
 
@@ -3162,8 +3203,9 @@ function Library:MakeWindow(Configs)
 		local function Refresh()
 			if not Frame.Parent then return end
 			local NeedsScrolling = Layout.AbsoluteContentSize.Y + PaddingY > Frame.AbsoluteSize.Y + 1
-			Frame.ScrollingEnabled = NeedsScrolling
-			Frame.ScrollBarThickness = NeedsScrolling and ScrollThickness or 0
+			if Frame.ScrollingEnabled ~= NeedsScrolling then Frame.ScrollingEnabled = NeedsScrolling end
+			local Thickness = NeedsScrolling and ScrollThickness or 0
+			if Frame.ScrollBarThickness ~= Thickness then Frame.ScrollBarThickness = Thickness end
 		end
 
 		AdaptiveScrollRefresh[Frame] = Refresh
@@ -3432,9 +3474,17 @@ function Library:MakeWindow(Configs)
 			return false
 		end
 
+		local Container = ScreenGui:FindFirstAncestorWhichIsA("BasePlayerGui")
+		local Success, Objects = false, nil
+		if Container then
+			Success, Objects = pcall(Container.GetGuiObjectsAtPosition, Container, Position.X, Position.Y)
+		end
+		-- Native hit testing avoids allocating/scanning every descendant per click.
+		-- gethui containers may not expose BasePlayerGui; retain the geometric fallback.
+		local Candidates = Success and Objects or MainFrame:GetDescendants()
 		-- Empty surfaces can move the window; controls keep ownership of their gestures.
-		for _, Object in ipairs(MainFrame:GetDescendants()) do
-			if Object:IsA("GuiObject") and IsPointInside(Object, Position) then
+		for _, Object in ipairs(Candidates) do
+			if Object:IsA("GuiObject") and Object:IsDescendantOf(MainFrame) and IsPointInside(Object, Position) then
 				if Object:IsA("GuiButton") or Object:IsA("TextBox") then return false end
 				if Object:IsA("ScrollingFrame") then
 					if Object.ScrollingEnabled then
@@ -3458,11 +3508,6 @@ function Library:MakeWindow(Configs)
 			end
 		end
 
-		local Container = ScreenGui:FindFirstAncestorWhichIsA("BasePlayerGui")
-		local Success, Objects = false, nil
-		if Container then
-			Success, Objects = pcall(Container.GetGuiObjectsAtPosition, Container, Position.X, Position.Y)
-		end
 		if Success then
 			for _, Object in ipairs(Objects) do
 				if Object == MainFrame or Object:IsDescendantOf(MainFrame) then break end
@@ -4059,6 +4104,7 @@ function Library:MakeWindow(Configs)
 		})
 	end
 	function Window:MinimizeBtn()
+		if Library._Destroyed or not MainFrame.Parent then return end
 		if Runtime.DialogOverlay and Runtime.DialogOverlay.Parent then return end
 		if WaitClick then return end
 		FinishResize()
@@ -4067,6 +4113,7 @@ function Library:MakeWindow(Configs)
 		if Minimized then
 			MinimizeButton:SetIcon("minus")
 			CreateTween({MainFrame, "Size", SaveSize, AnimationWindow, true})
+			if Library._Destroyed or not MainFrame.Parent then WaitClick = false; return end
 			MainScroll.Visible = true
 			Containers.Visible = true
 			SubTitleLabel.Visible = true
@@ -4084,6 +4131,7 @@ function Library:MakeWindow(Configs)
 			Containers.Visible = false
 			SubTitleLabel.Visible = false
 			CreateTween({MainFrame, "Size", UDim2.fromOffset(MinimizedWidth, TopBarHeight), AnimationWindow, true})
+			if Library._Destroyed or not MainFrame.Parent then WaitClick = false; return end
 			ResponsiveWidth, ResponsiveHeight = MinimizedWidth, TopBarHeight
 			UpdateResponsiveScale()
 			Minimized = true
