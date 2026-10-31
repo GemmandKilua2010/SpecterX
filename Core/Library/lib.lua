@@ -6399,6 +6399,8 @@ function Library:MakeWindow(Configs)
 			)
 			local OptionRenderer = Configs.OptionRenderer
 			local OnSearch = Configs.OnSearch
+			-- Custom callbacks can depend on the original per-option update sequence.
+			local BatchSearch = type(OnSearch) ~= "function"
 			local Callback = Funcs:GetCallback(Configs, 4)
 			local Flag = Configs[5] or Configs.Flag or false
 			local FavoriteEnabled = Configs.Favorite == true
@@ -7019,6 +7021,11 @@ function Library:MakeWindow(Configs)
 
 					for _, Value in pairs(Options) do
 						local OptionButton = Value.Holder or Value.nodes[1]
+						local SearchSource = TranslateText(Value.Name)
+						if Value.SearchSource ~= SearchSource then
+							Value.SearchSource = SearchSource
+							Value.SearchName = SearchSource:lower()
+						end
 						local OptionName = Value.SearchName
 
 						if type(OnSearch) == "function" then
@@ -7147,12 +7154,14 @@ function Library:MakeWindow(Configs)
 						return
 					end
 
+					local TranslatedName = TranslateText(Name)
 					NextOptionOrder += 1
 					Options[Name] = {
 						index = Index,
 						Value = Value,
 						Name = Name,
-						SearchName = TranslateText(Name):lower(),
+						SearchSource = TranslatedName,
+						SearchName = TranslatedName:lower(),
 						Stats = false,
 						SortIndex = NextOptionOrder,
 						Favorite = FavoriteEnabled and FavoriteEntries[Name] == true or false
@@ -7194,7 +7203,7 @@ function Library:MakeWindow(Configs)
 						Size = UDim2.new(1, FavoriteEnabled and -36 or 0, 1, 0),
 						TextTruncate = FavoriteEnabled and Enum.TextTruncate.AtEnd or Enum.TextTruncate.None,
 						Position = UDim2.new(0, 10),
-						Text = TranslateText(Name),
+						Text = TranslatedName,
 						TextColor3 = Theme["Color Text"],
 						Font = Enum.Font.GothamBold,
 						TextXAlignment = "Left",
@@ -7332,7 +7341,7 @@ function Library:MakeWindow(Configs)
 							end
 						end
 						for _, Entry in ipairs(RemoveList) do
-							RemoveOption(Entry[1], Entry[2], true)
+							RemoveOption(Entry[1], Entry[2], BatchSearch)
 							Changed = true
 						end
 					end
@@ -7351,9 +7360,9 @@ function Library:MakeWindow(Configs)
 				end
 
 				for Index, Value in pairs(DOptions) do
-					AddOption(Index, Value, true)
+					AddOption(Index, Value, BatchSearch)
 				end
-				if SearchConfig.Enabled then UpdateSearch() end
+				if BatchSearch and SearchConfig.Enabled then UpdateSearch() end
 
 				CallbackSelected()
 				UpdateSelected()
@@ -7373,9 +7382,10 @@ function Library:MakeWindow(Configs)
 
 				TrackDropdownConnection(Connection.LanguageChanged:Connect(function()
 					for _, Option in pairs(Options) do
-						Option.SearchName = TranslateText(Option.Name):lower()
+						Option.SearchSource = TranslateText(Option.Name)
+						Option.SearchName = Option.SearchSource:lower()
 						if Option.nodes and Option.nodes[3] and Option.nodes[3].Parent then
-							Option.nodes[3].Text = TranslateText(Option.Name)
+							Option.nodes[3].Text = Option.SearchSource
 						end
 					end
 
@@ -7446,15 +7456,15 @@ function Library:MakeWindow(Configs)
 						local Value = NewOptions[1]
 
 						if Value.Player then
-							AddOption(Value.Name, Value, true)
+							AddOption(Value.Name, Value, BatchSearch)
 						else
 							for Index, Name in pairs(Value) do
-								AddOption(Index, Name, true)
+								AddOption(Index, Name, BatchSearch)
 							end
 						end
 					else
 						for _, Name in pairs(NewOptions) do
-							AddOption(Name, Name, true)
+							AddOption(Name, Name, BatchSearch)
 						end
 					end
 
