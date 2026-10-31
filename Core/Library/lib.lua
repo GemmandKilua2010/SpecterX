@@ -24,7 +24,7 @@ assert(type(RootTheme) == "string" and type(SharedThemes[RootTheme]) == "table",
 local Library = {
 	Themes = SharedThemes,
 	Info = {
-		Version = "1.3.1"
+		Version = "1.3.2"
 	},
 	Save = {},
 	Settings = {},
@@ -204,7 +204,9 @@ local ScreenPadding = math.max(0, ConfigNumber(LibraryConfig, "ScreenPadding"))
 local SettingsFolder = assert(LibraryConfig.SettingsFolder, "Config.Library.SettingsFolder is required.")
 local SettingsFile = assert(LibraryConfig.SettingsFile, "Config.Library.SettingsFile is required.")
 local SettingsPath = SettingsFolder .. "/" .. SettingsFile
+local LegacySettingsPath = SettingsFolder == "Core/Library" and ("Library/" .. SettingsFile) or nil
 local DropdownFavoritesPath = "Core/Library/Dropdown/favorites.json"
+local LegacyDropdownFavoritesPath = "Library/Dropdown/favorites.json"
 local DefaultKeybind = assert(GetKeyCode(LibraryConfig.Keybind), "Config.Library.Keybind is invalid.").Name
 local DefaultTransparency = math.clamp(ConfigNumber(LibraryConfig, "Transparency"), 0, 100)
 local DefaultMinimizedWidth = math.clamp(ConfigNumber(LibraryConfig, "MinimizedWidth"), 160, 320)
@@ -627,6 +629,12 @@ local SetChildren do
 	
     local function LoadSettings()
         local Decode = JsonFiles.Read(SettingsPath)
+        if not Decode and LegacySettingsPath then
+            Decode = JsonFiles.Read(LegacySettingsPath)
+            if Decode then
+                JsonFiles.Write(SettingsPath, Decode)
+            end
+        end
         if not Decode then return end
         table.clear(LoadedSettingKeys)
 
@@ -715,6 +723,9 @@ local SetChildren do
 
 	pcall(LoadSettings)
     local SavedFavorites = JsonFiles.Read(DropdownFavoritesPath)
+    if not SavedFavorites then
+        SavedFavorites = JsonFiles.Read(LegacyDropdownFavoritesPath)
+    end
     if SavedFavorites then
         ReadDropdownFavorites(SavedFavorites)
     else

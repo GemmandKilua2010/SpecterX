@@ -48,14 +48,26 @@ local SettingsFolder = assert(type(LibraryConfig.SettingsFolder) == "string" and
 local SettingsFile = assert(type(LibraryConfig.SettingsFile) == "string" and LibraryConfig.SettingsFile ~= "" and LibraryConfig.SettingsFile,
     "Config.Library.SettingsFile must be a nonempty filename.")
 local SettingsPath = SettingsFolder .. "/" .. SettingsFile
+local LegacySettingsPath = SettingsFolder == "Core/Library" and ("Library/" .. SettingsFile) or nil
 local SavedSettings
 
-if Hub:FileExists(SettingsPath) then
-    local Source = Hub:ReadFile(SettingsPath)
+local SettingsSourcePath = SettingsPath
+if not Hub:FileExists(SettingsSourcePath) and LegacySettingsPath and Hub:FileExists(LegacySettingsPath) then
+    SettingsSourcePath = LegacySettingsPath
+end
+
+if Hub:FileExists(SettingsSourcePath) then
+    local Source = Hub:ReadFile(SettingsSourcePath)
     if type(Source) == "string" then
         local Success, Saved = pcall(HttpService.JSONDecode, HttpService, Source)
         if Success and type(Saved) == "table" then
             SavedSettings = Saved
+            if SettingsSourcePath ~= SettingsPath then
+                local EncodeSuccess, Encoded = pcall(HttpService.JSONEncode, HttpService, Saved)
+                if EncodeSuccess then
+                    Hub:CreateFile(SettingsPath, Encoded)
+                end
+            end
         end
     end
 end
