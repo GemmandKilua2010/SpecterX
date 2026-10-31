@@ -728,12 +728,15 @@ function Main:CreateInstance(Class, Properties, Children)
         Object.SortOrder = Enum.SortOrder.LayoutOrder
     end
     for Key, Value in pairs(Properties or {}) do
-        if Key ~= "Name" then
+        if Key ~= "Name" and Key ~= "Parent" then
             Object[Key] = Value
         end
     end
     for _, Child in ipairs(Children or {}) do
         Child.Parent = Object
+    end
+    if Properties and Properties.Parent ~= nil then
+        Object.Parent = Properties.Parent
     end
     return Object
 end
