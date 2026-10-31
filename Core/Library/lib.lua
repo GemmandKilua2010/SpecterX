@@ -24,7 +24,7 @@ assert(type(RootTheme) == "string" and type(SharedThemes[RootTheme]) == "table",
 local Library = {
 	Themes = SharedThemes,
 	Info = {
-		Version = "1.1.2"
+		Version = "1.1.3"
 	},
 	Save = {},
 	Settings = {},
@@ -158,20 +158,8 @@ local function ResolveGuiImage(Value)
     if Cached then return Cached end
 
     local Content = "rbxassetid://" .. Id
-    local Success, Objects = pcall(game.GetObjects, game, Content)
-
-    if Success and type(Objects) == "table" then
-        for _, Object in ipairs(Objects) do
-            if typeof(Object) == "Instance" then
-                local Decal = Object:IsA("Decal") and Object or Object:FindFirstChildWhichIsA("Decal", true)
-                if Decal and Decal.Texture ~= "" then
-                    Content = Decal.Texture
-                end
-                Object:Destroy()
-            end
-        end
-    end
-
+    -- Keep image resolution local and immediate. GetObjects can yield while an
+    -- asset is fetched, which stalls the caller when a window builds its UI.
     GuiImageCache[Id] = Content
     return Content
 end
@@ -1154,7 +1142,7 @@ local function MakeDrag(Instance, Options)
     local PassedThreshold = false
     local MovementThreshold = Threshold
     local MoveContext
-    local RenderConnection
+    local MovementConnection
     local StateConnection
 
     local function IsAvailable()
@@ -1178,10 +1166,10 @@ local function MakeDrag(Instance, Options)
 
     local function StopDrag()
         local RememberPosition = Dragging and PassedThreshold
-        if RenderConnection then
-            RenderConnection:Disconnect()
-            UntrackConnection(RenderConnection)
-            RenderConnection = nil
+        if MovementConnection then
+            MovementConnection:Disconnect()
+            UntrackConnection(MovementConnection)
+            MovementConnection = nil
         end
         if StateConnection then
             StateConnection:Disconnect()
@@ -1273,12 +1261,18 @@ local function MakeDrag(Instance, Options)
             end
         end
         StateConnection = TrackConnection(Input:GetPropertyChangedSignal("UserInputState"):Connect(CheckInputState))
-        RenderConnection = TrackConnection(game:GetService("RunService").RenderStepped:Connect(function()
+        -- Update only when the pointer actually moves. A RenderStepped poll was
+        -- doing GUI work even on frames where the cursor had not changed.
+        MovementConnection = TrackConnection(UserInputService.InputChanged:Connect(function(ChangedInput)
             if not Dragging then return end
             CheckInputState()
             if not Dragging then return end
-            if Input.UserInputType == Enum.UserInputType.MouseButton1
-                and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+
+            local IsMouseMove = Input.UserInputType == Enum.UserInputType.MouseButton1
+                and ChangedInput.UserInputType == Enum.UserInputType.MouseMovement
+            local IsTouchMove = Input.UserInputType == Enum.UserInputType.Touch and ChangedInput == Input
+            if not IsMouseMove and not IsTouchMove then return end
+            if ShouldCancel and ShouldCancel() then
                 StopDrag()
                 return
             end
@@ -1526,6 +1520,31 @@ function Library._PositionSettings.Bind(Object, Key, Options)
         local Saved = Library.Save.SavePosition and Library.Save.Positions[Key]
         if Saved then State:Restore(Saved) else State:Clamp() end
     end
+    local function RefreshAfterSizeSettles()
+        if State.Destroyed then return end
+        State.BoundsRevision += 1
+        State.SizeChangedAt = os.clock()
+        if State.SizeRefreshPending then return end
+        State.SizeRefreshPending = true
+
+        local function FlushWhenSettled()
+            if State.Destroyed then
+                State.SizeRefreshPending = false
+                return
+            end
+            local Remaining = 0.12 - (os.clock() - State.SizeChangedAt)
+            if Remaining > 0 then
+                task.delay(Remaining, FlushWhenSettled)
+                return
+            end
+            State.SizeRefreshPending = false
+            -- Window minimize/restore animates AbsoluteSize every frame. Clamping
+            -- every tick writes Position repeatedly and competes with the tween.
+            -- Wait for the resize to settle, then clamp once.
+            if State.Initialized then State:Clamp() else State:Initialize() end
+        end
+        task.delay(0.12, FlushWhenSettled)
+    end
     local function Connect(Signal, Callback)
         table.insert(Connections, Signal:Connect(Callback))
     end
@@ -1546,7 +1565,7 @@ function Library._PositionSettings.Bind(Object, Key, Options)
     Connect(ScreenGui:GetPropertyChangedSignal("AbsoluteSize"), Refresh)
     Connect(ScreenGui:GetPropertyChangedSignal("AbsolutePosition"), Refresh)
     Connect(ScreenScale:GetPropertyChangedSignal("Scale"), Refresh)
-    Connect(Object:GetPropertyChangedSignal("AbsoluteSize"), Refresh)
+    Connect(Object:GetPropertyChangedSignal("AbsoluteSize"), RefreshAfterSizeSettles)
     Connect(Object.Destroying, function() State:Destroy() end)
     Library._PositionSettings.Bindings[Object] = State
     task.defer(function() State:Initialize() end)
@@ -3477,32 +3496,8 @@ function Library:MakeWindow(Configs)
 			return false
 		end
 
-		-- Empty surfaces can move the window; controls keep ownership of their gestures.
-		for _, Object in ipairs(MainFrame:GetDescendants()) do
-			if Object:IsA("GuiObject") and IsPointInside(Object, Position) then
-				if Object:IsA("GuiButton") or Object:IsA("TextBox") then return false end
-				if Object:IsA("ScrollingFrame") then
-					if Object.ScrollingEnabled then
-						if Input.UserInputType == Enum.UserInputType.Touch then return false end
-						local Thickness = Object.ScrollBarThickness * ScreenScale.Scale
-						local Origin, Size = Object.AbsolutePosition, Object.AbsoluteSize
-						local Canvas, Window = Object.AbsoluteCanvasSize, Object.AbsoluteWindowSize
-						if Thickness > 0 then
-							if Object.ScrollingDirection ~= Enum.ScrollingDirection.X and Canvas.Y > Window.Y then
-								local Left = Object.VerticalScrollBarPosition == Enum.VerticalScrollBarPosition.Left
-								if (Left and Position.X <= Origin.X + Thickness)
-									or (not Left and Position.X >= Origin.X + Size.X - Thickness) then return false end
-							end
-							if Object.ScrollingDirection ~= Enum.ScrollingDirection.Y and Canvas.X > Window.X
-								and Position.Y >= Origin.Y + Size.Y - Thickness then return false end
-						end
-					end
-				elseif Object.Active then
-					return false
-				end
-			end
-		end
-
+		-- Only inspect GUI objects under the pointer. Walking every descendant on
+		-- each drag start gets progressively slower as tabs and controls are added.
 		local Container = ScreenGui:FindFirstAncestorWhichIsA("BasePlayerGui")
 		local Success, Objects = false, nil
 		if Container then
@@ -3510,10 +3505,59 @@ function Library:MakeWindow(Configs)
 		end
 		if Success then
 			for _, Object in ipairs(Objects) do
-				if Object == MainFrame or Object:IsDescendantOf(MainFrame) then break end
-				if Object.Active or Object:IsA("GuiButton") or Object:IsA("TextBox") then return false end
+				local InsideWindow = Object == MainFrame or Object:IsDescendantOf(MainFrame)
+				if InsideWindow then
+					if Object == MainFrame then break end
+					if Object:IsA("GuiButton") or Object:IsA("TextBox") then return false end
+					if Object:IsA("ScrollingFrame") then
+						if Object.ScrollingEnabled then
+							if Input.UserInputType == Enum.UserInputType.Touch then return false end
+							local Thickness = Object.ScrollBarThickness * ScreenScale.Scale
+							local Origin, Size = Object.AbsolutePosition, Object.AbsoluteSize
+							local Canvas, Window = Object.AbsoluteCanvasSize, Object.AbsoluteWindowSize
+							if Thickness > 0 then
+								if Object.ScrollingDirection ~= Enum.ScrollingDirection.X and Canvas.Y > Window.Y then
+									local Left = Object.VerticalScrollBarPosition == Enum.VerticalScrollBarPosition.Left
+									if (Left and Position.X <= Origin.X + Thickness)
+										or (not Left and Position.X >= Origin.X + Size.X - Thickness) then return false end
+								end
+								if Object.ScrollingDirection ~= Enum.ScrollingDirection.Y and Canvas.X > Window.X
+									and Position.Y >= Origin.Y + Size.Y - Thickness then return false end
+							end
+						end
+					elseif Object.Active then
+						return false
+					end
+				elseif Object.Active or Object:IsA("GuiButton") or Object:IsA("TextBox") then
+					return false
+				end
 			end
 		else
+			-- Compatibility fallback for environments without a GUI hit-test API.
+			for _, Object in ipairs(MainFrame:GetDescendants()) do
+				if Object:IsA("GuiObject") and IsPointInside(Object, Position) then
+					if Object:IsA("GuiButton") or Object:IsA("TextBox") then return false end
+					if Object:IsA("ScrollingFrame") then
+						if Object.ScrollingEnabled then
+							if Input.UserInputType == Enum.UserInputType.Touch then return false end
+							local Thickness = Object.ScrollBarThickness * ScreenScale.Scale
+							local Origin, Size = Object.AbsolutePosition, Object.AbsoluteSize
+							local Canvas, Window = Object.AbsoluteCanvasSize, Object.AbsoluteWindowSize
+							if Thickness > 0 then
+								if Object.ScrollingDirection ~= Enum.ScrollingDirection.X and Canvas.Y > Window.Y then
+									local Left = Object.VerticalScrollBarPosition == Enum.VerticalScrollBarPosition.Left
+									if (Left and Position.X <= Origin.X + Thickness)
+										or (not Left and Position.X >= Origin.X + Size.X - Thickness) then return false end
+								end
+								if Object.ScrollingDirection ~= Enum.ScrollingDirection.Y and Canvas.X > Window.X
+									and Position.Y >= Origin.Y + Size.Y - Thickness then return false end
+							end
+						end
+					elseif Object.Active then
+						return false
+					end
+				end
+			end
 			for _, Object in ipairs(ScreenGui:GetDescendants()) do
 				if Object:IsA("GuiObject") and Object ~= MainFrame and not Object:IsDescendantOf(MainFrame)
 					and (Object.Active or Object:IsA("GuiButton") or Object:IsA("TextBox"))
