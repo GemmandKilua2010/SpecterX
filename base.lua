@@ -2,6 +2,7 @@
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
+local ScriptEnvironment = getfenv()
 
 --// Bootstrap
 
@@ -294,6 +295,7 @@ setmetatable(Base, {__index = Lib})
 ActiveBase = Base
 
 local Destroyed = false
+local PublishedGlobals = {}
 local OwnedRuntime = Genv.Runtime
 local OwnedLibraryRuntime = type(OwnedRuntime) == "table" and OwnedRuntime.Library
 local OwnedNotificationRuntime = type(OwnedRuntime) == "table" and OwnedRuntime.Notification
@@ -306,6 +308,17 @@ end
 local function Cleanup()
     if Destroyed then return end
     Destroyed = true
+
+    for _, Entry in ipairs(PublishedGlobals) do
+        for Index, Environment in ipairs(Entry.Environments) do
+            pcall(function()
+                if Environment[Entry.Name] == Entry.Wrapper then
+                    Environment[Entry.Name] = Entry.Previous[Index]
+                end
+            end)
+        end
+    end
+    table.clear(PublishedGlobals)
 
     WhitelistManager:Destroy()
 
@@ -543,6 +556,83 @@ Base.DeleteFile = function(_, ...)
     return Hub:DeleteFile(...)
 end
 
+local function ResolveDataPath(Path)
+    if type(Path) ~= "string" or Path:gsub("%s", "") == "" then
+        return nil, "Invalid data path."
+    end
+
+    local GameName = Hub:GetGame()
+    if type(GameName) == "string" and GameName ~= "" and GameName ~= "Universal" then
+        local GamePath = Hub:GetGamePath(Path, GameName)
+        if GamePath then
+            return Hub:GetWorkspacePath(GamePath)
+        end
+    end
+
+    -- Unlisted games share the Universal data folder at the SpecterX root.
+    return Hub:GetWorkspacePath(Path)
+end
+
+Base.GetDataPath = function(_, Path)
+    return ResolveDataPath(Path)
+end
+
+Base.Save = function(_, Path, Value)
+    local DataPath, PathError = ResolveDataPath(Path)
+    if not DataPath then
+        return false, PathError
+    end
+
+    local Content
+    if type(Value) == "string" then
+        Content = Value
+    else
+        local Success, Encoded = pcall(HttpService.JSONEncode, HttpService, Value)
+        if not Success then
+            return false, Encoded
+        end
+        Content = Encoded
+    end
+
+    return Hub:CreateFile(DataPath, Content)
+end
+
+Base.Load = function(_, Path)
+    local DataPath, PathError = ResolveDataPath(Path)
+    if not DataPath then
+        return nil, PathError
+    end
+
+    local Content, ReadError = Hub:ReadFile(DataPath)
+    if type(Content) ~= "string" then
+        return nil, ReadError
+    end
+
+    local Success, Value = pcall(HttpService.JSONDecode, HttpService, Content)
+    if Success then
+        return Value, DataPath
+    end
+
+    -- Keep compatibility with files written as raw text using Save.
+    return Content, DataPath
+end
+
+Base.Exists = function(_, Path)
+    local DataPath = ResolveDataPath(Path)
+    return DataPath ~= nil and Hub:FileExists(DataPath) or false
+end
+
+Base.Del = function(_, Path)
+    local DataPath, PathError = ResolveDataPath(Path)
+    if not DataPath then
+        return false, PathError
+    end
+
+    return Hub:DeleteFile(DataPath)
+end
+
+Base.Delete = Base.Del
+
 Base.SetClipboard = function(_, ...)
     return Hub:SetClipboard(...)
 end
@@ -666,6 +756,53 @@ end
 
 function Base:CheckForUpdates(Force)
     return CheckForUpdates(Force == true)
+end
+
+--// Global developer API
+
+local GlobalEnvironments = {ScriptEnvironment}
+local GetGlobalEnvironment = ScriptEnvironment.getgenv
+if type(GetGlobalEnvironment) == "function" then
+    local Success, Environment = pcall(GetGlobalEnvironment)
+    if Success and type(Environment) == "table" and Environment ~= ScriptEnvironment then
+        GlobalEnvironments[#GlobalEnvironments + 1] = Environment
+    end
+end
+
+for Name, Method in pairs(Base) do
+    if type(Method) == "function" then
+        local BoundMethod = Method
+        local Wrapper = function(...)
+            if ... == Base then
+                return BoundMethod(Base, select(2, ...))
+            end
+            return BoundMethod(Base, ...)
+        end
+
+        local Previous = {}
+        for Index, Environment in ipairs(GlobalEnvironments) do
+            local Success, Value = pcall(function()
+                return Environment[Name]
+            end)
+            if Success then
+                Previous[Index] = Value
+            end
+        end
+        local Entry = {
+            Name = Name,
+            Wrapper = Wrapper,
+            Previous = Previous,
+            Environments = GlobalEnvironments,
+        }
+
+        for _, Environment in ipairs(GlobalEnvironments) do
+            pcall(function()
+                Environment[Name] = Wrapper
+            end)
+        end
+
+        PublishedGlobals[#PublishedGlobals + 1] = Entry
+    end
 end
 
 --// Finish
