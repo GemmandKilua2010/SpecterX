@@ -35,6 +35,11 @@ if Genv.State.Loading then
     return Genv.State.Base
 end
 
+-- Claim startup before any further yielding downloads. Always release it below.
+Genv.State.Loading = true
+
+local function Initialize(...)
+
 --// Preferences
 
 local LibraryConfig = assert(type(ConfigData.Library) == "table" and ConfigData.Library, "Config.Library is required.")
@@ -168,8 +173,6 @@ if type(PreviousBase) == "table" and type(PreviousBase.Destroy) == "function" th
     pcall(PreviousBase.Destroy, PreviousBase)
 end
 
-Genv.State.Loading = true
-
 --// Require
 
 local Load = function(...)
@@ -248,7 +251,6 @@ if type(Lib) ~= "table" then
         pcall(Notify.Destroy, Notify)
     end
 
-    Genv.State.Loading = false
     Hub:ConsoleError("Critical failure: Library could not be loaded. Aborting.")
 end
 
@@ -591,8 +593,16 @@ if Loader then
     Loader:Wait()
 end
 
-Genv.State.Loading = false
-
 --// Return
 
 return Base
+end
+
+local Success, Result = xpcall(Initialize, function(Error)
+    return Error
+end, ...)
+Genv.State.Loading = false
+if not Success then
+    error(Result, 0)
+end
+return Result
