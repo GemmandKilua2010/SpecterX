@@ -6,6 +6,18 @@ local Config = {
     Image = 108120493027251,
     LoadingScreen = false,
 
+    --// Version and update checks
+    Version = {
+        -- Semantic version shown in startup notices; bump Current for each public release.
+        Current = "1.1.1",
+        -- Compare the configured branch with the last saved commit SHA.
+        CheckForChanges = true,
+        -- Avoid repeat GitHub requests during quick re-executions (seconds).
+        CheckInterval = 300,
+        -- Saved beneath the SpecterX workspace folder.
+        StateFile = "Version/last-seen.json"
+    },
+
     --// Startup dialog
     StartupGreeting = {
         Enabled = true,

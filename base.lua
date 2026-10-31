@@ -575,6 +575,195 @@ for Name, Value in pairs(Notify) do
     end
 end
 
+--// Version tracking
+
+local VersionConfig = type(ConfigData.Version) == "table" and ConfigData.Version or {}
+local CurrentVersion = tostring(VersionConfig.Current or (Lib.Info and Lib.Info.Version) or "unknown")
+local VersionStatePath = type(VersionConfig.StateFile) == "string" and VersionConfig.StateFile ~= ""
+    and VersionConfig.StateFile or "Version/last-seen.json"
+local VersionInfo = {
+    Version = CurrentVersion,
+    Branch = RepositoryBranch,
+    Status = "NotChecked",
+    CurrentCommit = nil,
+    PreviousCommit = nil,
+    CommitMessage = nil,
+    CheckedAt = nil,
+    PersistenceAvailable = nil
+}
+Base.VersionInfo = VersionInfo
+
+function Base:GetVersionInfo()
+    return table.clone(VersionInfo)
+end
+
+local VersionCheckGeneration = (tonumber(Genv.State.VersionCheckGeneration) or 0) + 1
+Genv.State.VersionCheckGeneration = VersionCheckGeneration
+Genv.State.VersionInfo = VersionInfo
+local VersionCheckRunning = false
+
+local function ReadVersionRecord()
+    local ReadSuccess, Source = pcall(Hub.ReadFile, Hub, VersionStatePath)
+    if not ReadSuccess or type(Source) ~= "string" then
+        return nil
+    end
+
+    local DecodeSuccess, Record = pcall(HttpService.JSONDecode, HttpService, Source)
+    return DecodeSuccess and type(Record) == "table" and Record or nil
+end
+
+local function NotifyVersionStatus(Status, Description)
+    if Destroyed or Genv.State.VersionCheckGeneration ~= VersionCheckGeneration then
+        return
+    end
+
+    local Titles = {
+        Changed = "SpecterX changes detected",
+        Unchanged = "SpecterX is up to date",
+        Baseline = "SpecterX version tracking started",
+        Cached = "SpecterX version status",
+        Unavailable = "SpecterX update check unavailable"
+    }
+    if type(Notify.Notify) == "function" then
+        pcall(Notify.Notify, {
+            Title = Titles[Status] or "SpecterX version",
+            Text = Description,
+            Type = Status == "Unavailable" and "Warning" or "Info"
+        })
+    else
+        Hub:Print((Titles[Status] or "SpecterX version") .. ": " .. Description)
+    end
+end
+
+local function CheckForUpdates(Force)
+    if VersionCheckRunning then
+        return false, "A version check is already running."
+    end
+
+    VersionCheckRunning = true
+    VersionInfo.Status = "Checking"
+
+    task.spawn(function()
+        local Previous = ReadVersionRecord()
+        local Now = os.time()
+        local Interval = math.clamp(math.floor(tonumber(VersionConfig.CheckInterval) or 300), 60, 86400)
+        local PreviousCheckedAt = type(Previous) == "table" and tonumber(Previous.CheckedAt) or nil
+        local PreviousCommit = type(Previous) == "table" and Previous.Commit or nil
+        local SameBranch = type(Previous) == "table" and Previous.Branch == RepositoryBranch
+        local HasPreviousCommit = type(PreviousCommit) == "string"
+            and #PreviousCommit >= 7 and PreviousCommit:match("^[%da-fA-F]+$") ~= nil
+
+        if not Force and SameBranch and Previous.Version == CurrentVersion and HasPreviousCommit and PreviousCheckedAt
+            and Now >= PreviousCheckedAt and Now - PreviousCheckedAt < Interval then
+            VersionInfo.Status = "Cached"
+            VersionInfo.CurrentCommit = PreviousCommit
+            VersionInfo.PreviousCommit = PreviousCommit
+            VersionInfo.CommitMessage = type(Previous.Message) == "string" and Previous.Message or nil
+            VersionInfo.CheckedAt = PreviousCheckedAt
+            VersionInfo.PersistenceAvailable = true
+            VersionCheckRunning = false
+            NotifyVersionStatus("Cached", ("Version %s | branch %s | commit %s (checked recently).")
+                :format(CurrentVersion, RepositoryBranch, PreviousCommit:sub(1, 8)))
+            return
+        end
+
+        local Owner = HttpService:UrlEncode(RepositoryAuthor)
+        local Name = HttpService:UrlEncode(RepositoryName)
+        local Branch = HttpService:UrlEncode(RepositoryBranch)
+        local Url = ("https://api.github.com/repos/%s/%s/commits?sha=%s&per_page=1")
+            :format(Owner, Name, Branch)
+        local HttpSuccess, Body = pcall(game.HttpGet, game, Url)
+        local LatestCommit
+
+        if HttpSuccess and type(Body) == "string" then
+            local DecodeSuccess, Commits = pcall(HttpService.JSONDecode, HttpService, Body)
+            if DecodeSuccess and type(Commits) == "table" and type(Commits[1]) == "table" then
+                LatestCommit = Commits[1]
+            end
+        end
+
+        local Commit = type(LatestCommit) == "table" and LatestCommit.sha or nil
+        local CommitData = type(LatestCommit) == "table" and LatestCommit.commit or nil
+        if type(Commit) ~= "string" or #Commit < 7 or not Commit:match("^[%da-fA-F]+$") then
+            VersionInfo.Status = "Unavailable"
+            VersionInfo.CurrentCommit = HasPreviousCommit and PreviousCommit or nil
+            VersionInfo.PreviousCommit = HasPreviousCommit and PreviousCommit or nil
+            VersionInfo.CheckedAt = PreviousCheckedAt
+            VersionInfo.PersistenceAvailable = nil
+            VersionCheckRunning = false
+            NotifyVersionStatus("Unavailable", "GitHub could not be reached. No saved version data was changed.")
+            return
+        end
+
+        if Genv.State.VersionCheckGeneration ~= VersionCheckGeneration or Destroyed then
+            VersionCheckRunning = false
+            return
+        end
+
+        local RawMessage = type(CommitData) == "table" and CommitData.message or ""
+        local CommitMessage = type(RawMessage) == "string" and RawMessage:match("([^\r\n]+)") or ""
+        CommitMessage = tostring(CommitMessage):gsub("[%c]", " "):gsub("%s+", " "):sub(1, 180)
+        local VersionChanged = SameBranch and type(Previous.Version) == "string"
+            and Previous.Version ~= CurrentVersion
+        local CommitChanged = SameBranch and HasPreviousCommit and PreviousCommit ~= Commit
+        local HasChanges = CommitChanged or VersionChanged
+        local Status = HasChanges and "Changed" or "Unchanged"
+        if not SameBranch or not HasPreviousCommit then
+            Status = "Baseline"
+        end
+
+        VersionInfo.Status = Status
+        VersionInfo.CurrentCommit = Commit
+        VersionInfo.PreviousCommit = HasPreviousCommit and PreviousCommit or nil
+        VersionInfo.CommitMessage = CommitMessage
+        VersionInfo.CheckedAt = Now
+
+        local Record = {
+            Version = CurrentVersion,
+            Branch = RepositoryBranch,
+            Commit = Commit,
+            Message = CommitMessage,
+            CheckedAt = Now
+        }
+        local EncodeSuccess, Encoded = pcall(HttpService.JSONEncode, HttpService, Record)
+        local WriteSuccess, Written = false, false
+        if EncodeSuccess and type(Encoded) == "string" then
+            WriteSuccess, Written = pcall(Hub.CreateFile, Hub, VersionStatePath, Encoded)
+        end
+        VersionInfo.PersistenceAvailable = WriteSuccess and Written == true
+        VersionCheckRunning = false
+
+        if Status == "Changed" then
+            local PreviousShort = HasPreviousCommit and PreviousCommit:sub(1, 8) or "unknown"
+            local Description = ("Version %s | %s: %s → %s")
+                :format(CurrentVersion, RepositoryBranch, PreviousShort, Commit:sub(1, 8))
+            if CommitMessage ~= "" then
+                Description ..= "\n" .. CommitMessage
+            end
+            if not VersionInfo.PersistenceAvailable then
+                Description ..= "\nCould not save the last-seen version."
+            end
+            NotifyVersionStatus(Status, Description)
+        elseif Status == "Baseline" then
+            local Description = ("Version %s | branch %s | commit %s")
+                :format(CurrentVersion, RepositoryBranch, Commit:sub(1, 8))
+            if not VersionInfo.PersistenceAvailable then
+                Description ..= "\nCould not save the last-seen version."
+            end
+            NotifyVersionStatus(Status, Description)
+        else
+            NotifyVersionStatus(Status, ("Version %s | no new commits on %s | %s")
+                :format(CurrentVersion, RepositoryBranch, Commit:sub(1, 8)))
+        end
+    end)
+
+    return true
+end
+
+function Base:CheckForUpdates(Force)
+    return CheckForUpdates(Force == true)
+end
+
 --// Finish
 
 Genv.State.Base = Base
@@ -592,6 +781,10 @@ if Loader then
 end
 
 Genv.State.Loading = false
+
+if VersionConfig.CheckForChanges ~= false then
+    CheckForUpdates(false)
+end
 
 --// Return
 
