@@ -24,7 +24,7 @@ assert(type(RootTheme) == "string" and type(SharedThemes[RootTheme]) == "table",
 local Library = {
 	Themes = SharedThemes,
 	Info = {
-		Version = "1.3.3"
+		Version = "1.3.4"
 	},
 	Save = {},
 	Settings = {},
@@ -168,21 +168,11 @@ local function ResolveBackgroundImage(Value)
     local Cached = GuiImageCache[Id]
     if Cached then return Cached end
 
-    local Content = "rbxassetid://" .. Id
-    local Success, Objects = pcall(game.GetObjects, game, Content)
-    if Success and type(Objects) == "table" then
-        for _, Object in ipairs(Objects) do
-            if typeof(Object) == "Instance" then
-                local Decal = Object:IsA("Decal") and Object or Object:FindFirstChildWhichIsA("Decal", true)
-                if Decal and Decal.Texture ~= "" then
-                    Content = Decal.Texture
-                end
-                pcall(Object.Destroy, Object)
-            end
-        end
-        GuiImageCache[Id] = Content
-    end
-
+    -- Presets are decal asset IDs. Use Roblox's supported thumbnail URI so the
+    -- UI can display the public asset preview without waiting on GetObjects or
+    -- relying on the decal ID being accepted as a texture ID.
+    local Content = ("rbxthumb://type=Asset&id=%s&w=420&h=420"):format(Id)
+    GuiImageCache[Id] = Content
     return Content
 end
 

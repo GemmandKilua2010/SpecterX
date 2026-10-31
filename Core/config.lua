@@ -9,7 +9,7 @@ local Config = {
     --// Version and update checks
     Version = {
         -- Latest released version. Bump Current for each public release.
-        Current = "1.3.3",
+        Current = "1.3.4",
         -- Warn only when the loaded library is older than Current.
         WarnWhenOutdated = true
     },
