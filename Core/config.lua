@@ -253,10 +253,19 @@ local Config = {
             TileSize = 128,
             Presets = {
                 {Key = "None", Name = "None", Id = false},
-                {Key = "PurpleGradient", Name = "Purple gradient", Id = 13775967663},
-                {Key = "DarkNebula", Name = "Dark nebula", Id = 10782430528},
-                {Key = "MonoGradient", Name = "Monochrome gradient", Id = 11526322561},
-                {Key = "RedBlack", Name = "Red black texture", Id = 52892529},
+                {Key = "GrimReaper", Name = "Grim Reaper", Id = 6999203729},
+                {Key = "VinlandSaga", Name = "Vinland Saga", Id = 125138479103871},
+                {Key = "JoJo", Name = "JoJo", Id = 12289315251},
+                {Key = "Arcane", Name = "Arcane", Id = 18223377439},
+                {Key = "AnimeGirl", Name = "Anime Girl", Id = 15467342168},
+                {Key = "JapanNight", Name = "Japan Night", Id = 82323231864595},
+                {Key = "DarkSky", Name = "Dark Sky", Id = 18444850696},
+                {Key = "AnimeCity", Name = "Anime City", Id = 15030777509},
+                {Key = "Sakura", Name = "Sakura", Id = 15168032745},
+                {Key = "Sasuke", Name = "Sasuke", Id = 6140396633},
+                {Key = "AbstractRed", Name = "Abstract Red", Id = 93728302064500},
+                {Key = "Sukuna", Name = "Sukuna", Id = 88529141434644},
+                {Key = "SpecterX2D", Name = "SpecterX 2D", Id = 16235908061},
                 {Key = "BlackGold", Name = "Black gold abstract", Id = 18254645055},
                 {Key = "Custom", Name = "Custom", Id = false}
             }
