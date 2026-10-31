@@ -24,7 +24,7 @@ assert(type(RootTheme) == "string" and type(SharedThemes[RootTheme]) == "table",
 local Library = {
 	Themes = SharedThemes,
 	Info = {
-		Version = "1.1.5"
+		Version = "1.1.6"
 	},
 	Save = {},
 	Settings = {},
@@ -425,6 +425,8 @@ DropdownFavorites = {}
 local LegacyDropdownFavorites
 local CreatedInstancesInBatch = 0
 local InstanceBatchSize = 24
+local InstanceBatchStartedAt = os.clock()
+local InstanceBatchBudget = 0.005
 
 local function NormalizeFavoriteOptions(Values)
     if type(Values) ~= "table" then return nil end
@@ -612,7 +614,11 @@ local SetChildren do
 		-- Large hub scripts can create hundreds of controls in one uninterrupted
 		-- call. Yield briefly in bounded batches so Roblox can render between them.
 		CreatedInstancesInBatch += 1
-		if CreatedInstancesInBatch >= InstanceBatchSize then
+		if CreatedInstancesInBatch == 1 then
+			InstanceBatchStartedAt = os.clock()
+		end
+		if CreatedInstancesInBatch >= InstanceBatchSize
+			or os.clock() - InstanceBatchStartedAt >= InstanceBatchBudget then
 			CreatedInstancesInBatch = 0
 			task.wait()
 		end
@@ -3073,6 +3079,7 @@ function Library:MakeWindow(Configs)
 		or DefaultKeybind
 
 	local Minimized, SaveSize, WaitClick
+	local FrozenContentLayout
 	local RequestedMinimizedWidth = LoadedSettingKeys.MinimizedWidth and Library.Save.MinimizedWidth
 		or tonumber(Configs.MinimizedWidth)
 		or Library.Save.MinimizedWidth
@@ -3281,6 +3288,40 @@ function Library:MakeWindow(Configs)
 		BackgroundTransparency = 1,
 		ClipsDescendants = true,
 	})
+
+	local function FreezeContentLayout()
+		local Scale = math.max(ScreenScale.Scale, 0.001)
+		local FramePosition = MainFrame.AbsolutePosition
+		local Frozen = {}
+
+		for _, Object in ipairs({MainScroll, Containers}) do
+			local AbsolutePosition = (Object.AbsolutePosition - FramePosition) / Scale
+			local AbsoluteSize = Object.AbsoluteSize / Scale
+			Frozen[#Frozen + 1] = {
+				Object = Object,
+				Size = Object.Size,
+				Position = Object.Position
+			}
+			-- Keep the expensive contents at their full layout size while the
+			-- outer window animates its clip area.
+			Object.Size = UDim2.fromOffset(AbsoluteSize.X, AbsoluteSize.Y)
+			Object.Position = UDim2.new(
+				0, AbsolutePosition.X + Object.AnchorPoint.X * AbsoluteSize.X,
+				0, AbsolutePosition.Y + Object.AnchorPoint.Y * AbsoluteSize.Y
+			)
+		end
+
+		return Frozen
+	end
+
+	local function RestoreContentLayout(Frozen)
+		for _, Entry in ipairs(Frozen or {}) do
+			if Entry.Object and Entry.Object.Parent then
+				Entry.Object.Size = Entry.Size
+				Entry.Object.Position = Entry.Position
+			end
+		end
+	end
 
 	local ControlSize1 = Create("Frame", MainFrame, {
 		Size = UDim2.fromOffset(ResizeHandleSize, ResizeHandleSize),
@@ -4166,7 +4207,9 @@ function Library:MakeWindow(Configs)
 
 		if Minimized then
 			MinimizeButton:SetIcon("minus")
-			MainFrame.Size = SaveSize
+			CreateTween({MainFrame, "Size", SaveSize, AnimationWindow, true})
+			RestoreContentLayout(FrozenContentLayout)
+			FrozenContentLayout = nil
 			SubTitleLabel.Visible = true
 			ControlSize1.Visible = Resizable
 			ControlSize2.Visible = TabResizable
@@ -4179,7 +4222,8 @@ function Library:MakeWindow(Configs)
 			ControlSize1.Visible = false
 			ControlSize2.Visible = false
 			SubTitleLabel.Visible = false
-			MainFrame.Size = UDim2.fromOffset(MinimizedWidth, TopBarHeight)
+			FrozenContentLayout = FreezeContentLayout()
+			CreateTween({MainFrame, "Size", UDim2.fromOffset(MinimizedWidth, TopBarHeight), AnimationWindow, true})
 			ResponsiveWidth, ResponsiveHeight = MinimizedWidth, TopBarHeight
 			UpdateResponsiveScale()
 			Minimized = true
