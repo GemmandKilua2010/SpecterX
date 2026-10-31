@@ -24,7 +24,7 @@ assert(type(RootTheme) == "string" and type(SharedThemes[RootTheme]) == "table",
 local Library = {
 	Themes = SharedThemes,
 	Info = {
-		Version = "1.1.4"
+		Version = "1.1.5"
 	},
 	Save = {},
 	Settings = {},
@@ -423,6 +423,8 @@ end
 local DropdownFavorites, SaveDropdownFavorites, SetProps, InsertTheme, Create do
 DropdownFavorites = {}
 local LegacyDropdownFavorites
+local CreatedInstancesInBatch = 0
+local InstanceBatchSize = 24
 
 local function NormalizeFavoriteOptions(Values)
     if type(Values) ~= "table" then return nil end
@@ -605,6 +607,14 @@ local SetChildren do
 		if new:IsA("GuiObject") and OrderedParents[new.Parent] ~= nil then
 			OrderedParents[new.Parent] += 1
 			new.LayoutOrder = OrderedParents[new.Parent]
+		end
+
+		-- Large hub scripts can create hundreds of controls in one uninterrupted
+		-- call. Yield briefly in bounded batches so Roblox can render between them.
+		CreatedInstancesInBatch += 1
+		if CreatedInstancesInBatch >= InstanceBatchSize then
+			CreatedInstancesInBatch = 0
+			task.wait()
 		end
 		return new
 	end
@@ -3146,6 +3156,7 @@ function Library:MakeWindow(Configs)
     local MainFrame = InsertTheme(Create("ImageLabel", ScreenGui, {
         Size = UDim2.fromOffset(UISizeX, UISizeY),
         Position = UDim2.new(0.5, -UISizeX/2, 0.5, -UISizeY/2),
+        ClipsDescendants = true,
         BackgroundTransparency = (Library.Save.Transparency or DefaultTransparency) / 100,
         Image = ToAssetContentId(Library.Save.BackgroundImage),
         ImageTransparency = (Library.Save.BackgroundImageTransparency or DefaultBackgroundImageTransparency) / 100,
@@ -4156,8 +4167,6 @@ function Library:MakeWindow(Configs)
 		if Minimized then
 			MinimizeButton:SetIcon("minus")
 			MainFrame.Size = SaveSize
-			MainScroll.Visible = true
-			Containers.Visible = true
 			SubTitleLabel.Visible = true
 			ControlSize1.Visible = Resizable
 			ControlSize2.Visible = TabResizable
@@ -4169,8 +4178,6 @@ function Library:MakeWindow(Configs)
 			SaveSize = MainFrame.Size
 			ControlSize1.Visible = false
 			ControlSize2.Visible = false
-			MainScroll.Visible = false
-			Containers.Visible = false
 			SubTitleLabel.Visible = false
 			MainFrame.Size = UDim2.fromOffset(MinimizedWidth, TopBarHeight)
 			ResponsiveWidth, ResponsiveHeight = MinimizedWidth, TopBarHeight
