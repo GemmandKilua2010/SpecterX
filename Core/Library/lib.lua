@@ -24,7 +24,7 @@ assert(type(RootTheme) == "string" and type(SharedThemes[RootTheme]) == "table",
 local Library = {
 	Themes = SharedThemes,
 	Info = {
-		Version = "1.2.0"
+		Version = "1.3.0"
 	},
 	Save = {},
 	Settings = {},
@@ -204,7 +204,7 @@ local ScreenPadding = math.max(0, ConfigNumber(LibraryConfig, "ScreenPadding"))
 local SettingsFolder = assert(LibraryConfig.SettingsFolder, "Config.Library.SettingsFolder is required.")
 local SettingsFile = assert(LibraryConfig.SettingsFile, "Config.Library.SettingsFile is required.")
 local SettingsPath = SettingsFolder .. "/" .. SettingsFile
-local DropdownFavoritesPath = "Library/Dropdown/favorites.json"
+local DropdownFavoritesPath = "Core/Library/Dropdown/favorites.json"
 local DefaultKeybind = assert(GetKeyCode(LibraryConfig.Keybind), "Config.Library.Keybind is invalid.").Name
 local DefaultTransparency = math.clamp(ConfigNumber(LibraryConfig, "Transparency"), 0, 100)
 local DefaultMinimizedWidth = math.clamp(ConfigNumber(LibraryConfig, "MinimizedWidth"), 160, 320)

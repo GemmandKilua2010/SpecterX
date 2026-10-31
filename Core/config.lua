@@ -9,7 +9,7 @@ local Config = {
     --// Version and update checks
     Version = {
         -- Latest released version. Bump Current for each public release.
-        Current = "1.2.0",
+        Current = "1.3.0",
         -- Warn only when the loaded library is older than Current.
         WarnWhenOutdated = true
     },
@@ -88,9 +88,9 @@ local Config = {
         Keybind = "G",
         Transparency = 3,
         LockedMessage = "This element is unavailable.",
-        SettingsFolder = "Library",
+        SettingsFolder = "Core/Library",
         SettingsFile = "settings.json",
-        -- Legacy key: optional flags JSON file path, e.g. "Library/flags.json".
+        -- Legacy key: optional flags JSON file path, e.g. "Core/Library/flags.json".
         SaveFolder = false,
         SettingsSaveDelay = 0.5,
         SavePosition = true,
@@ -445,7 +445,7 @@ local Config = {
 
     --// Addons
     Addon = {
-        Folder = "Addon"
+        Folder = "Core/Addon"
     },
 
     --// Themes

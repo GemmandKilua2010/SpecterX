@@ -562,15 +562,16 @@ local function ResolveDataPath(Path)
     end
 
     local GameName = Hub:GetGame()
-    if type(GameName) == "string" and GameName ~= "" and GameName ~= "Universal" then
-        local GamePath = Hub:GetGamePath(Path, GameName)
-        if GamePath then
-            return Hub:GetWorkspacePath(GamePath)
-        end
+    if type(GameName) ~= "string" or GameName == "" then
+        GameName = "Universal"
     end
 
-    -- Unlisted games share the Universal data folder at the SpecterX root.
-    return Hub:GetWorkspacePath(Path)
+    local GamePath = Hub:GetGamePath(Path, GameName)
+    if not GamePath then
+        return nil, "Invalid data path."
+    end
+
+    return Hub:GetWorkspacePath(GamePath)
 end
 
 Base.GetDataPath = function(_, Path)
@@ -615,6 +616,75 @@ Base.Load = function(_, Path)
 
     -- Keep compatibility with files written as raw text using Save.
     return Content, DataPath
+end
+
+local function ParseDataSelector(Selector)
+    if type(Selector) ~= "string" or Selector == "" then
+        return {}
+    end
+
+    local Parts = {}
+    local Position = 1
+    while Position <= #Selector do
+        local Character = Selector:sub(Position, Position)
+        if Character == "." then
+            Position += 1
+        elseif Character == "[" then
+            local Remaining = Selector:sub(Position)
+            local NumberBracket = Remaining:match("^(%[%d+%])")
+            if NumberBracket then
+                Parts[#Parts + 1] = tonumber(NumberBracket:sub(2, -2))
+                Position += #NumberBracket
+            else
+                local StringBracket = Remaining:match('^(%[%s*".-"%s*%])')
+                    or Remaining:match("^(%[%s*'.-'%s*%])")
+                if not StringBracket then
+                    return nil, "Invalid data selector near: " .. Selector:sub(Position)
+                end
+                local Key = StringBracket:match('^%[%s*"(.-)"%s*%]')
+                    or StringBracket:match("^%[%s*'(.-)'%s*%]")
+                Parts[#Parts + 1] = Key
+                Position += #StringBracket
+            end
+        else
+            local Name = Selector:sub(Position):match("^([%a_][%w_]*)")
+            if not Name then
+                return nil, "Invalid data selector near: " .. Selector:sub(Position)
+            end
+            Parts[#Parts + 1] = Name
+            Position += #Name
+        end
+    end
+
+    return Parts
+end
+
+Base.Get = function(_, Path, Selector)
+    local Value, DataPathOrError = Base.Load(Base, Path)
+    if Value == nil then
+        return nil, DataPathOrError
+    end
+
+    if Selector == nil or Selector == "" then
+        return Value, DataPathOrError
+    end
+
+    local Parts, SelectorError = ParseDataSelector(Selector)
+    if not Parts then
+        return nil, SelectorError
+    end
+
+    for _, Key in ipairs(Parts) do
+        if type(Value) ~= "table" then
+            return nil, "Data selector does not match a table at: " .. tostring(Key)
+        end
+        Value = Value[Key]
+        if Value == nil then
+            return nil, "Data value not found at: " .. tostring(Key)
+        end
+    end
+
+    return Value, DataPathOrError
 end
 
 Base.Exists = function(_, Path)

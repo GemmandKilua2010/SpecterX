@@ -334,10 +334,7 @@ end
 
 function Main:GetGamePath(Path, GameName)
     GameName = GameName or self:GetGame()
-
-    if GameName == "Universal" then
-        return nil
-    end
+    GameName = tostring(GameName or "Universal")
 
     Path = NormalizePath(Path)
 
