@@ -1014,8 +1014,13 @@ end
 local CameraConnection
 
 local function UpdateResponsiveScale()
-    UIScale = CalculateScale(ResponsiveWidth, ResponsiveHeight)
-    ScreenScale.Scale = UIScale
+    local NewScale = CalculateScale(ResponsiveWidth, ResponsiveHeight)
+    if UIScale == NewScale then
+        return
+    end
+
+    UIScale = NewScale
+    ScreenScale.Scale = NewScale
 end
 
 local function BindCamera()
@@ -3162,8 +3167,13 @@ function Library:MakeWindow(Configs)
 		local function Refresh()
 			if not Frame.Parent then return end
 			local NeedsScrolling = Layout.AbsoluteContentSize.Y + PaddingY > Frame.AbsoluteSize.Y + 1
-			Frame.ScrollingEnabled = NeedsScrolling
-			Frame.ScrollBarThickness = NeedsScrolling and ScrollThickness or 0
+			if Frame.ScrollingEnabled ~= NeedsScrolling then
+				Frame.ScrollingEnabled = NeedsScrolling
+			end
+			local Thickness = NeedsScrolling and ScrollThickness or 0
+			if Frame.ScrollBarThickness ~= Thickness then
+				Frame.ScrollBarThickness = Thickness
+			end
 		end
 
 		AdaptiveScrollRefresh[Frame] = Refresh
@@ -6778,6 +6788,7 @@ function Library:MakeWindow(Configs)
 				end
 
 				local Options = {}
+				local SearchNameCache = setmetatable({}, {__mode = "k"})
 				local NextOptionOrder = 0
 
 				local FavoriteTweenInfo = TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
@@ -6971,7 +6982,7 @@ function Library:MakeWindow(Configs)
 
 					for _, Value in pairs(Options) do
 						local OptionButton = Value.Holder or Value.nodes[1]
-						local OptionName = TranslateText(Value.Name)
+						local OptionName = SearchNameCache[Value] or TranslateText(Value.Name):lower()
 
 						if type(OnSearch) == "function" then
 							local Success, Result = pcall(OnSearch, SearchText, Value.Value)
@@ -7110,6 +7121,7 @@ function Library:MakeWindow(Configs)
 						SortIndex = NextOptionOrder,
 						Favorite = FavoriteEnabled and FavoriteEntries[Name] == true or false
 					}
+					SearchNameCache[Options[Name]] = TranslateText(Name):lower()
 
 					if MultiSelect then
 						local Stats = Selected[Name] == true
@@ -7322,7 +7334,11 @@ function Library:MakeWindow(Configs)
 				TrackDropdownConnection(Connection.LanguageChanged:Connect(function()
 					for _, Option in pairs(Options) do
 						if Option.nodes and Option.nodes[3] and Option.nodes[3].Parent then
-							Option.nodes[3].Text = TranslateText(Option.Name)
+							local TranslatedName = TranslateText(Option.Name)
+							SearchNameCache[Option] = TranslatedName:lower()
+							if Option.nodes[3].Text ~= TranslatedName then
+								Option.nodes[3].Text = TranslatedName
+							end
 						end
 					end
 
@@ -7499,6 +7515,7 @@ function Library:MakeWindow(Configs)
 			local Callback = Funcs:GetCallback(Configs, 4)
 
 			local PlayerOptions = {}
+			local PlayerSearchNames = setmetatable({}, {__mode = "k"})
 			local PlayerConnections = {}
 			local SelectedPlayers = {}
 			local PlayerDropdown
@@ -7565,12 +7582,19 @@ function Library:MakeWindow(Configs)
 
 				local Name = Player.Name
 				local DisplayName = Player.DisplayName
+				local SearchNames = PlayerSearchNames[Data]
+				if not SearchNames or SearchNames.Name ~= Name or SearchNames.DisplayName ~= DisplayName then
+					SearchNames = {
+						Name = Name,
+						DisplayName = DisplayName,
+						NameLower = Name:lower(),
+						DisplayLower = DisplayName:lower()
+					}
+					PlayerSearchNames[Data] = SearchNames
+				end
 
-				local NameLower = Name:lower()
-				local DisplayLower = DisplayName:lower()
-
-				local NameMatch = NameLower:sub(1, #SearchText) == SearchText
-				local DisplayMatch = DisplayLower:sub(1, #SearchText) == SearchText
+				local NameMatch = SearchNames.NameLower:sub(1, #SearchText) == SearchText
+				local DisplayMatch = SearchNames.DisplayLower:sub(1, #SearchText) == SearchText
 
 				if NameMatch then
 					return Name
