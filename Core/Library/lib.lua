@@ -8438,6 +8438,8 @@ function Library:MakeWindow(Configs)
 			local LoopTween
 			local VisibilityConnection
 			local FrameVisibilityConnection
+			local WindowVisibilityConnection
+			local ContentVisibilityConnection
 			local FlagConnection
 
 			local function GetRatio(Number)
@@ -8489,7 +8491,8 @@ function Library:MakeWindow(Configs)
 						TweenInfo.new(1 / ProgressBar.Speed, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1),
 						{Position = UDim2.fromScale(1, 0)})
 				end
-				if ProgressBar.Paused or ProgressBar.Locked or not Frame.Visible or not Container.Visible then
+				if ProgressBar.Paused or ProgressBar.Locked or not Frame.Visible or not Container.Visible
+					or not Containers.Visible or not MainFrame.Visible then
 					LoopTween:Pause()
 				else
 					LoopTween:Play()
@@ -8689,6 +8692,8 @@ function Library:MakeWindow(Configs)
 
 			VisibilityConnection = Container:GetPropertyChangedSignal("Visible"):Connect(SyncLoop)
 			FrameVisibilityConnection = Frame:GetPropertyChangedSignal("Visible"):Connect(SyncLoop)
+			WindowVisibilityConnection = MainFrame:GetPropertyChangedSignal("Visible"):Connect(SyncLoop)
+			ContentVisibilityConnection = Containers:GetPropertyChangedSignal("Visible"):Connect(SyncLoop)
 			if Flag then
 				FlagConnection = Connection.FlagsChanged:Connect(function(Name, NewValue)
 					if Destroyed or Name ~= Flag or GetFlag(Flag) ~= NewValue then return end
@@ -8703,6 +8708,8 @@ function Library:MakeWindow(Configs)
 				StopLoop()
 				VisibilityConnection:Disconnect()
 				FrameVisibilityConnection:Disconnect()
+				WindowVisibilityConnection:Disconnect()
+				ContentVisibilityConnection:Disconnect()
 				if FlagConnection then FlagConnection:Disconnect() end
 			end)
 
@@ -8872,7 +8879,7 @@ function Library:MakeWindow(Configs)
 				Number = math.clamp(tonumber(string.format("%.15g", Number)), Min, Max)
 				local Changed = Value ~= Number
 				Value = Number
-				RefreshValue(Force)
+				if Changed or Force then RefreshValue(Force) end
 				if Changed or Force then
 					SetFlag(Flag, Number)
 					if not Silent then Funcs:FireCallback(Callback, Number) end
@@ -8921,6 +8928,7 @@ function Library:MakeWindow(Configs)
 				ActiveInput, DragStartValue, WasScrolling = Input, Value, Container.ScrollingEnabled
 				Container.ScrollingEnabled = false
 				RefreshInteraction()
+				RefreshValue(true)
 				UpdateFromPosition(Input.Position.X)
 				if Destroyed or not Dragging then return end
 				MoveConnection = UserInputService.InputChanged:Connect(function(Changed)
@@ -9835,6 +9843,7 @@ function Library:MakeWindow(Configs)
 			Configs = type(Configs) == "table" and Configs or type(Configs) == "string" and {Configs} or {}
 			local ColorPicker = {}
 			local ColorConnections = {}
+			local ColorDestroyed = false
 
 			local function TrackColorConnection(ConnectionObject)
 				ColorConnections[#ColorConnections + 1] = ConnectionObject
@@ -10658,6 +10667,7 @@ function Library:MakeWindow(Configs)
 			end
 
 			local function UpdateIndicators(Animate)
+				if ColorDestroyed then return end
 				UpdateIndicator(HueIndicator, HueBackground, Hue, Animate == true)
 				UpdateIndicator(SaturationIndicator, SaturationBackground, Saturation, Animate == true)
 				UpdateIndicator(BrightnessIndicator, BrightnessBackground, Brightness, Animate == true)
@@ -10778,6 +10788,7 @@ function Library:MakeWindow(Configs)
 			end
 
 			local function SetExpanded(Value)
+				if ColorDestroyed then return end
 				local ShouldExpand = Value == nil and not Expanded or Value == true
 				if ShouldExpand == Expanded then return end
 				if ShouldExpand and (not Container.Visible or not Option.Visible or not Option.Interactable or ColorPicker.Locked) then
@@ -10886,6 +10897,7 @@ function Library:MakeWindow(Configs)
 				Container.ScrollingEnabled = false
 				Indicator.Size = UDim2.fromOffset(12, 21)
 				CallbackFunction(Input)
+				if ColorDestroyed or not Expanded or not (HueDragging or SaturationDragging or BrightnessDragging) then return end
 				MoveConnection = UserInputService.InputChanged:Connect(function(Changed)
 					if DragInput then
 						if Changed ~= DragInput then return end
@@ -11102,6 +11114,8 @@ function Library:MakeWindow(Configs)
 			local ColorOption
 
 			function ColorPicker:Destroy()
+				if ColorDestroyed then return end
+				ColorDestroyed = true
 				FinishColorDrag(false)
 				StopPickerTweens()
 				if ColorOption then
@@ -11149,11 +11163,7 @@ function Library:MakeWindow(Configs)
 				end
 			end)
 
-			Option.Destroying:Connect(function()
-				FinishColorDrag(false)
-				StopPickerTweens()
-				if PopupOverlay.Parent then PopupOverlay:Destroy() end
-			end)
+			Option.Destroying:Connect(function() ColorPicker:Destroy() end)
 
 			ColorPicker._OnSectionHidden = function() SetExpanded(false) end
 			return RegisterFlagObject(Flag, ColorPicker, Option)
@@ -12532,63 +12542,65 @@ function Library:MakeWindow(Configs)
 				RedrawErrors()
 			end
 
-			local function Refresh()
+			local function Refresh(Force)
 				if Destroyed then return end
-				table.clear(Lines)
-				table.clear(StyledLines)
-				table.clear(LineOffsets)
+				if Force or RenderedCode ~= Input.Text then
+					table.clear(Lines)
+					table.clear(StyledLines)
+					table.clear(LineOffsets)
 
-				RenderedCode = Input.Text
-				local Highlight = IsLuaLanguage()
-				local State
-				local Offset = 1
-				local MeasureLines = {}
-				MaxLineWidth = 0
-				for Line in (Input.Text .. "\n"):gmatch("(.-)\n") do
-					local Index = #Lines + 1
-					Lines[Index] = Line
-					MeasureLines[Index] = Line .. "M"
-					LineOffsets[Index] = Offset
-					Offset += #Line + 1
-					MaxLineWidth = math.max(MaxLineWidth, MeasureWidth(Line))
+					RenderedCode = Input.Text
+					local Highlight = IsLuaLanguage()
+					local State
+					local Offset = 1
+					local MeasureLines = {}
+					MaxLineWidth = 0
+					for Line in (Input.Text .. "\n"):gmatch("(.-)\n") do
+						local Index = #Lines + 1
+						Lines[Index] = Line
+						MeasureLines[Index] = Line .. "M"
+						LineOffsets[Index] = Offset
+						Offset += #Line + 1
+						MaxLineWidth = math.max(MaxLineWidth, MeasureWidth(Line))
 
-					local Key = tostring(State or "") .. "\0" .. Line
-					local CachedLine = HighlightCache[Key]
-					if not CachedLine then
-						local Rich, NextState = EscapeRich(Line), nil
-						if Highlight and type(HighlightCode) == "function" then
-							local Success, Tokens, TokenState = pcall(HighlightCode, Line, State)
-							if Success and type(Tokens) == "table" then
-								local RawParts, Valid = {}, true
-								for _, Segment in ipairs(Tokens) do
-									if type(Segment) ~= "table" or type(Segment[1]) ~= "string" then
-										Valid = false
-										break
+						local Key = tostring(State or "") .. "\0" .. Line
+						local CachedLine = HighlightCache[Key]
+						if not CachedLine then
+							local Rich, NextState = EscapeRich(Line), nil
+							if Highlight and type(HighlightCode) == "function" then
+								local Success, Tokens, TokenState = pcall(HighlightCode, Line, State)
+								if Success and type(Tokens) == "table" then
+									local RawParts, Valid = {}, true
+									for _, Segment in ipairs(Tokens) do
+										if type(Segment) ~= "table" or type(Segment[1]) ~= "string" then
+											Valid = false
+											break
+										end
+										RawParts[#RawParts + 1] = Segment[1]
 									end
-									RawParts[#RawParts + 1] = Segment[1]
+									if Valid and table.concat(RawParts) == Line then
+										local Built, Result = pcall(BuildRichLine, Tokens)
+										if Built then Rich = Result end
+									end
+									NextState = TokenState
 								end
-								if Valid and table.concat(RawParts) == Line then
-									local Built, Result = pcall(BuildRichLine, Tokens)
-									if Built then Rich = Result end
-								end
-								NextState = TokenState
 							end
+							CachedLine = {Rich, NextState}
+							HighlightCache[Key] = CachedLine
+							Cached += 1
 						end
-						CachedLine = {Rich, NextState}
-						HighlightCache[Key] = CachedLine
-						Cached += 1
+						StyledLines[Index], State = CachedLine[1], CachedLine[2]
 					end
-					StyledLines[Index], State = CachedLine[1], CachedLine[2]
-				end
-				if Cached >= 600 then
-					table.clear(HighlightCache)
-					Cached = 0
-				end
+					if Cached >= 600 then
+						table.clear(HighlightCache)
+						Cached = 0
+					end
 
-				local MeasuredSource = EscapeRich(table.concat(MeasureLines, "\n"))
-				MeasurementTexts[MeasureContent] = MeasuredSource
-				MeasureContent.Text = MeasuredSource
-				LineCount = #Lines
+					local MeasuredSource = EscapeRich(table.concat(MeasureLines, "\n"))
+					MeasurementTexts[MeasureContent] = MeasuredSource
+					MeasureContent.Text = MeasuredSource
+					LineCount = #Lines
+				end
 				RenderVersion += 1
 				GutterWidth = math.ceil(math.max(CodeConfig.GutterWidth, TextService:GetTextSize(string.rep("9", #tostring(LineCount)), GutterFontSize, Enum.Font.Code, Vector2.new(10000, 10000)).X + CodeConfig.GutterPaddingLeft + CodeConfig.GutterPaddingRight))
 				Gutter.Size = UDim2.new(0, GutterWidth, 1, 0)
@@ -12933,7 +12945,7 @@ function Library:MakeWindow(Configs)
 				Language = tostring(Value or CodeConfig.Language)
 				table.clear(HighlightCache)
 				Cached = 0
-				Refresh()
+				Refresh(true)
 				InvalidateDiagnostics()
 				return Language
 			end
@@ -13298,7 +13310,7 @@ function Library:MakeWindow(Configs)
 				Cached = 0
 				table.clear(WidthCache)
 				WidthCached = 0
-				Refresh()
+				Refresh(true)
 			end)
 			Holder.Destroying:Connect(function()
 				Destroyed = true
