@@ -3135,8 +3135,11 @@ function Library:MakeWindow(Configs)
 	LoadFile()
 	
 	local SavedWidth, SavedHeight = table.unpack(Library.Save.UISize)
+	local RestoreLegacyDefaultSize = LoadedSettingKeys.UISize and SavedWidth == 534 and SavedHeight == 281
 	local UISizeX, UISizeY
-	if LoadedSettingKeys.UISize then
+	if RestoreLegacyDefaultSize then
+		UISizeX, UISizeY = DefaultWidth, DefaultHeight
+	elseif LoadedSettingKeys.UISize then
 		UISizeX, UISizeY = SavedWidth, SavedHeight
 	else
 		UISizeX, UISizeY = GetPair(Configs.Size, SavedWidth, SavedHeight)
@@ -3159,7 +3162,7 @@ function Library:MakeWindow(Configs)
 
 	local SaveDefaults = false
 
-	if not LoadedSettingKeys.UISize then
+	if not LoadedSettingKeys.UISize or RestoreLegacyDefaultSize then
 		Library.Save.UISize = {UISizeX, UISizeY}
 		LoadedSettingKeys.UISize = true
 		SaveDefaults = true
