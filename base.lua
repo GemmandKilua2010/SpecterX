@@ -31,6 +31,43 @@ local Hub = HubChunk(ConfigData, BaseUrl)
 local Genv = Hub:GetGenv()
 Genv.State = Genv.State or {}
 
+local function FormatKickReason(Reason)
+    local Title = tostring(ConfigData.Title or "Hub")
+    Title = Title:gsub("%c", " "):gsub("%s+", " "):match("^%s*(.-)%s*$")
+    if Title == "" then
+        Title = "Hub"
+    end
+
+    local Message = Reason == nil and "Disconnected." or tostring(Reason)
+    local Translated = Hub:Translate(Message)
+    if type(Translated) == "string" then
+        Message = Translated
+    end
+    Message = Message:gsub("%c", " "):gsub("%s+", " "):match("^%s*(.-)%s*$")
+    if Message == "" then
+        Message = "Disconnected."
+    end
+
+    local Prefix = ("[%s]:"):format(Title)
+    if Message:sub(1, #Prefix) ~= Prefix then
+        Message = Prefix .. " " .. Message
+    end
+    return Message
+end
+
+local function KickPlayer(Player, Reason)
+    if typeof(Player) ~= "Instance" or not Player:IsA("Player") then
+        return false, "Kick expects a Player instance."
+    end
+
+    local Message = FormatKickReason(Reason)
+    local Success, Error = pcall(Player.Kick, Player, Message)
+    if not Success then
+        return false, tostring(Error)
+    end
+    return true, Message
+end
+
 if Genv.State.Loading then
     Hub:Warn("Script is already loading. Please wait until the current loading process is complete.")
     return Genv.State.Base
@@ -108,7 +145,7 @@ if type(WhitelistManager) ~= "table"
     if ConfigData.Whitelist == true then
         local Player = Players.LocalPlayer
         if Player then
-            pcall(Player.Kick, Player, Hub:Translate("Whitelist verification is unavailable. Please try again later."))
+            KickPlayer(Player, "Whitelist verification is unavailable. Please try again later.")
         end
         return nil
     end
@@ -122,7 +159,7 @@ if ConfigData.Whitelist == true then
         if Player then
             local Message = Success and "You are not on the whitelist."
                 or "Whitelist verification is unavailable. Please try again later."
-            pcall(Player.Kick, Player, Hub:Translate(Message))
+            KickPlayer(Player, Message)
         end
         return nil
     end
@@ -155,7 +192,7 @@ local function RevokeLocalAccess(Reason)
 
     local Message = Reason == "revoked" and "Your SpecterX access was revoked."
         or "Your SpecterX access has expired."
-    local Success, Error = pcall(Player.Kick, Player, Hub:Translate(Message))
+    local Success, Error = KickPlayer(Player, Message)
     if not Success then
         warn("[SpecterX] Could not kick the local player: " .. tostring(Error))
     end
@@ -407,6 +444,10 @@ end
 Genv.State.Window = Lib.Window
 
 --// API
+
+function Base:Kick(Player, Reason)
+    return KickPlayer(Player, Reason)
+end
 
 Base.Whitelist = function(_, ...)
     return WhitelistManager:Whitelist(...)
@@ -916,3 +957,4 @@ end
 --// Return
 
 return Base
+
