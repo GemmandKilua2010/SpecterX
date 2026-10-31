@@ -24,7 +24,7 @@ assert(type(RootTheme) == "string" and type(SharedThemes[RootTheme]) == "table",
 local Library = {
 	Themes = SharedThemes,
 	Info = {
-		Version = "1.1.1"
+		Version = "1.1.2"
 	},
 	Save = {},
 	Settings = {},
@@ -1138,6 +1138,8 @@ local function MakeDrag(Instance, Options)
     local ShouldCancel = type(Options.ShouldCancel) == "function" and Options.ShouldCancel or nil
     local Move = type(Options.Move) == "function" and Options.Move or nil
     local MoveTo = type(Options.MoveTo) == "function" and Options.MoveTo or nil
+    local PrepareMove = type(Options.PrepareMove) == "function" and Options.PrepareMove or nil
+    local OnStop = type(Options.OnStop) == "function" and Options.OnStop or nil
 
     Handle.Active = true
     if Handle:IsA("GuiButton") then
@@ -1151,6 +1153,7 @@ local function MakeDrag(Instance, Options)
     local GrabOffset
     local PassedThreshold = false
     local MovementThreshold = Threshold
+    local MoveContext
     local RenderConnection
     local StateConnection
 
@@ -1170,11 +1173,11 @@ local function MakeDrag(Instance, Options)
             return Vector2.new(Position.X, Position.Y)
         end
         -- InputObject.Position and AbsolutePosition use CoreUISafeInsets coordinates.
-        local Inset = GuiService:GetGuiInset()
-        return UserInputService:GetMouseLocation() - Inset
+        return UserInputService:GetMouseLocation() - GuiService:GetGuiInset()
     end
 
     local function StopDrag()
+        local RememberPosition = Dragging and PassedThreshold
         if RenderConnection then
             RenderConnection:Disconnect()
             UntrackConnection(RenderConnection)
@@ -1191,6 +1194,11 @@ local function MakeDrag(Instance, Options)
         LastPointer = nil
         GrabOffset = nil
         PassedThreshold = false
+        MoveContext = nil
+        -- Persist once per gesture instead of allocating and queuing a save each frame.
+        if RememberPosition and OnStop then
+            OnStop()
+        end
     end
 
     local function Update()
@@ -1209,8 +1217,9 @@ local function MakeDrag(Instance, Options)
         end
 
         if MoveTo and GrabOffset then
+            if Pointer == LastPointer then return end
             LastPointer = Pointer
-            MoveTo(Pointer - GrabOffset)
+            MoveContext = MoveTo(Pointer - GrabOffset, MoveContext) or MoveContext
             return
         end
 
@@ -1218,7 +1227,7 @@ local function MakeDrag(Instance, Options)
         LastPointer = Pointer
         if Delta.Magnitude == 0 then return end
         if Move then
-            Move(Delta)
+            MoveContext = Move(Delta, MoveContext) or MoveContext
             return
         end
         local Position = Instance.Position
@@ -1253,6 +1262,7 @@ local function MakeDrag(Instance, Options)
             and (Pointer - Instance.AbsolutePosition) or nil
         PassedThreshold = false
         MovementThreshold = Input.UserInputType == Enum.UserInputType.Touch and math.max(Threshold, 6) or Threshold
+        MoveContext = PrepareMove and PrepareMove() or nil
         local function CheckInputState()
             if not Dragging then return end
             if Input.UserInputState == Enum.UserInputState.Cancel then
@@ -1382,7 +1392,7 @@ end
 
 function Library._PositionSettings.Bind(Object, Key, Options)
     Options = Options or {}
-    local State = {Object = Object, Initialized = false, Destroyed = false, Busy = false}
+    local State = {Object = Object, Initialized = false, Destroyed = false, Busy = false, BoundsRevision = 0}
     local Connections = {}
     local InitialPosition = Object.Position
     local Padding = math.max(0, tonumber(Options.Padding) or 6)
@@ -1406,23 +1416,47 @@ function Library._PositionSettings.Bind(Object, Key, Options)
         self:Move(Vector2.new(math.clamp(Position.X, MinX, MaxX), math.clamp(Position.Y, MinY, MaxY)))
     end
 
-    function State:MoveBy(Delta)
+    function State:MoveBy(Delta, Bounds)
         if self.Destroyed or not Object.Parent then return end
-        self:Initialize()
-        local MinX, MinY, MaxX, MaxY = Library._PositionSettings.GetBounds(Object, Padding, Options.TopPadding, Options.Oversized)
+        if not self.Initialized then self:Initialize() end
+        if type(Bounds) ~= "table" or Bounds.Revision ~= self.BoundsRevision then
+            Bounds = self:GetDragBounds()
+        end
         local Target = Object.AbsolutePosition + Delta
         -- Clamp before writing Position, so drag and the position observer never
         -- compete over an out-of-bounds intermediate value.
-        self:Move(Vector2.new(math.clamp(Target.X, MinX, MaxX), math.clamp(Target.Y, MinY, MaxY)))
-        self:ScheduleRemember()
+        self:Move(Vector2.new(
+            math.clamp(Target.X, Bounds.MinX, Bounds.MaxX),
+            math.clamp(Target.Y, Bounds.MinY, Bounds.MaxY)
+        ))
+        return Bounds
     end
 
-    function State:MoveGrabbedTo(Target)
-        if self.Destroyed or not Object.Parent then return end
+    function State:GetDragBounds()
+        if self.Destroyed or not Object.Parent then return nil end
         self:Initialize()
         local MinX, MinY, MaxX, MaxY = Library._PositionSettings.GetBounds(Object, Padding, Options.TopPadding, Options.Oversized)
-        self:Move(Vector2.new(math.clamp(Target.X, MinX, MaxX), math.clamp(Target.Y, MinY, MaxY)))
-        self:ScheduleRemember()
+        return {
+            MinX = MinX,
+            MinY = MinY,
+            MaxX = MaxX,
+            MaxY = MaxY,
+            Revision = self.BoundsRevision
+        }
+    end
+
+    function State:MoveGrabbedTo(Target, Bounds)
+        if self.Destroyed or not Object.Parent then return end
+        if not self.Initialized then self:Initialize() end
+        -- Reuse per-gesture bounds; Refresh invalidates them when screen geometry changes.
+        if type(Bounds) ~= "table" or Bounds.Revision ~= self.BoundsRevision then
+            Bounds = self:GetDragBounds()
+        end
+        self:Move(Vector2.new(
+            math.clamp(Target.X, Bounds.MinX, Bounds.MaxX),
+            math.clamp(Target.Y, Bounds.MinY, Bounds.MaxY)
+        ))
+        return Bounds
     end
 
     function State:Remember()
@@ -1484,6 +1518,7 @@ function Library._PositionSettings.Bind(Object, Key, Options)
 
     local function Refresh()
         if State.Destroyed then return end
+        State.BoundsRevision += 1
         if not State.Initialized then
             State:Initialize()
             return
@@ -3500,8 +3535,10 @@ function Library:MakeWindow(Configs)
 		MakeDrag(MainFrame, {
 			Handle = MainFrame,
 			Threshold = DragThreshold,
-			Move = function(Delta) WindowPosition:MoveBy(Delta) end,
-			MoveTo = function(Target) WindowPosition:MoveGrabbedTo(Target) end,
+			Move = function(Delta, Bounds) return WindowPosition:MoveBy(Delta, Bounds) end,
+			MoveTo = function(Target, Bounds) return WindowPosition:MoveGrabbedTo(Target, Bounds) end,
+			PrepareMove = function() return WindowPosition:GetDragBounds() end,
+			OnStop = function() WindowPosition:Remember() end,
 			CanStart = CanDragWindow,
 			GlobalInput = true,
 			ShouldCancel = function()
