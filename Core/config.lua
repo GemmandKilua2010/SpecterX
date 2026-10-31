@@ -71,7 +71,7 @@ local Config = {
     --// Library
     Library = {
         Scale = 1.9636363983154297,
-        Size = {534, 281},
+        Size = {580, 350},
         MinSize = {500, 280},
         MaxSize = {580, 350},
         TabSize = 160,
