@@ -44,6 +44,27 @@ local Dictionaries = {}
 local Aliases = {}
 local Templates = {}
 local TemplateLookup = {}
+-- Bound dynamic strings (including misses) to this translation module's lifetime.
+local TemplateCache = {}
+local TemplateCacheCount = 0
+local TEMPLATE_CACHE_LIMIT = 256
+local TEMPLATE_CACHE_MAX_LENGTH = 1024
+
+local function CacheTemplate(Language, Text, Result)
+    if #Text > TEMPLATE_CACHE_MAX_LENGTH then return Result end
+    if TemplateCacheCount >= TEMPLATE_CACHE_LIMIT then
+        table.clear(TemplateCache)
+        TemplateCacheCount = 0
+    end
+    local Cache = TemplateCache[Language]
+    if not Cache then
+        Cache = {}
+        TemplateCache[Language] = Cache
+    end
+    Cache[Text] = Result
+    TemplateCacheCount += 1
+    return Result
+end
 
 local function EscapePattern(Text)
     return (Text:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1"))
@@ -100,6 +121,9 @@ local function AddDictionary(Loaded)
         return
     end
 
+    table.clear(TemplateCache)
+    TemplateCacheCount = 0
+
     for Language, Entries in pairs(Loaded) do
         if type(Language) == "string" and type(Entries) == "table" then
             local LanguageKey = Lower(Language)
@@ -155,7 +179,8 @@ function Translation:Translate(Text, Language)
         return Text
     end
 
-    local Dictionary = Dictionaries[Lower(Language)]
+    local LanguageKey = Lower(Language)
+    local Dictionary = Dictionaries[LanguageKey]
     if not Dictionary then
         return Text
     end
@@ -174,27 +199,32 @@ function Translation:Translate(Text, Language)
         return Direct
     end
 
+    local Cache = TemplateCache[LanguageKey]
+    if Cache and Cache[Text] ~= nil then
+        return Cache[Text]
+    end
+
     for _, Template in ipairs(Templates) do
-        local Captures = {Text:match(Template.Pattern)}
+        local Target = Dictionary[Template.Canonical]
+        if Target then
+            local Captures = {Text:match(Template.Pattern)}
 
-        if #Captures == #Template.Names and #Captures > 0 then
-            local Target = Dictionary[Template.Canonical]
-
-            if Target then
+            if #Captures == #Template.Names and #Captures > 0 then
                 local Values = {}
 
                 for Index, Name in ipairs(Template.Names) do
                     Values[Name] = Captures[Index]
                 end
 
-                return (Target:gsub("{([%w_]+)}", function(Name)
+                local Result = Target:gsub("{([%w_]+)}", function(Name)
                     return Values[Name] or "{" .. Name .. "}"
-                end))
+                end)
+                return CacheTemplate(LanguageKey, Text, Result)
             end
         end
     end
 
-    return Text
+    return CacheTemplate(LanguageKey, Text, Text)
 end
 
 return Translation
