@@ -24,7 +24,7 @@ assert(type(RootTheme) == "string" and type(SharedThemes[RootTheme]) == "table",
 local Library = {
 	Themes = SharedThemes,
 	Info = {
-		Version = "1.1.3"
+		Version = "1.1.4"
 	},
 	Save = {},
 	Settings = {},
@@ -705,7 +705,7 @@ local SetChildren do
         ReadDropdownFavorites(LegacyDropdownFavorites)
     end
     if not SavedFavorites or SavedFavorites.Version ~= 2 then
-        SaveDropdownFavorites()
+        task.defer(SaveDropdownFavorites)
     end
     EnsureSoundPreset(Library.Save.SoundId)
 	Draggable = Library.Save.Draggable ~= false
@@ -713,8 +713,6 @@ local SetChildren do
 	TabResizable = Library.Save.TabResizable ~= false
 	ScrollThickness = Library.Save.ScrollThickness
 	ScrollTransparency = Library.Save.ScrollTransparency
-
-	JsonFiles.Write(SettingsPath, Library.Save)
 end
 end
 
@@ -4157,7 +4155,7 @@ function Library:MakeWindow(Configs)
 
 		if Minimized then
 			MinimizeButton:SetIcon("minus")
-			CreateTween({MainFrame, "Size", SaveSize, AnimationWindow, true})
+			MainFrame.Size = SaveSize
 			MainScroll.Visible = true
 			Containers.Visible = true
 			SubTitleLabel.Visible = true
@@ -4174,7 +4172,7 @@ function Library:MakeWindow(Configs)
 			MainScroll.Visible = false
 			Containers.Visible = false
 			SubTitleLabel.Visible = false
-			CreateTween({MainFrame, "Size", UDim2.fromOffset(MinimizedWidth, TopBarHeight), AnimationWindow, true})
+			MainFrame.Size = UDim2.fromOffset(MinimizedWidth, TopBarHeight)
 			ResponsiveWidth, ResponsiveHeight = MinimizedWidth, TopBarHeight
 			UpdateResponsiveScale()
 			Minimized = true

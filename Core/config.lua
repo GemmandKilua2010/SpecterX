@@ -9,7 +9,7 @@ local Config = {
     --// Version and update checks
     Version = {
         -- Semantic version shown in startup notices; bump Current for each public release.
-        Current = "1.1.3",
+        Current = "1.1.4",
         -- Compare the configured branch with the last saved commit SHA.
         CheckForChanges = true,
         -- Avoid repeat GitHub requests during quick re-executions (seconds).
